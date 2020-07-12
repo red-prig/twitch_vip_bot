@@ -4,5 +4,7 @@
 *.ppu
 *.bak
 *.o
+*.ini
+log_*.txt
 lib/
 backup/

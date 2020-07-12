@@ -1,0 +1,26 @@
+object FrmAbout: TFrmAbout
+  Left = 521
+  Height = 396
+  Top = 209
+  Width = 461
+  BorderIcons = [biSystemMenu]
+  Caption = 'О программе'
+  ClientHeight = 396
+  ClientWidth = 461
+  OnCreate = FormCreate
+  LCLVersion = '2.0.8.0'
+  object LAbout: TLabel
+    Left = 0
+    Height = 396
+    Top = 0
+    Width = 461
+    Align = alClient
+    Alignment = taCenter
+    Caption = 'Copyright (C) 2020 Red_prig VDPasha@mail.ru'#13#10#13#10'Бот для выдачи випок за награды поинтов.'#13#10
+    Font.Height = -27
+    Layout = tlCenter
+    ParentColor = False
+    ParentFont = False
+    WordWrap = True
+  end
+end

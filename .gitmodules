@@ -1,0 +1,9 @@
+[submodule "uniqueinstance"]
+	path = uniqueinstance
+	url = https://github.com/blikblum/luipack/
+[submodule "utils_libs"]
+	path = utils_libs
+	url = https://github.com/red-prig/utils_libs
+[submodule "netlibs"]
+	path = netlibs
+	url = https://github.com/red-prig/netlibs
