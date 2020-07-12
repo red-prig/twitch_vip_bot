@@ -1,4 +1,4 @@
-{ Asunc Task manager
+{ Async Task manager
 
   Copyright (C) 2018-2020 Red_prig
 

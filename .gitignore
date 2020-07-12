@@ -5,6 +5,7 @@
 *.bak
 *.o
 *.ini
+*.db
 log_*.txt
 lib/
 backup/
