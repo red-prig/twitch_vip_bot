@@ -10,7 +10,7 @@ object FrmMain: TFrmMain
   OnDestroy = FormDestroy
   OnWindowStateChange = FormWindowStateChange
   Position = poDesktopCenter
-  LCLVersion = '2.0.8.0'
+  LCLVersion = '2.0.10.0'
   object SystemTray: TTrayIcon
     PopUpMenu = PopupTray
     Icon.Data = {
@@ -4299,12 +4299,12 @@ object FrmMain: TFrmMain
       8001AC418001AC41C003AC41E007AC41F01FAC41
     }
     OnDblClick = SystemTrayClick
-    left = 265
-    top = 79
+    Left = 265
+    Top = 79
   end
   object PopupTray: TPopupMenu
-    left = 190
-    top = 200
+    Left = 190
+    Top = 200
     object MIAbout: TMenuItem
       Caption = 'О программе'
       OnClick = MIAboutClick

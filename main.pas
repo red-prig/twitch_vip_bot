@@ -123,10 +123,6 @@ var
 
  DbcThread:TDbcConnection;
 
- //DbcTask:TDbcStatementTask;
-
- //FDbcScript_create:TDbcStatementScript;
-
 
 type
  PQNode_push=^TQNode_push;
@@ -566,6 +562,8 @@ end;
 
 procedure TFrmMain.FormDestroy(Sender: TObject);
 begin
+ DbcThread.Stop;
+ FreeAndNil(DbcThread);
  evpool_stop(@pool);
 end;
 
@@ -1019,8 +1017,6 @@ begin
  Pages:=TKCustomPageControl.Create(FrmMain);
  Pages.Parent:=FrmMain;
 
- //Pages.AnchorAsAlign(alClient,1);
-
  Pages.Parent.DisableAlign;
  Pages.Anchors:=[akTop,akLeft,akRight,akBottom];
  Pages.AnchorSide[akTop].Side:=asrBottom;
@@ -1095,7 +1091,6 @@ begin
 
  FDbcScript:=TDbcStatementScript.Create;
  FDbcScript.Handle.DbcConnection:=DbcThread;
- //FDbcScript.Notify.Add(T_FIN,@OnFinishDbcScript);
  FDbcScript.ExecuteScript(FMem);
  FDbcScript.Start;
  FDbcScript.Release;
