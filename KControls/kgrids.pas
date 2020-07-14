@@ -4390,19 +4390,8 @@ begin
 end;
 
 procedure TKGridAxisItems.Exchange(Index1, Index2: Integer);
-{var
- Item:TKGridAxisItem;}
 begin
  inherited Exchange(Index1,Index2);
-  {// there is no exchange method in TCollection, grrr
-  Item := TKGridAxisItem(ItemClass.Create(nil));
-  try
-    Item.Assign(Items[Index1]);
-    Items[Index1] := Items[Index2];
-    Items[Index2] := Item;
-  finally
-    Item.Free;
-  end;}
 end;
 
 function TKGridAxisItems.GetItem(Index: Integer): TKGridAxisItem;
@@ -6747,9 +6736,6 @@ begin
     Result := FSelections.Find(ACol, ARow) >= 0;
 end;
 
-//var
-// t2:QWORD;
-
 function TKCustomGrid.CellToPoint(ACol, ARow: Integer; var Point: TPoint; 
   VisibleOnly: Boolean): Boolean;
 
@@ -6798,25 +6784,12 @@ function TKCustomGrid.CellToPoint(ACol, ARow: Integer; var Point: TPoint;
            Coord:=Coord-ScrollPos-Info.ScrollOffset;
            I:=Min(Info.FixedCellCount,Cell);
 
-           {Dec(Coord, Info.ScrollOffset);
-           I := Info.FirstGridCell;
-           while not VisibleOnly and (Cell < I) and (I > Info.FixedCellCount) do
-           begin
-             Dec(I);
-             Dec(Coord, Info.CellExtent(I) + Info.EffectiveSpacing(I));
-           end;}
-
-           //t2:=sysutils.GetTickCount64;
-
            while (I < Cell) and (I < Info.TotalCellCount) do
            begin
              Inc(Coord, Info.CellExtent(I) + Info.EffectiveSpacing(I));
              Inc(I);
            end;
 
-           //t2:=(sysutils.GetTickCount64-t2);
-
-           //Writeln(Coord,':',i,':',cell,':',VisibleOnly);
           end;
         end;
         Result := Cell = I;
@@ -10860,8 +10833,6 @@ var
   BorderRect, CellRect, TmpRect, TmpBlockRect: TRect;
   TmpCanvas: TCanvas;
 
-  //t:QWORD;
-
 begin
   GridFocused := Printing or HasFocus;
   UseThemedCells := ThemedCells;
@@ -10905,8 +10876,6 @@ begin
     Dec(FirstRow);
     Dec(YBack, InternalGetRowHeights(FirstRow) + InternalGetEffectiveRowSpacing(FirstRow));
   end;
-
-  //t:=0;
 
   // now draw the grid
   Y := YBack;
@@ -10986,8 +10955,6 @@ begin
             end;
 
             TmpBlockRect := InternalGetSelectionsRect(J, I);
-
-            //t:=t+t2;
 
             if CellBitmap <> nil then
             begin
@@ -13465,9 +13432,6 @@ begin
   end;
 end;
 
-//var
-// t2:QWORD;
-
 procedure TKCustomGrid.UpdateScrollRange(Horz, Vert, UpdateNeeded: Boolean);
 
   function Axis(Code: Cardinal; HasScrollBar: Boolean; ScrollMode: TKGridScrollMode;
@@ -13479,7 +13443,6 @@ procedure TKCustomGrid.UpdateScrollRange(Horz, Vert, UpdateNeeded: Boolean);
     SI: TScrollInfo;
     SBVisible: Boolean;
   begin
-    //t2:=sysutils.GetTickCount64;
 
     Result := False;
     CheckFirstGridCell := True;
@@ -13542,8 +13505,6 @@ procedure TKCustomGrid.UpdateScrollRange(Horz, Vert, UpdateNeeded: Boolean);
       end else
         ShowScrollBar(Handle, Code, False);
 
-     //t2:=(sysutils.GetTickCount64-t2);
-
   end;
 
 var
@@ -13580,14 +13541,9 @@ begin
 end;
 
 procedure TKCustomGrid.UpdateSize;
-//var
-// t:QWORD;
 begin
-  //t:=0;
   inherited;
   UpdateAxes(True, FColCount, True, FRowCount, [{afCheckMinExtent}]);
- //t:=t+t2;
- //Writeln(':',t);
 end;
 
 procedure TKCustomGrid.UpdateSortMode(ACol, ARow: Integer);

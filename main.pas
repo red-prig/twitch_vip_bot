@@ -826,6 +826,8 @@ begin
  end;
 
  {$I DialogControl.lrs}
+ {$I KControls\kcontrols.lrs}
+ {$I KControls\kgrids.lrs}
  {$I KPageControl.lrs}
 
  frmPanel:=TPanel.Create(FrmMain);
