@@ -725,14 +725,14 @@ begin
  begin
 
   try
-   frmLogin.EdtLogin.Text   :=Trim(frmLogin.EdtLogin.Text);
+   login                    :=Trim(frmLogin.EdtLogin.Text);
    frmLogin.EdtPassword.Text:=Trim(frmLogin.EdtPassword.Text);
 
-   Config.WriteString('base','login',frmLogin.EdtLogin.Text   );
+   Config.WriteString('base','login',login);
    Config.WriteString('base','oAuth',frmLogin.EdtPassword.Text);
 
    reply_irc_Connect(
-     frmLogin.EdtLogin.Text,
+     login,
      frmLogin.EdtPassword.Text,
      Config.ReadString('base','chat',''),
      Config.ReadString('base','chat_id','')
