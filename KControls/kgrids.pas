@@ -6916,7 +6916,9 @@ begin
   begin
     if Assigned(FCells) then
     begin
+      if Length(FCells)<>0 then
       for I := 0 to Length(FCells) - 1 do
+        if Length(FCells[I])<>0 then
         for J := 0 to Length(FCells[I]) - 1 do
           FCells[I, J].Free;
       FCells := nil;
@@ -6935,21 +6937,25 @@ begin
         for I := RowAt to RowAt + RowCnt - 1 do
         begin
           SetLength(FCells[I], FColCount);
-          for J := 0 to Length(FCells[I]) - 1 do FCells[I, J] := nil;
+          if Length(FCells[I])<>0 then
+           for J := 0 to Length(FCells[I]) - 1 do FCells[I, J] := nil;
         end;
       end else
       begin
         for I := RowAt to RowAt + RowCnt - 1 do
         begin
+          if Length(FCells[I])<>0 then
           for J := 0 to Length(FCells[I]) - 1 do FCells[I, J].Free;
           FCells[I] := nil;
         end;
-        for I := RowAt to Len - RowCnt - 1 do FCells[I] := FCells[I + RowCnt];
+        if RowAt <= Len - RowCnt - 1 then
+         for I := RowAt to Len - RowCnt - 1 do FCells[I] := FCells[I + RowCnt];
         SetLength(FCells, Len - RowCnt);
       end;
     end;
     if ColCnt > 0 then
     begin
+      if Length(FCells)<>0 then
       for I := 0 to Length(FCells) - 1 do
       begin
         Len := Length(FCells[I]);
@@ -6962,7 +6968,8 @@ begin
         else if FColCount < Len then
         begin
           for J := ColAt to ColAt + ColCnt - 1 do FCells[I, J].Free;
-          for J := ColAt to Len - ColCnt - 1 do FCells[I, J] := FCells[I, J + ColCnt];
+          if  ColAt <= Len - ColCnt - 1 then
+           for J := ColAt to Len - ColCnt - 1 do FCells[I, J] := FCells[I, J + ColCnt];
           SetLength(FCells[I], Len - ColCnt);
         end;
       end;
@@ -6972,7 +6979,8 @@ begin
   begin
     if FixAllSelections(FSelection) then
       DoSelectionChanged;
-    if (FFixedRows <> OldFixedRows) or (FFixedCols <> OldFixedCols) then
+    if (FFixedRows <> OldFixedRows) or (FFixedCols <> OldFixedCols) or
+       (FFixedRows >= RowCnt) or (FFixedCols >= ColCnt) then
       ResetTopLeft;
     UpdateAxes(ColCnt > 0, cAll, RowCnt > 0, cAll, []);
     UpdateCellSpan;
@@ -8055,9 +8063,13 @@ procedure TKCustomGrid.FreeData;
 var
   I, J: Integer;
 begin
+  if Length(FCells)<>0 then
   for I := 0 to Length(FCells) - 1 do
+  begin
+    if Length(FCells[I])<>0 then
     for J := 0 to Length(FCells[I]) - 1 do
       FCells[I, J].Free;
+  end;
   FCells := nil;
 end;
 
@@ -8690,7 +8702,7 @@ function TKCustomGrid.GridRectToRect(ARect: TKGridRect; var R: TRect;
             Result := False;
         Index2 := Max(Index2, Index1);
       end else
-        Index2 := Min(Index2, Info.FixedCellCount - 1);
+        Index2 := Min(Index2, Info.FixedCellCount);
     end
     else if (Index1 >= Info.FixedCellCount) and VisibleOnly then
     begin
@@ -11324,6 +11336,7 @@ begin
       // draw clipped selectable cells first (to avoid some GTK clipping problems)
       TmpRect := Rect(Info.Horz.FixedBoundary, Info.Vert.FixedBoundary, ClientW, ClientH);
       if not IsRectEmpty(TmpRect) then
+      if (FRowCount>FixedRows) and (FColCount>FixedCols) then
       begin
         CurClipRgn := CreateEmptyRgn;
         try
@@ -11796,9 +11809,12 @@ end;
 
 procedure TKCustomGrid.ResetTopLeft;
 begin
-  if (FTopLeft.Col <> FFixedCols) or (FTopLeft.Row <> FFixedRows) then
+  if (FTopLeft.Col <> FFixedCols) or (FTopLeft.Row <> FFixedRows) or
+     (FFixedRows >= FRowCount) or (FFixedCols >= FColCount) then
   begin
-    FTopLeft := GridPoint(FFixedCols, FFixedRows);
+    FTopLeft := GridPoint(FFixedCols,FFixedRows);
+    if (FTopLeft.Row >= FRowCount) then FTopLeft.Row:=0;
+    if (FTopLeft.Col >= FColCount) then FTopLeft.Col:=0;
     Invalidate;
     TopLeftChanged;
   end;

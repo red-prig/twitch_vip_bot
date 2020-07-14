@@ -579,9 +579,11 @@ end;
 
 procedure TFrmMain.FormDestroy(Sender: TObject);
 begin
+ FreeAndNil(Pages);
  DbcThread.Stop;
  FreeAndNil(DbcThread);
  evpool_stop(@pool);
+ FreeAndNil(Config);
 end;
 
 procedure TFrmMain.SetShowChat(V:Boolean);
@@ -621,6 +623,7 @@ begin
          Page:=TKTabSheet(GridChat.Parent);
          Page.DisableAlign;
          GridChat.Parent:=nil;
+         GridChat.Anchors:=[];
          GridChat.AnchorSide[akBottom].Control:=nil;
          EdtSend.Parent:=nil;
          Page.EnableAlign;
@@ -868,7 +871,7 @@ begin
  frmPanel.Left:=0;
  frmPanel.Parent:=FrmMain;
 
- LeftBar:=TToolbar.Create(FrmMain);
+ LeftBar:=TToolbar.Create(frmPanel);
  LeftBar.Align:=alCustom;
  LeftBar.Anchors:=[akTop,akLeft];
  LeftBar.AutoSize:=True;
@@ -880,7 +883,7 @@ begin
  LeftBar.Left:=1;
  LeftBar.Parent:=frmPanel;
 
- RightBar:=TToolbar.Create(FrmMain);
+ RightBar:=TToolbar.Create(frmPanel);
  RightBar.Align:=alCustom;
  RightBar.Anchors:=[akTop,akRight];
  RightBar.AutoSize:=True;
@@ -892,7 +895,7 @@ begin
  RightBar.Left:=frmPanel.ClientWidth-RightBar.Width-1;
  RightBar.Parent:=frmPanel;
 
- BtnCfg:=TButton.Create(FrmMain);
+ BtnCfg:=TButton.Create(LeftBar);
  BtnCfg.Caption:='Настройки';
  BtnCfg.AutoSize:=True;
  BtnCfg.Constraints.MinHeight:=32;
@@ -957,7 +960,7 @@ begin
   end;
  end;
 
- BtnView:=TButton.Create(FrmMain);
+ BtnView:=TButton.Create(RightBar);
  BtnView.Caption:='Вид';
  BtnView.AutoSize:=True;
  BtnView.Constraints.MinHeight:=32;
@@ -984,7 +987,7 @@ begin
  BtnView.OnClick:=@BtnToolPopupClick;
  BtnView.PopupMenu:=PopupView;
 
- BtnEnter:=TSpeedButton.Create(FrmMain);
+ BtnEnter:=TSpeedButton.Create(RightBar);
 
  BtnEnter.Caption:='Войти';
  BtnEnter.OnClick:=@OnBtnEnterClick;
@@ -993,7 +996,7 @@ begin
  BtnEnter.Height:=32;
  BtnEnter.Parent:=RightBar;
 
- BtnInfo:=TSpeedButton.Create(FrmMain);
+ BtnInfo:=TSpeedButton.Create(RightBar);
  BtnInfo.Caption:='[user]';
  BtnInfo.AutoSize:=True;
  BtnInfo.Constraints.MinHeight:=32;
@@ -1001,7 +1004,7 @@ begin
  BtnInfo.Visible:=False;
  BtnInfo.Parent:=RightBar;
 
- BtnClose:=TSpeedButton.Create(FrmMain);
+ BtnClose:=TSpeedButton.Create(RightBar);
  BtnClose.OnClick:=@OnBtnCloseClick;
  BtnClose.Caption:='';
  BtnClose.AutoSize:=True;
