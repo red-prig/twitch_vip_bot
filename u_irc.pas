@@ -57,11 +57,6 @@ type
   procedure on_end_stream(stream_data:phttp2_stream_data); virtual;
  end;
 
-//procedure _submit_msg(const msg:RawByteString);
-//procedure replyConnect_irc(const login,oAuth,chat:RawByteString);
-//procedure replyConnect_pub(const oAuth,chat_id:RawByteString);
-//procedure replyConnect(var ClientData:TClientData;Const Method,Path:RawByteString);
-
 procedure reply_irc_Connect(const login,oAuth,chat,chat_id:RawByteString);
 procedure reply_irc_Disconnect;
 procedure reply_irc_msg(const msg:RawByteString);
@@ -652,35 +647,33 @@ end;
 Procedure _submit_tm(ev:Ptimer;arg:pointer);
 var
  v:Piovec;
- ws_irc:Tws_irc;
+
 begin
- //Writeln('_submit_tm');
  v:=evbuffer_pop(msg_send_buf);
  if (v<>nil) then
  begin
   Log(irc_log,0,['<',GetStr(iovec_getdata(v),iovec_getlen(v))]);
-  fpWebsocket_session_submit_text_vec(arg,v);
-
-  Pointer(ws_irc):=fpWebsocket_session_get_user_data(arg);
+  //Writeln(GetStr(iovec_getdata(v),iovec_getlen(v)));
+  fpWebsocket_session_submit_text_vec(ws_irc.ws_session,v);
 
   if ws_irc.msg_timer=nil then
   begin
    ws_irc.msg_timer:=evtimer_new(@pool,@_submit_tm,arg);
-  end else
-  begin
-   ws_irc.session_send;
   end;
+
+  ws_irc.session_send;
 
   evtimer_add(ws_irc.msg_timer,ws_irc.time_kd);
  end else
  begin
-  Pointer(ws_irc):=fpWebsocket_session_get_user_data(arg);
 
   evtimer_del(ws_irc.msg_timer);
   ws_irc.msg_timer:=nil;
  end;
 
 end;
+
+function _gen_nonce:RawByteString; forward;
 
 procedure _submit_msg(const msg:RawByteString);
 var
@@ -693,7 +686,7 @@ begin
 
  if (msg='') or (ws_irc=nil) then Exit;
 
- S:='PRIVMSG '+ws_irc.chat+' :'+msg;
+ S:={'@client-nonce='+_gen_nonce+' '+}'PRIVMSG #'+ws_irc.chat+' :'+msg;
 
  evbuffer_add(msg_send_buf,PAnsiChar(S),Length(S));
 
@@ -713,6 +706,8 @@ Type
   display_name,
   user,
   msg:RawByteString;
+  slow:QWORD;
+  _mod,_sub:Byte;
   procedure parse(var S:RawByteString);
  end;
 
@@ -804,9 +799,14 @@ begin
    v:='';
   end;
 
+  //Writeln('u:',user,'*');
+
   //Writeln(n,'*',v,'*');
 
   Case n of
+   'subscriber':_sub:=StrToIntDef(v,0);
+   'mod' :_mod:=StrToIntDef(v,0);
+   'slow':slow:=StrToQWordDef(v,0);
    'display-name':display_name:=v;
    //Writeln(n,'*',v,'*');
   end;
@@ -850,6 +850,16 @@ begin
     msg_parse.parse(msg);
 
     case msg_parse.cmd of
+     'ROOMSTATE':begin
+                  if (LowerCase(ws_irc.chat)<>LowerCase(ws_irc.login))
+                     and (msg_parse._mod=0)
+                     and (msg_parse._sub=0)
+                     and (msg_parse.slow<>0) then
+                  begin
+                   ws_irc.time_kd:=msg_parse.slow*1000000;
+                  end;
+                 end;
+
      '001':begin
             main.push_chat('Добро пожаловать в чат!');
             main.push_login;
@@ -1130,11 +1140,27 @@ begin
  ws_pub.session_send;
 end;
 
+function _gen_nonce:RawByteString;
+var
+ Context:TMTRandomContext;
+ _nonce:array[0..5] of DWORD;
+begin
+ Context:=Default(TMTRandomContext);
+ RandomInit(Context);
+ _nonce[0]:=Random(Context,high(DWORD)-2)+1;
+ _nonce[1]:=Random(Context,high(DWORD)-2)+1;
+ _nonce[2]:=Random(Context,high(DWORD)-2)+1;
+ _nonce[3]:=Random(Context,high(DWORD)-2)+1;
+ _nonce[4]:=Random(Context,high(DWORD)-2)+1;
+ _nonce[5]:=Random(Context,high(DWORD)-2)+1;
+ SetLength(Result,32);
+ base64encode(@_nonce,SizeOf(_nonce),PAnsiChar(Result),32);
+ SetLength(Result,30);
+end;
+
 function Tws_pub.session_reply:integer;
 var
  S:RawByteString;
- Context:TMTRandomContext;
- _nonce:array[0..5] of DWORD;
 
 begin
  Result:=inherited;
@@ -1153,17 +1179,7 @@ begin
  msg_timer:=evtimer_new(@pool,@_ping_pub,ws_session);
  evtimer_add(msg_timer,ping_kd);
 
- RandomInit(Context);
- _nonce[0]:=Random(Context,high(DWORD)-2)+1;
- _nonce[1]:=Random(Context,high(DWORD)-2)+1;
- _nonce[2]:=Random(Context,high(DWORD)-2)+1;
- _nonce[3]:=Random(Context,high(DWORD)-2)+1;
- _nonce[4]:=Random(Context,high(DWORD)-2)+1;
- _nonce[5]:=Random(Context,high(DWORD)-2)+1;
-
- SetLength(nonce,32);
- base64encode(@_nonce,SizeOf(_nonce),PAnsiChar(nonce),32);
- SetLength(nonce,30);
+ nonce:=_gen_nonce;
 
  S:='{"type":"LISTEN","nonce":"'+nonce+'",'+
     '"data":{"topics":["community-points-channel-v1.'+chat_id+'"],'+
@@ -1764,7 +1780,7 @@ end;
 
     stream_data:=ClientData.get_stream_user_data(frame^.hd.stream_id);
 
-    Writeln(GetStr(Pointer(name),namelen),' ',GetStr(Pointer(value),valuelen));
+    //Writeln(GetStr(Pointer(name),namelen),' ',GetStr(Pointer(value),valuelen));
 
     ClientData.on_headers(stream_data,GetStr(Pointer(name),namelen),GetStr(Pointer(value),valuelen));
 

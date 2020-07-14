@@ -6865,7 +6865,7 @@ procedure TKCustomGrid.ChangeDataSize(ColInsert: Boolean; ColAt, ColCnt: Integer
           end;
         end;
         ItemCount := Data.Count;
-        FixedCount := Min(FixedCount, ItemCount - 1);
+        FixedCount := Min(FixedCount, ItemCount);
       end else
       begin
         if ItemCount <> Data.Count then
@@ -6874,7 +6874,7 @@ procedure TKCustomGrid.ChangeDataSize(ColInsert: Boolean; ColAt, ColCnt: Integer
             Data.AddOnly;
           Cnt := Abs(Data.Count - ItemCount);
           ItemCount := Data.Count;
-          FixedCount := Min(FixedCount, ItemCount - 1);
+          FixedCount := Min(FixedCount, ItemCount);
         end;
         for I := 0 to Data.Count - 1  do
         begin
@@ -9713,7 +9713,7 @@ end;
 
 procedure TKCustomGrid.InternalSetFixedCols(Value: Integer);
 begin
-  ColCount := Max(ColCount, Value + 1);
+  ColCount := Max(ColCount, Value);
   FFixedCols := Value;
   ResetTopLeft;
   if FixAllSelections(FSelection) then
@@ -9723,7 +9723,7 @@ end;
 
 procedure TKCustomGrid.InternalSetFixedRows(Value: Integer);
 begin
-  RowCount := Max(RowCount, Value + 1);
+  RowCount := Max(RowCount, Value);
   FFixedRows := Value;
   ResetTopLeft;
   if FixAllSelections(FSelection) then

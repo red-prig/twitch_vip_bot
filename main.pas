@@ -42,12 +42,15 @@ type
     procedure SetLognBtn(Login:Boolean);
     procedure add_reward(const S:RawByteString);
     procedure add_to_chat(const S:RawByteString);
+    procedure EdtSendKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure SystemTrayClick(Sender: TObject);
     procedure _set_field_story(DT:TDateTime;const user,S:RawByteString;aRow:Integer);
     procedure add_to_story(DT:TDateTime;const user,S:RawByteString);
     procedure FormActivate(Sender: TObject);
     procedure BtnToolPopupClick(Sender:TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure SetShowChat(V:Boolean);
+    procedure SetShowStory(V:Boolean);
     procedure OnPopupClickChat(Sender:TObject);
     procedure OnPopupClickStory(Sender:TObject);
     procedure OnPopupClickAutoEnter(Sender:TObject);
@@ -85,7 +88,8 @@ type
    Item_AutoEnter,
    Item_UseTray:TMenuItem;
 
-   //procedure replyConnect(Sender: TObject);
+   EdtSend:TEdit;
+
   end;
 
 var
@@ -219,9 +223,9 @@ begin
            'se,"template_id":null,"updated_for_indicator_at":"2020-07-06T17:34:56.82009'+
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
-           'I5OTAyM1o="}}}');
+           'I5OTAyM1o="}}}');}
 
-         add_reward(
+         {add_reward(
             '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:49:22.'+
             '62426474Z","redemption":{"id":"c3d94d57-544d-408d-9346-a7e2ccfce57d","us'+
             'er":{"id":"156899307","login":"vrediinao_o","display_name":"Vrediina'+
@@ -405,6 +409,19 @@ begin
 
 end;
 
+procedure TFrmMain.EdtSendKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
+var
+ msg:RawByteString;
+begin
+ if (Key=13) and BtnInfo.Visible then
+ begin
+  msg:=EdtSend.Text;
+  EdtSend.Text:='';
+  reply_irc_msg(msg);
+  add_to_chat('>'+login+': '+msg);
+ end;
+end;
+
 procedure TFrmMain.SystemTrayClick(Sender: TObject);
 begin
  WindowState:=wsNormal;
@@ -567,46 +584,57 @@ begin
  evpool_stop(@pool);
 end;
 
-procedure TFrmMain.OnPopupClickChat(Sender:TObject);
+procedure TFrmMain.SetShowChat(V:Boolean);
 Var
- i,c:SizeInt;
  Page:TKTabSheet;
 begin
-
- Item_Chat.Checked:=not Item_Chat.Checked;
-
- Case Item_Chat.Checked of
+ Item_Chat.Checked:=V;
+ Case V of
   True :begin
          Page:=Pages.AddPage(Pages);
          Page.Caption:='[-_-] Чат';
          Page.Tag:=0;
          Page.ImageIndex:=-1;
-         Page.Show;
+
+         Page.DisableAlign;
+
+         EdtSend.Parent:=Page;
+         EdtSend.Align:=alBottom;
+         EdtSend.Anchors:=[akLeft,akRight,akBottom];
+
          GridChat.Parent:=Page;
-         GridChat.AnchorAsAlign(alClient,1);
+         GridChat.Anchors:=[akTop,akLeft,akRight,akBottom];
+         GridChat.AnchorSide[akTop].Side:=asrTop;
+         GridChat.AnchorSide[akTop].Control:=Page;
+         GridChat.AnchorSide[akBottom].Side:=asrTop;
+         GridChat.AnchorSide[akBottom].Control:=EdtSend;
+         GridChat.AnchorSide[akLeft].Side:=asrLeft;
+         GridChat.AnchorSide[akLeft].Control:=Page;
+         GridChat.AnchorSide[akRight].Side:=asrRight;
+         GridChat.AnchorSide[akRight].Control:=Page;
+         Page.EnableAlign;
+
+         Page.Show;
+
         end;
   False:begin
-         c:=Pages.PageCount;
-         if c<>0 then
-         For i:=0 to c-1 do
-         begin
-          if Pages.Pages[i].Tag=0 then
-          begin
-           Pages.DeletePage(i);
-           Exit;
-          end;
-         end;
+         Page:=TKTabSheet(GridChat.Parent);
+         Page.DisableAlign;
+         GridChat.Parent:=nil;
+         GridChat.AnchorSide[akBottom].Control:=nil;
+         EdtSend.Parent:=nil;
+         Page.EnableAlign;
+         Application.ReleaseComponent(Page);
         end;
  end;
 end;
 
-procedure TFrmMain.OnPopupClickStory(Sender:TObject);
+procedure TFrmMain.SetShowStory(V:Boolean);
 Var
- i,c:SizeInt;
  Page:TKTabSheet;
 begin
- Item_Story.Checked:=not Item_Story.Checked;
- Case Item_Story.Checked of
+ Item_Story.Checked:=V;
+ Case V of
   True :begin
          Page:=Pages.AddPage(Pages);
          Page.Caption:='История событий';
@@ -617,16 +645,21 @@ begin
          GridStory.AnchorAsAlign(alClient,1);
         end;
   False:begin
-         c:=Pages.PageCount;
-         if c<>0 then
-         For i:=0 to c-1 do
-          if Pages.Pages[i].Tag=1 then
-          begin
-           Pages.DeletePage(i);
-           Exit;
-          end;
+         Page:=TKTabSheet(GridStory.Parent);
+         GridStory.Parent:=nil;
+         Application.ReleaseComponent(Page);
         end;
  end;
+end;
+
+procedure TFrmMain.OnPopupClickChat(Sender:TObject);
+begin
+ SetShowChat(not Item_Chat.Checked);
+end;
+
+procedure TFrmMain.OnPopupClickStory(Sender:TObject);
+begin
+ SetShowStory(not Item_Story.Checked);
 end;
 
 procedure TFrmMain.OnPopupClickAutoEnter(Sender:TObject);
@@ -700,10 +733,10 @@ end;
 
 procedure TFrmMain.OnTabClose(Sender:TObject;TabIndex:Integer;var CanClose:Boolean);
 begin
- CanClose:=True;
+ CanClose:=False;
  Case Pages.Pages[TabIndex].Tag of
-  0:Item_Chat.Checked :=False;
-  1:Item_Story.Checked:=False;
+  0:SetShowChat(False);
+  1:SetShowStory(False);
  end;
 end;
 
@@ -826,8 +859,6 @@ begin
  end;
 
  {$I DialogControl.lrs}
- {$I KControls\kcontrols.lrs}
- {$I KControls\kgrids.lrs}
  {$I KPageControl.lrs}
 
  frmPanel:=TPanel.Create(FrmMain);
@@ -1053,22 +1084,25 @@ begin
  Pages.OnTabCloseQuery:=@OnTabClose;
 
  GridChat:=TExtStringGrid.Create(FrmMain);
- GridChat.RowCount:=2;
+ GridChat.RowCount:=1;
  GridChat.Options:=GridChat.Options-[goRowSorting];
  GridChat.ScrollBars:=ssVertical;
  GridChat.AddColumn('time',' Время ');
  GridChat.AddColumn('mes',' Сообщение');
 
+ EdtSend:=TEdit.Create(FrmMain);
+ EdtSend.OnKeyDown:=@EdtSendKeyDown;
+
  GridStory:=TExtStringGrid.Create(FrmMain);
- GridStory.RowCount:=2;
+ GridStory.RowCount:=1;
  GridStory.Options:=GridChat.Options-[goRowSorting];
  GridStory.ScrollBars:=ssVertical;
  GridStory.AddColumn('datetime',' Дата, Время ');
  GridStory.AddColumn('user',' ЛЕВ ');
  GridStory.AddColumn('mes',' Сообщение');
 
- OnPopupClickChat(nil);
- OnPopupClickStory(nil);
+ SetShowChat(True);
+ SetShowStory(True);
 
  Pages.Pages[0].Show;
 
