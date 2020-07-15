@@ -12335,7 +12335,7 @@ begin
       finally
         FlagClear(cGF_GridUpdates);
       end;
-      UpdateAxes(True, Index, False, cAll, [afCallEvent{, afCheckMinExtent}]);
+      UpdateAxes(True, Index, False, cAll, [afCallEvent, afCheckMinExtent]);
     end;
   end;
 end;
@@ -13021,14 +13021,17 @@ end;
 procedure TKCustomGrid.UpdateAxes(Horz: Boolean; FirstCol: Integer;
   Vert: Boolean; FirstRow: Integer; Flags: TKGridAxisUpdateFlags);
 
-  procedure Axis1(Info: TKGridAxisInfo; AxisItems: TKGridAxisItems;
+  procedure Axis1(Info: TKGridAxisInfo; AxisItems: TKGridAxisItems; is_virtual:Boolean;
     var FirstIndex: Integer);
   var
-    I, AExtent: Integer;
+    I,C, AExtent: Integer;
   begin
     FlagSet(cGF_GridUpdates);
     try
-      for I := 0 to Info.TotalCellCount - 1 do
+      C:=Info.TotalCellCount;
+      if (C<>0) and is_virtual then C:=1;
+      if C<>0 then
+      for I := 0 to C - 1 do
       begin
         AExtent := Info.CellExtent(I);
         if (AExtent > 0) and (AExtent < Info.MinCellExtent(I)) then
@@ -13166,7 +13169,7 @@ begin
     Info := GetAxisInfoHorz([]);
     if FirstCol >= 0 then ColIndex := FirstCol else ColIndex := FColCount;
     if afCheckMinExtent in Flags then
-      Axis1(Info, FCols, ColIndex);
+      Axis1(Info, FCols, false, ColIndex);
     if (goAlignLastCol in FOptions) then
     begin
       if FTopLeft.Col <> FFixedCols then
@@ -13182,7 +13185,7 @@ begin
     Info := GetAxisInfoVert([]);
     if FirstRow >= 0 then RowIndex := FirstRow else RowIndex := FRowCount;
     if afCheckMinExtent in Flags then
-      Axis1(Info, FRows, RowIndex);
+      Axis1(Info, FRows, goVirtualGrid in FOptions, RowIndex);
     if (goAlignLastRow in FOptions) then
     begin
       if FTopLeft.Row <> FFixedRows then
@@ -13459,7 +13462,6 @@ procedure TKCustomGrid.UpdateScrollRange(Horz, Vert, UpdateNeeded: Boolean);
     SI: TScrollInfo;
     SBVisible: Boolean;
   begin
-
     Result := False;
     CheckFirstGridCell := True;
     ScrollExtent := 0;
@@ -13559,7 +13561,7 @@ end;
 procedure TKCustomGrid.UpdateSize;
 begin
   inherited;
-  UpdateAxes(True, FColCount, True, FRowCount, [{afCheckMinExtent}]);
+  UpdateAxes(True, FColCount, True, FRowCount, [afCheckMinExtent]);
 end;
 
 procedure TKCustomGrid.UpdateSortMode(ACol, ARow: Integer);
