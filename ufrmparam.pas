@@ -15,6 +15,8 @@ type
   TFrmParam = class(TForm)
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
+    EdtPercent: TLabeledEdit;
+    EdtMsg2: TLabeledEdit;
     EdtTitle: TLabeledEdit;
     EdtChatId: TLabeledEdit;
     EdtLogin: TLabeledEdit;
@@ -23,6 +25,8 @@ type
     EdtMsg: TLabeledEdit;
     TBView: TToggleBox;
     procedure EdtKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
+    procedure EdtPercentKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+    procedure EdtPercentKeyUp(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure EdtUTF8KeyPress(Sender:TObject;var UTF8Key:TUTF8Char);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure TBViewChange(Sender:TObject);
@@ -31,6 +35,7 @@ type
     procedure BtnCancelClick(Sender:TObject);
   private
     DigLastChar:Char;
+    prev_perc:Byte;
   public
   end;
 
@@ -64,6 +69,38 @@ begin
   end;
  end;
  FormKeyDown(Sender,Key,Shift);
+end;
+
+procedure TFrmParam.EdtPercentKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+begin
+ prev_perc:=StrToQWORDDef(EdtPercent.Text,70);
+ if prev_perc=0 then   prev_perc:=1;
+ if prev_perc>100 then prev_perc:=100;
+ if [ssAlt,ssCtrl]*Shift=[] then
+ Case Key of
+  8,37,39:;
+  ord('0')..ord('9'):;
+  else
+   Key:=0;
+ end;
+ FormKeyDown(Sender,Key,Shift);
+end;
+
+procedure TFrmParam.EdtPercentKeyUp(Sender: TObject; var Key: Word;Shift: TShiftState);
+var
+ S,L:Integer;
+begin
+ case StrToDWordDef(EdtPercent.Text,0) of
+  1..100:;
+  else
+  begin
+   S:=EdtPercent.SelStart ;
+   L:=EdtPercent.SelLength;
+   EdtPercent.Text:=IntToStr(prev_perc);
+   EdtPercent.SelStart :=S;
+   EdtPercent.SelLength:=L;
+  end;
+ end;
 end;
 
 procedure TFrmParam.EdtUTF8KeyPress(Sender:TObject;var UTF8Key:TUTF8Char);

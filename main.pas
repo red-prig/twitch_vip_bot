@@ -6,7 +6,6 @@ interface
 
 uses
   INIFiles,
-  fpWebsocket,
   evpool,
   Classes, SysUtils, StrUtils,DateUtils,
   Forms, Controls, Graphics,
@@ -70,6 +69,8 @@ type
    login:RawByteString;
    rule_title:RawByteString;
    rule_cmd:RawByteString;
+   rule_cmd2:RawByteString;
+   rule_perc:Byte;
 
    frmPanel:TPanel;
    LeftBar,RightBar:TToolbar;
@@ -108,6 +109,7 @@ var
 implementation
 
 uses
+ mtRandom,
  UFrmAbout,
  UFrmParam,
  Uloginf;
@@ -206,7 +208,7 @@ begin
          BtnClose.Visible:=True;
          BtnInfo.Left:=0;
 
-         {add_reward(
+         add_reward(
            '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:38:23.'+
            '141491302Z","redemption":{"id":"62d7f76e-7a16-432d-94ce-541897f02fa3","u'+
            'ser":{"id":"84616392","login":"satan_rulezz","display_name":"Satan_R'+
@@ -223,7 +225,7 @@ begin
            'se,"template_id":null,"updated_for_indicator_at":"2020-07-06T17:34:56.82009'+
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
-           'I5OTAyM1o="}}}');}
+           'I5OTAyM1o="}}}');
 
          {add_reward(
             '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:49:22.'+
@@ -312,8 +314,9 @@ var
  DT:TDateTime;
  ms:TMemoryStream;
  msg2:TJson;
- msg,user:RawByteString;
+ msg,cmd,user,rs:RawByteString;
  FDbcScript:TDbcStatementScript;
+ RCT:TMTRandomContext;
 begin
 
  ms:=TMemoryStream.Create;
@@ -340,26 +343,50 @@ begin
 
  if msg2.Path['type'].AsStr='reward-redeemed' then
  begin
-  add_to_story(DT,user,msg);
+
+  rs:=s;
 
   if rule_title=Trim(msg2.Path['data.redemption.reward.title'].AsStr) then
   begin
-   msg:=Format(rule_cmd,[msg2.Path['data.redemption.user.login'].AsStr]);
-   reply_irc_msg(msg);
-   add_to_chat('>'+login+': '+msg);
-   //Writeln(msg);
+   RCT:=Default(TMTRandomContext);
+   RandomInit(RCT);
+
+      //0..99         //70 0-69
+   if Random(RCT,100)<rule_perc then
+   begin
+    cmd:=Format(rule_cmd,[msg2.Path['data.redemption.user.login'].AsStr]);
+    reply_irc_msg(cmd);
+    add_to_chat('>'+login+': '+cmd);
+   end else
+   begin
+    cmd:=Format(rule_cmd2,[msg2.Path['data.redemption.user.login'].AsStr]);
+    reply_irc_msg(cmd);
+    add_to_chat('>'+login+': '+cmd);
+   end;
+
+   msg:=msg+' ('+cmd+')';
+
+   msg2.Values['msg_cmd']:=cmd;
+   ms:=TMemoryStream.Create;
+   msg2.Dump(ms);
+   SetLength(rs,ms.Size);
+   ms.Position:=0;
+   ms.Read(PAnsiChar(rs)^,Length(rs));
+   FreeAndNil(ms);
+
+   //Writeln('id               :',msg2.Path['data.redemption.id'].AsStr);
+   //Writeln('user.id          :',msg2.Path['data.redemption.user.id'].AsStr);
+   //Writeln('user.login       :',msg2.Path['data.redemption.user.login'].AsStr);
+   //Writeln('user.display_name:',msg2.Path['data.redemption.user.display_name'].AsStr);
+   //Writeln('redeemed_at      :',msg2.Path['data.redemption.redeemed_at'].AsStr);
+   //Writeln('reward.id        :',msg2.Path['data.redemption.reward.id'].AsStr);
+   //Writeln('reward.title     :',msg2.Path['data.redemption.reward.title'].AsStr);
+   //Writeln('reward.prompt    :',msg2.Path['data.redemption.reward.prompt'].AsStr);
+   //Writeln('user_input       :',msg2.Path['data.redemption.user_input'].AsStr);
+   //Writeln('status           :',msg2.Path['data.redemption.status'].AsStr);
   end;
 
-  //Writeln('id               :',msg2.Path['data.redemption.id'].AsStr);
-  //Writeln('user.id          :',msg2.Path['data.redemption.user.id'].AsStr);
-  //Writeln('user.login       :',msg2.Path['data.redemption.user.login'].AsStr);
-  //Writeln('user.display_name:',msg2.Path['data.redemption.user.display_name'].AsStr);
-  //Writeln('redeemed_at      :',msg2.Path['data.redemption.redeemed_at'].AsStr);
-  //Writeln('reward.id        :',msg2.Path['data.redemption.reward.id'].AsStr);
-  //Writeln('reward.title     :',msg2.Path['data.redemption.reward.title'].AsStr);
-  //Writeln('reward.prompt    :',msg2.Path['data.redemption.reward.prompt'].AsStr);
-  //Writeln('user_input       :',msg2.Path['data.redemption.user_input'].AsStr);
-  //Writeln('status           :',msg2.Path['data.redemption.status'].AsStr);
+  add_to_story(DT,user,msg);
 
   FDbcScript:=TDbcStatementScript.Create;
   FDbcScript.Handle.DbcConnection:=DbcThread;
@@ -367,7 +394,7 @@ begin
   FDbcScript.ExecuteScript;
   FDbcScript.Params.SetAsDateTime('datetime',DT);
   FDbcScript.Params.SetRawByteString('user',user);
-  FDbcScript.Params.SetRawByteString('mes',S);
+  FDbcScript.Params.SetRawByteString('mes',rs);
   FDbcScript.Start;
   FDbcScript.Release;
 
@@ -477,7 +504,7 @@ Var
  ResultSet:TZResultSet;
  ms:TMemoryStream;
  msg2:TJson;
- msg:RawByteString;
+ msg,cmd:RawByteString;
 begin
  ResultSet:=TDbcStatementScript(Sender).ResultSet;
 
@@ -515,6 +542,9 @@ begin
    end;
 
    msg:=fetch_msg(msg2);
+   cmd:=String(msg2.Values['msg_cmd']);
+   if cmd<>'' then
+    msg:=msg+' ('+cmd+')';
 
    _set_field_story(ResultSet.GetDouble(datetime_f),ResultSet.GetRawByteString(user_f),msg,i);
 
@@ -706,6 +736,8 @@ begin
   FrmParam.EdtChatID.Text  :=Config.ReadString('base','chat_id','');
   FrmParam.EdtTitle.Text   :=Config.ReadString('rule','title','');
   FrmParam.EdtMsg.Text     :=Config.ReadString('rule','msg_cmd','');
+  FrmParam.EdtMsg2.Text    :=Config.ReadString('rule','msg_cmd2','');
+  FrmParam.EdtPercent.Text :=Config.ReadString('rule','msg_perc','');
  except
   on E:Exception do
   begin
@@ -717,14 +749,20 @@ begin
  begin
   rule_title:=Trim(FrmParam.EdtTitle.Text);
   rule_cmd  :=Trim(FrmParam.EdtMsg.Text);
+  rule_cmd2 :=Trim(FrmParam.EdtMsg2.Text);
+  rule_perc :=StrToQWORDDef(FrmParam.EdtPercent.Text,70);
+  if rule_perc=0 then   rule_perc:=1;
+  if rule_perc>100 then rule_perc:=100;
 
   try
-   Config.WriteString('base','login'  ,FrmParam.EdtLogin.Text);
-   Config.WriteString('base','oAuth'  ,FrmParam.EdtPassword.Text);
-   Config.WriteString('base','chat'   ,FrmParam.EdtChat.Text);
-   Config.WriteString('base','chat_id',FrmParam.EdtChatID.Text);
-   Config.WriteString('rule','title'  ,rule_title);
-   Config.WriteString('rule','msg_cmd',rule_cmd);
+   Config.WriteString('base','login'   ,FrmParam.EdtLogin.Text);
+   Config.WriteString('base','oAuth'   ,FrmParam.EdtPassword.Text);
+   Config.WriteString('base','chat'    ,FrmParam.EdtChat.Text);
+   Config.WriteString('base','chat_id' ,FrmParam.EdtChatID.Text);
+   Config.WriteString('rule','title'   ,rule_title);
+   Config.WriteString('rule','msg_cmd' ,rule_cmd);
+   Config.WriteString('rule','msg_cmd2',rule_cmd2);
+   Config.WriteString('rule','msg_perc',IntToStr(rule_perc));
   except
    on E:Exception do
    begin
@@ -827,6 +865,10 @@ begin
 
    rule_title:=Trim(Config.ReadString('rule','title'   ,'VIP на хз сколько'));
    rule_cmd  :=Trim(Config.ReadString('rule','msg_cmd' ,'/vip %s'));
+   rule_cmd2 :=Trim(Config.ReadString('rule','msg_cmd2','/timeout %s 86400'));
+   rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',''),70);
+   if rule_perc=0 then   rule_perc:=1;
+   if rule_perc>100 then rule_perc:=100;
 
   except
    on E:Exception do
@@ -846,12 +888,18 @@ begin
 
    Config.WriteString('rule','title'   ,'VIP на хз сколько');
    Config.WriteString('rule','msg_cmd' ,'/vip %s');
+   Config.WriteString('rule','msg_cmd2','/timeout %s 86400');
+   Config.WriteString('rule','msg_perc','70');
 
    Config.WriteString('view','autologin','0');
    Config.WriteString('view','systray'  ,'1');
 
    rule_title:=Trim(Config.ReadString('rule','title'   ,'VIP на хз сколько'));
    rule_cmd  :=Trim(Config.ReadString('rule','msg_cmd' ,'/vip %s'));
+   rule_cmd2 :=Trim(Config.ReadString('rule','msg_cmd2','/timeout %s 86400'));
+   rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',''),70);
+   if rule_perc=0 then   rule_perc:=1;
+   if rule_perc>100 then rule_perc:=100;
 
   except
    on E:Exception do

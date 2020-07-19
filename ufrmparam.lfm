@@ -1,21 +1,21 @@
 object FrmParam: TFrmParam
   Left = 567
-  Height = 356
+  Height = 450
   Top = 119
-  Width = 364
+  Width = 359
   Caption = 'Параметры'
-  ClientHeight = 356
-  ClientWidth = 364
+  ClientHeight = 450
+  ClientWidth = 359
   OnKeyDown = FormKeyDown
-  LCLVersion = '2.0.8.0'
+  LCLVersion = '2.0.10.0'
   object EdtLogin: TLabeledEdit
     Left = 8
     Height = 25
     Top = 24
-    Width = 317
+    Width = 312
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 317
+    EditLabel.Width = 312
     EditLabel.Caption = 'Логин:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -30,11 +30,11 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 71
-    Width = 317
+    Width = 312
     Anchors = [akTop, akLeft, akRight]
     EchoMode = emPassword
     EditLabel.Height = 21
-    EditLabel.Width = 317
+    EditLabel.Width = 312
     EditLabel.Caption = 'OAuth ключ:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -49,7 +49,7 @@ object FrmParam: TFrmParam
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 316
+    Top = 410
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -123,9 +123,9 @@ object FrmParam: TFrmParam
     TabOrder = 3
   end
   object BtnCancel: TBitBtn
-    Left = 262
+    Left = 257
     Height = 30
-    Top = 316
+    Top = 410
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -199,7 +199,7 @@ object FrmParam: TFrmParam
     TabOrder = 4
   end
   object TBView: TToggleBox
-    Left = 325
+    Left = 320
     Height = 26
     Hint = 'Показать/Скрыть пароль'
     Top = 71
@@ -218,10 +218,10 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 120
-    Width = 317
+    Width = 312
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 317
+    EditLabel.Width = 312
     EditLabel.Caption = 'Чат:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -236,10 +236,10 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 168
-    Width = 317
+    Width = 312
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 317
+    EditLabel.Width = 312
     EditLabel.Caption = 'Номер чата:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -253,10 +253,10 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 224
-    Width = 317
+    Width = 312
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 317
+    EditLabel.Width = 312
     EditLabel.Caption = 'Заголовок награды:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -268,11 +268,11 @@ object FrmParam: TFrmParam
   object EdtMsg: TLabeledEdit
     Left = 8
     Height = 25
-    Top = 280
-    Width = 317
+    Top = 320
+    Width = 312
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 317
+    EditLabel.Width = 312
     EditLabel.Caption = 'Команда в чат:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -280,5 +280,39 @@ object FrmParam: TFrmParam
     Font.Height = -13
     ParentFont = False
     TabOrder = 8
+  end
+  object EdtMsg2: TLabeledEdit
+    Left = 8
+    Height = 25
+    Top = 376
+    Width = 312
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 312
+    EditLabel.Caption = 'Команда в чат 2:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    TabOrder = 9
+  end
+  object EdtPercent: TLabeledEdit
+    Left = 8
+    Height = 25
+    Top = 272
+    Width = 312
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 312
+    EditLabel.Caption = 'Вероятность первой команды %1-%100:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    TabOrder = 10
+    OnKeyDown = EdtPercentKeyDown
+    OnKeyUp = EdtPercentKeyUp
   end
 end
