@@ -92,7 +92,7 @@
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
       <Libraries Value="netlibs\static\$(TargetCPU)-$(TargetOS)"/>
-      <OtherUnitFiles Value="KControls;zeosdbo\component;zeosdbo\core;zeosdbo\plain;zeosdbo\parsesql;zeosdbo\dbc;utils_libs;uniqueinstance\uniqueinstance;netlibs;netlibs\xpath"/>
+      <OtherUnitFiles Value="KControls;zeosdbo\component;zeosdbo\core;zeosdbo\plain;zeosdbo\parsesql;zeosdbo\dbc;utils_libs;uniqueinstance\uniqueinstance;netlibs;netlibs\xpath;FastMM4-AVX"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <CodeGeneration>

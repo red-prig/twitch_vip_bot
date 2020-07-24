@@ -24,10 +24,10 @@ program twitch_vip_bot;
 {$mode objfpc}{$H+}
 
 uses
-  mtHeap,
   {$IFDEF UNIX}{$IFDEF UseCThreads}
   cthreads,
   {$ENDIF}{$ENDIF}
+  FastMM4,
 
   evpool,bufferevent_openssl,
 

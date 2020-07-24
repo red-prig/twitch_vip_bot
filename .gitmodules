@@ -7,3 +7,6 @@
 [submodule "netlibs"]
 	path = netlibs
 	url = https://github.com/red-prig/netlibs
+[submodule "FastMM4-AVX"]
+	path = FastMM4-AVX
+	url = https://github.com/red-prig/FastMM4-AVX
