@@ -208,6 +208,7 @@ begin
          BtnClose.Visible:=True;
          BtnInfo.Left:=0;
 
+         {
          add_reward(
            '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:38:23.'+
            '141491302Z","redemption":{"id":"62d7f76e-7a16-432d-94ce-541897f02fa3","u'+
@@ -226,6 +227,7 @@ begin
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
            'I5OTAyM1o="}}}');
+         }
 
          {add_reward(
             '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:49:22.'+

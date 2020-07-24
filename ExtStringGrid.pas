@@ -622,6 +622,7 @@ begin
     end;
   end;
  end;
+ _add_char(#0);
  Clipboard.AddFormat(CF_TEXT,Stream);
  FreeAndNil(Stream);
 end;
