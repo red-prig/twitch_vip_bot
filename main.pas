@@ -129,6 +129,7 @@ var
 
  DbcThread:TDbcConnection;
 
+ RCT:TMTRandomContext;
 
 type
  PQNode_push=^TQNode_push;
@@ -318,7 +319,7 @@ var
  msg2:TJson;
  msg,cmd,user,rs:RawByteString;
  FDbcScript:TDbcStatementScript;
- RCT:TMTRandomContext;
+
 begin
 
  ms:=TMemoryStream.Create;
@@ -350,8 +351,6 @@ begin
 
   if rule_title=Trim(msg2.Path['data.redemption.reward.title'].AsStr) then
   begin
-   RCT:=Default(TMTRandomContext);
-   RandomInit(RCT);
 
       //0..99         //70 0-69
    if Random(RCT,100)<rule_perc then
@@ -857,6 +856,9 @@ Var
  FMem:TMemoryStream;
  FDbcScript:TDbcStatementScript;
 begin
+
+ RCT:=Default(TMTRandomContext);
+ RandomInit(RCT);
 
  D:=GetLocalIni;
 
