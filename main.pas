@@ -559,6 +559,8 @@ begin
 
  GridStory.ScrollBy(0,c);
 
+ GridStory.Columns[0].Extent:=GridStory.Columns[0].MinExtent;
+
 end;
 
 procedure TFrmMain.FormActivate(Sender: TObject);
