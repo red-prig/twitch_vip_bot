@@ -1,12 +1,12 @@
 object FrmParam: TFrmParam
-  Left = 560
-  Height = 351
-  Top = 149
-  Width = 346
+  Left = 402
+  Height = 565
+  Top = 108
+  Width = 561
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры'
-  ClientHeight = 351
-  ClientWidth = 346
+  ClientHeight = 565
+  ClientWidth = 561
   OnKeyDown = FormKeyDown
   LCLVersion = '2.0.10.0'
   object EdtLogin: TLabeledEdit
@@ -14,10 +14,10 @@ object FrmParam: TFrmParam
     Height = 25
     Hint = 'Логин пользователя'
     Top = 24
-    Width = 308
+    Width = 523
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 308
+    EditLabel.Width = 523
     EditLabel.Caption = 'Логин:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -35,11 +35,11 @@ object FrmParam: TFrmParam
     Height = 25
     Hint = 'OAuth токен твича, сгенерировать можно к примеру на: https://twitchapps.com/tmi/'
     Top = 71
-    Width = 308
+    Width = 523
     Anchors = [akTop, akLeft, akRight]
     EchoMode = emPassword
     EditLabel.Height = 21
-    EditLabel.Width = 308
+    EditLabel.Width = 523
     EditLabel.Caption = 'OAuth ключ:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -56,7 +56,7 @@ object FrmParam: TFrmParam
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 311
+    Top = 525
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -127,12 +127,12 @@ object FrmParam: TFrmParam
     }
     OnClick = BtnOkClick
     OnKeyDown = FormKeyDown
-    TabOrder = 3
+    TabOrder = 7
   end
   object BtnCancel: TBitBtn
-    Left = 244
+    Left = 459
     Height = 30
-    Top = 311
+    Top = 525
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -203,10 +203,10 @@ object FrmParam: TFrmParam
     }
     OnClick = BtnCancelClick
     OnKeyDown = FormKeyDown
-    TabOrder = 4
+    TabOrder = 8
   end
   object TBView: TToggleBox
-    Left = 316
+    Left = 531
     Height = 26
     Hint = 'Показать/Скрыть пароль'
     Top = 71
@@ -224,12 +224,12 @@ object FrmParam: TFrmParam
   object EdtChat: TLabeledEdit
     Left = 8
     Height = 25
-    Hint = 'Текстовое наименование чата (стримера)'
+    Hint = 'Текстовое наименование чата (стримера)'#13#10'Используеться для подключения к чату.'
     Top = 120
-    Width = 308
+    Width = 523
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 308
+    EditLabel.Width = 523
     EditLabel.Caption = 'Чат:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -238,19 +238,19 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 5
+    TabOrder = 3
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
   object EdtChatId: TLabeledEdit
     Left = 8
     Height = 25
-    Hint = 'Подробно смотрите на: https://dev.twitch.tv/docs/v5/reference/channels#get-channel'
+    Hint = 'Подробно смотрите на: https://dev.twitch.tv/docs/v5/reference/channels#get-channel'#13#10'Используеться для подписки на различные события. (награды за поинты, битцы и тд)'
     Top = 168
-    Width = 308
+    Width = 523
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 308
+    EditLabel.Width = 523
     EditLabel.Caption = 'Номер чат канала:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -259,48 +259,130 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 6
+    TabOrder = 4
     OnKeyDown = EdtNumKeyDown
   end
-  object EdtTitle: TLabeledEdit
+  object GBoxVip: TGroupBox
     Left = 8
-    Height = 25
-    Hint = 'Заголовок VIP награды должен совпадать с этой строкой'
-    Top = 224
-    Width = 308
+    Height = 128
+    Top = 200
+    Width = 545
     Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 308
-    EditLabel.Caption = 'Заголовок VIP награды:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 7
+    Caption = 'VIP'
+    ClientHeight = 108
+    ClientWidth = 541
+    TabOrder = 5
+    object EdtPercent: TLabeledEdit
+      Left = 8
+      Height = 25
+      Hint = 'Обозначаяеться вероятность первой команды,'#13#10' вероятность иного варианта %100-X соответственно.'
+      Top = 72
+      Width = 523
+      Anchors = [akTop, akLeft, akRight]
+      EditLabel.Height = 21
+      EditLabel.Width = 523
+      EditLabel.Caption = 'Вероятность %0-%100:'
+      EditLabel.ParentColor = False
+      EditLabel.ParentFont = False
+      EditLabel.Font.Height = -16
+      Font.Height = -13
+      ParentFont = False
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 1
+      OnExit = EdtPercentExit
+      OnKeyDown = FormKeyDown
+      OnKeyPress = EdtPercentKeyPress
+    end
+    object EdtTitle: TLabeledEdit
+      Left = 8
+      Height = 25
+      Hint = 'Заголовок VIP награды должен совпадать с этой строкой'
+      Top = 24
+      Width = 523
+      Anchors = [akTop, akLeft, akRight]
+      EditLabel.Height = 21
+      EditLabel.Width = 523
+      EditLabel.Caption = 'Заголовок награды:'
+      EditLabel.ParentColor = False
+      EditLabel.ParentFont = False
+      EditLabel.Font.Height = -16
+      Font.Height = -13
+      ParentFont = False
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 0
+    end
   end
-  object EdtPercent: TLabeledEdit
+  object GBSubMode: TGroupBox
     Left = 8
-    Height = 25
-    Hint = 'Вероятность выпдения випки в процентах'
-    Top = 272
-    Width = 308
+    Height = 177
+    Top = 328
+    Width = 545
     Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 308
-    EditLabel.Caption = 'Вероятность VIP %0-%100:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 8
-    OnExit = EdtPercentExit
-    OnKeyDown = FormKeyDown
-    OnKeyPress = EdtPercentKeyPress
+    Caption = 'Саб мод'
+    ClientHeight = 157
+    ClientWidth = 541
+    TabOrder = 6
+    object EdtTitleSubInc: TLabeledEdit
+      Left = 8
+      Height = 25
+      Hint = 'Заголовок награды для добавлении времени и'#13#10' включении сабмода если время>0'
+      Top = 24
+      Width = 523
+      Anchors = [akTop, akLeft, akRight]
+      EditLabel.Height = 21
+      EditLabel.Width = 523
+      EditLabel.Caption = 'Заголовок награды +:'
+      EditLabel.ParentColor = False
+      EditLabel.ParentFont = False
+      EditLabel.Font.Height = -16
+      Font.Height = -13
+      ParentFont = False
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 0
+    end
+    object EdtTitleSubDec: TLabeledEdit
+      Left = 8
+      Height = 25
+      Hint = 'Заголовок награды для уменьшения времени и'#13#10' выключении сабмода если время<=0'
+      Top = 72
+      Width = 523
+      Anchors = [akTop, akLeft, akRight]
+      EditLabel.Height = 21
+      EditLabel.Width = 523
+      EditLabel.Caption = 'Заголовок награды -:'
+      EditLabel.ParentColor = False
+      EditLabel.ParentFont = False
+      EditLabel.Font.Height = -16
+      Font.Height = -13
+      ParentFont = False
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 1
+    end
+    object EdtSubInc: TLabeledEdit
+      Left = 8
+      Height = 25
+      Hint = 'Время которе добавляеться/отнимаеться у таймера'
+      Top = 120
+      Width = 523
+      Anchors = [akTop, akLeft, akRight]
+      EditLabel.Height = 21
+      EditLabel.Width = 523
+      EditLabel.Caption = 'Время в минутах:'
+      EditLabel.ParentColor = False
+      EditLabel.ParentFont = False
+      EditLabel.Font.Height = -16
+      Font.Height = -13
+      ParentFont = False
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 2
+      OnExit = EdtSubExit
+      OnKeyDown = FormKeyDown
+      OnKeyPress = EdtSubKeyPress
+    end
   end
 end

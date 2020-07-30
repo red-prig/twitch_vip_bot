@@ -68,11 +68,12 @@ type
     Procedure OnGetSubTime(Sender:TBaseTask);
     procedure OnPopupClose(Sender:TObject);
     procedure FormCreate(Sender: TObject);
-    procedure UpdateTextSubTime;
+    procedure UpdateTextSubTime(db:Boolean);
     procedure SetDBParam(Const fname,fvalue:RawByteString);
     procedure BtnClickSubModeOn(Sender:TObject);
     procedure BtnClickSubModeOff(Sender:TObject);
-    function  SetTimerSubMode(m:Boolean):Boolean;
+    function  CanSetTimerSubMode(m:Boolean):Boolean;
+    procedure SetTimerSubMode(m:Boolean);
     procedure SubModeTimerUpdate(Sender:TObject);
     procedure LoadXML;
   private
@@ -138,11 +139,12 @@ var
  sub_mod_cmd_on :RawByteString;
  sub_mod_cmd_off:RawByteString;
 
- sub_mod_min:DWORD;
+ sub_mod_inc:DWORD;
 
  SubModeTimer:TTimer;
  SubModeTick:Int64;
  SubModeTime:Int64;
+ dbSubModeTime:Int64;
 
 function fetch_random_no_more(Var Context:TMTRandomContext):Boolean;
 
@@ -236,7 +238,7 @@ end;
 
 Procedure TQNode_login.OnParent2;
 begin
- FrmMain.SetTimerSubMode(False);
+ FrmMain.SetTimerSubMode(False); ////////////
  FreeMem(@Self);
 end;
 
@@ -299,7 +301,7 @@ begin
            'ser":{"id":"84616392","login":"satan_rulezz","display_name":"Satan_R'+
            'ulezz"},"channel_id":"54742538","redeemed_at":"2020-07-08T18:38:23.01829'+
            '9023Z","reward":{"id":"9c25cd82-30e4-4e23-8dae-e3ae630b9bab","channel_id'+
-           '":"54742538","title":"VIP на хз сколько","prompt":"Может передумаю и  '+
+           '":"54742538","title":"VIP или БАН","prompt":"Может передумаю и  '+
            'отниму випку.","cost":450000,"is_user_input_required":true,"is_sub_only":'+
            'false,"image":null,"default_image":{"url_1x":"https://static-cdn.jtvnw.ne'+
            't/custom-reward-images/default-1.png","url_2x":"https://static-cdn.jtvnw.net'+
@@ -311,7 +313,7 @@ begin
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
            'I5OTAyM1o="}}}');
-         }
+           }
 
          {add_reward(
             '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:49:22.'+
@@ -496,29 +498,31 @@ begin
   end else
   if reward_title=sub_mod_inc_title then //add sub mode
   begin
-   SubModeTime:=SubModeTime+sub_mod_min*60;
+   SubModeTime:=SubModeTime+sub_mod_inc*60;
+   dbSubModeTime:=SubModeTime;
    if SubModeTime>0 then
    begin
-    if SetTimerSubMode(True) then
+    if CanSetTimerSubMode(True) then
     begin
      cmd:=sub_mod_cmd_on;
      push_irc_msg(cmd);
     end;
    end;
-   UpdateTextSubTime;
+   UpdateTextSubTime(True);
   end else
   if reward_title=sub_mod_dec_title then //dec sub mode
   begin
-   SubModeTime:=SubModeTime-sub_mod_min*60;
+   SubModeTime:=SubModeTime-sub_mod_inc*60;
+   dbSubModeTime:=SubModeTime;
    if SubModeTime<=0 then
    begin
-    if SetTimerSubMode(False) then
+    if CanSetTimerSubMode(False) then
     begin
      cmd:=sub_mod_cmd_off;
      push_irc_msg(cmd);
     end;
    end;
-   UpdateTextSubTime;
+   UpdateTextSubTime(True);
   end;
 
   if cmd<>'' then
@@ -558,9 +562,10 @@ var
  Sc:Word;
  Ms:Word;
  aRow:Integer;
- t:RawByteString;
+ //t:RawByteString;
 begin
 
+ {
  if Trim(s)=permission then
  begin
   t:=last_cmd;
@@ -570,18 +575,11 @@ begin
   Case LowerCase(t) of
    '/vip'           :ShowMessage('У вас нет прав для назначения ВИП!');
    '/timeout'       :ShowMessage('У вас нет прав для таймаута!');
-   '/subscribers'   :
-   begin
-    SetTimerSubMode(False);
-    ShowMessage('У вас нет прав для включения сабмода!');
-   end;
-   '/subscribersoff':
-   begin
-    ShowMessage('У вас нет прав для выключения сабмода!');
-   end;
+   '/subscribers'   :ShowMessage('У вас нет прав для включения сабмода!');
+   '/subscribersoff':ShowMessage('У вас нет прав для выключения сабмода!');
   end;
 
- end;
+ end;}
 
  if (GridChat.RowCount=2) and (GridChat.FieldValue['mes',1]='') then
  begin
@@ -746,8 +744,9 @@ begin
 
  if ResultSet.First then
  begin
-  SubModeTime:=ResultSet.GetInt(0);
-  UpdateTextSubTime;
+  SubModeTime:=ResultSet.GetInt(1);
+  dbSubModeTime:=SubModeTime;
+  UpdateTextSubTime(False);
  end;
 
 end;
@@ -861,7 +860,7 @@ begin
  Case V of
   True :begin
          Page:=Pages.AddPage(Pages);
-         Page.Caption:='История событий';
+         Page.Caption:='История наград';
          Page.Tag:=1;
          Page.ImageIndex:=-1;
          Page.Show;
@@ -954,6 +953,12 @@ begin
   FrmParam.EdtChatID.Text  :=chat_id;
   FrmParam.EdtTitle.Text   :=rule_title;
   FrmParam.EdtPercent.Text :=IntToStr(rule_perc);
+
+  FrmParam.EdtTitleSubInc.Text:=sub_mod_inc_title;
+  FrmParam.EdtTitleSubDec.Text:=sub_mod_dec_title;
+
+  FrmParam.EdtSubInc.Text:=IntToStr(sub_mod_inc);
+
  except
   on E:Exception do
   begin
@@ -970,6 +975,11 @@ begin
   rule_perc :=StrToQWORDDef(FrmParam.EdtPercent.Text,70);
   if rule_perc>100 then rule_perc:=100;
 
+  sub_mod_inc_title:=FrmParam.EdtTitleSubInc.Text;
+  sub_mod_dec_title:=FrmParam.EdtTitleSubDec.Text;
+
+  sub_mod_inc:=StrToIntDef(FrmParam.EdtSubInc.Text,1);
+
   try
    Config.WriteString('base','login'   ,FrmParam.EdtLogin.Text);
    Config.WriteString('base','oAuth'   ,FrmParam.EdtPassword.Text);
@@ -977,6 +987,11 @@ begin
    Config.WriteString('base','chat_id' ,chat_id);
    Config.WriteString('rule','title'   ,rule_title);
    Config.WriteString('rule','msg_perc',IntToStr(rule_perc));
+
+   Config.WriteString('sub_mod','inc_title',sub_mod_inc_title);
+   Config.WriteString('sub_mod','dec_title',sub_mod_dec_title);
+   Config.WriteString('sub_mod','dec_title',IntToStr(sub_mod_inc));
+
   except
    on E:Exception do
    begin
@@ -1050,6 +1065,7 @@ procedure TFrmMain.OnBtnCloseClick(Sender:TObject);
 begin
  reply_irc_Disconnect;
  SetLognBtn(false);
+ SetTimerSubMode(false);
 end;
 
 Const
@@ -1100,7 +1116,7 @@ begin
    sub_mod_inc_title:=Trim(Config.ReadString('sub_mod','inc_title',sub_mod_inc_title));
    sub_mod_dec_title:=Trim(Config.ReadString('sub_mod','dec_title',sub_mod_dec_title));
 
-   sub_mod_min:=StrToDWORDDef(Config.ReadString('sub_mod','min',IntToStr(sub_mod_min)),30);
+   sub_mod_inc:=StrToDWORDDef(Config.ReadString('sub_mod','min',IntToStr(sub_mod_inc)),30);
 
   except
    on E:Exception do
@@ -1131,7 +1147,7 @@ begin
    Config.WriteString('sub_mod','inc_title',sub_mod_inc_title);
    Config.WriteString('sub_mod','dec_title',sub_mod_dec_title);
 
-   Config.WriteString('sub_mod','min',IntToStr(sub_mod_min));
+   Config.WriteString('sub_mod','min',IntToStr(sub_mod_inc));
 
   except
    on E:Exception do
@@ -1286,7 +1302,7 @@ begin
  PopupView.Items.Add(Item_Chat);
 
  Item_Story:=TMenuItem.Create(PopupView);
- Item_Story.Caption:='История событий';
+ Item_Story.Caption:='История наград';
  Item_Story.Checked:=False;
  Item_Story.Tag:=1;
  Item_Story.OnClick:=@OnPopupClickStory;
@@ -1433,7 +1449,7 @@ begin
  TextSubTime.AnchorSide[akTop].Control:=LabelSubMode;
  TextSubTime.BorderSpacing.Top:=5;
 
- UpdateTextSubTime;
+ UpdateTextSubTime(False);
 
  Btn:=TButton.Create(PanelSub);
  Btn.OnClick:=@BtnClickSubModeOn;
@@ -1500,17 +1516,21 @@ begin
 
 end;
 
-procedure TFrmMain.UpdateTextSubTime;
+procedure TFrmMain.UpdateTextSubTime(db:Boolean);
 var
  S,L:Integer;
- Hr:Int64;
+ i,Hr:Int64;
  Mn,Sc:Byte;
 begin
- SetDBParam('SubTime',IntToStr(SubModeTime));
+ if db then
+ begin
+  SetDBParam('SubTime',IntToStr(SubModeTime));
+  dbSubModeTime:=SubModeTime;
+ end;
 
- Hr:=(SubModeTime mod 24);
- Mn:=(SubModeTime div 60) mod 60;
  Sc:=(SubModeTime mod 60);
+ Mn:=(SubModeTime div 60) mod 60;
+ Hr:=(SubModeTime div (60*60)) mod 24;
 
  S:=TextSubTime.SelStart ;
  L:=TextSubTime.SelLength;
@@ -1537,27 +1557,18 @@ begin
  FDbcScript.Release;
 end;
 
-function TFrmMain.SetTimerSubMode(m:Boolean):Boolean;
+function TFrmMain.CanSetTimerSubMode(m:Boolean):Boolean;
 begin
+ if not BtnInfo.Visible then Exit;
  Case m of
   True :
   begin
    if (SubModeTimer=nil) then
    begin
-    SubModeTimer:=TTimer.Create(Self);
-    SubModeTimer.Interval:=500;
-    SubModeTimer.OnTimer:=@SubModeTimerUpdate;
     Result:=True;
    end else
    begin
     Result:=not SubModeTimer.Enabled;
-   end;
-   if Result then
-   begin
-    LabelSubMode.Font.Color:=$FF00;
-    LabelSubMode.Caption:='Сабмод включён';
-    SubModeTick:=GetTickCount64;
-    SubModeTimer.Enabled:=m;
    end;
   end;
   False:
@@ -1569,20 +1580,43 @@ begin
    begin
     Result:=SubModeTimer.Enabled;
    end;
-   if Result then
-   begin
-    LabelSubMode.Font.Color:=0;
-    LabelSubMode.Caption:='Сабмод выключен';
-    SubModeTimer.Enabled:=m;
-   end;
   end;
  end;
+end;
+
+procedure TFrmMain.SetTimerSubMode(m:Boolean);
+begin
+ Case m of
+  True :
+  begin
+   if (SubModeTimer=nil) then
+   begin
+    SubModeTimer:=TTimer.Create(Self);
+    SubModeTimer.Interval:=500;
+    SubModeTimer.OnTimer:=@SubModeTimerUpdate;
+   end;
+   LabelSubMode.Font.Color:=$FF00;
+   LabelSubMode.Caption:='Сабмод включён';
+   SubModeTick:=GetTickCount64;
+   SubModeTimer.Enabled:=m;
+  end;
+  False:
+  begin
+   if (SubModeTimer<>nil) then
+   begin
+    SubModeTimer.Enabled:=m;
+   end;
+   LabelSubMode.Font.Color:=0;
+   LabelSubMode.Caption:='Сабмод выключен';
+  end;
+ end;
+ UpdateTextSubTime(True);
 end;
 
 procedure TFrmMain.BtnClickSubModeOn(Sender:TObject);
 begin
  //submode send on
- if SetTimerSubMode(true) then
+ if CanSetTimerSubMode(true) then
  begin
   push_irc_msg(sub_mod_cmd_on);
  end;
@@ -1591,7 +1625,7 @@ end;
 procedure TFrmMain.BtnClickSubModeOff(Sender:TObject);
 begin
  //submode send off
- if SetTimerSubMode(false) then
+ if CanSetTimerSubMode(false) then
  begin
   push_irc_msg(sub_mod_cmd_off);
  end;
@@ -1616,16 +1650,16 @@ begin
    begin
     SubModeTime:=0;
     //submode send off
-    if SetTimerSubMode(false) then
+    if CanSetTimerSubMode(false) then
     begin
      push_irc_msg(sub_mod_cmd_off);
     end;
    end;
+   UpdateTextSubTime(abs(dbSubModeTime-SubModeTime)>=10);
   end else
   begin
    //reverse submode time
   end;
-  UpdateTextSubTime;
  end;
 end;
 
@@ -1661,77 +1695,45 @@ type
   class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
  end;
 
- TLoadSubMin_Func=class(TNodeFunc)
+ TLoadSubIncTime_Func=class(TNodeFunc)
   class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
+ end;
+
+ TOpenVip_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TOpenSub_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TOpenSQL_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
 class procedure TRoot_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin
  Case Name of
-  'create.sql':
-   begin
-    Node.Push(TLoadSQL_Func,@frmMain.FCreateScript);
-   end;
-  'list.sql':
-   begin
-    Node.Push(TLoadSQL_Func,@frmMain.FListScript);
-   end;
-  'insert.sql':
-   begin
-    Node.Push(TLoadSQL_Func,@frmMain.FInsertScript);
-   end;
-  'get_param.sql':
-   begin
-    Node.Push(TLoadSQL_Func,@frmMain.FGetParamScript);
-   end;
-  'set_param.sql':
-   begin
-    Node.Push(TLoadSQL_Func,@frmMain.FSetParamScript);
-   end;
-  'rnd_title':
-   begin
-    Node.Push(TLoadStr_Func,@rule_title);
-   end;
-  'rnd_msg_cmd':
-   begin
-    Node.Push(TLoadStr_Func,@rule_cmd);
-   end;
-  'rnd_msg_cmd2':
-   begin
-    Node.Push(TLoadStr_Func,@rule_cmd2);
-   end;
-  'rnd_perc':
-   begin
-    Node.Push(TLoadPerc_Func,nil);
-   end;
-  'sub_mod_inc_title':
-   begin
-    Node.Push(TLoadStr_Func,@sub_mod_inc_title);
-   end;
-  'sub_mod_dec_title':
-   begin
-    Node.Push(TLoadStr_Func,@sub_mod_dec_title);
-   end;
-  'sub_mod_cmd_on':
-   begin
-    Node.Push(TLoadStr_Func,@sub_mod_cmd_on);
-   end;
-  'sub_mod_cmd_off':
-   begin
-    Node.Push(TLoadStr_Func,@sub_mod_cmd_off);
-   end;
-  'sub_mod_min':
-   begin
-    Node.Push(TLoadSubMin_Func,nil);
-   end;
+  'sql':
+  begin
+   Node.Push(TOpenSQL_Func,Node.CData);
+  end;
+  'vip_rnd':
+  begin
+   Node.Push(TOpenVip_Func,Node.CData);
+  end;
+  'sub_mod':
+  begin
+   Node.Push(TOpenSub_Func,Node.CData);
+  end;
   'chat':
-   begin
-    Node.Push(TLoadStr_Func,@chat);
-   end;
+  begin
+   Node.Push(TLoadStr_Func,@chat);
+  end;
   'chat_id':
-   begin
-    Node.Push(TLoadStr_Func,@chat_id);
-   end;
+  begin
+   Node.Push(TLoadStr_Func,@chat_id);
+  end;
  end;
 end;
 
@@ -1771,13 +1773,88 @@ begin
  end;
 end;
 
-class procedure TLoadSubMin_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+class procedure TLoadSubIncTime_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
 begin
  Case Name of
   '':
   begin
-   sub_mod_min:=StrToDWORDDef(Value,30);
+   sub_mod_inc:=StrToDWORDDef(Value,30);
   end;
+ end;
+end;
+
+class procedure TOpenVip_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'title':
+   begin
+    Node.Push(TLoadStr_Func,@rule_title);
+   end;
+  'msg_cmd':
+   begin
+    Node.Push(TLoadStr_Func,@rule_cmd);
+   end;
+  'msg_cmd2':
+   begin
+    Node.Push(TLoadStr_Func,@rule_cmd2);
+   end;
+  'perc':
+   begin
+    Node.Push(TLoadPerc_Func,nil);
+   end;
+ end;
+end;
+
+class procedure TOpenSub_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'inc_title':
+   begin
+    Node.Push(TLoadStr_Func,@sub_mod_inc_title);
+   end;
+  'dec_title':
+   begin
+    Node.Push(TLoadStr_Func,@sub_mod_dec_title);
+   end;
+  'cmd_on':
+   begin
+    Node.Push(TLoadStr_Func,@sub_mod_cmd_on);
+   end;
+  'cmd_off':
+   begin
+    Node.Push(TLoadStr_Func,@sub_mod_cmd_off);
+   end;
+  'inc':
+   begin
+    Node.Push(TLoadSubIncTime_Func,nil);
+   end;
+ end;
+end;
+
+
+class procedure TOpenSQL_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'create':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FCreateScript);
+   end;
+  'list':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FListScript);
+   end;
+  'insert':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FInsertScript);
+   end;
+  'get_param':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FGetParamScript);
+   end;
+  'set_param':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FSetParamScript);
+   end;
  end;
 end;
 

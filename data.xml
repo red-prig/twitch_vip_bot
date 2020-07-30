@@ -3,50 +3,52 @@
 <chat>karmikkoala</chat>
 <chat_id>54742538</chat_id>
 
-<rnd_title>VIP или БАН</rnd_title>
-<rnd_msg_cmd>/vip %s</rnd_msg_cmd>
-<rnd_msg_cmd2>/timeout %s 86400</rnd_msg_cmd2>
-<rnd_perc>70</rnd_perc>
+<vip_rnd>
+ <title>VIP или БАН</title>
+ <msg_cmd>/vip %s</msg_cmd>
+ <msg_cmd2>/timeout %s 86400</msg_cmd2>
+ <perc>70</perc>
+</vip_rnd>
 
-<sub_mod_inc_title>Подрубай сабмод</sub_mod_inc_title>
-<sub_mod_dec_title>Офай сабмод</sub_mod_dec_title>
+<sub_mod>
+ <inc_title>Подрубай сабмод</inc_title>
+ <dec_title>Офай сабмод</dec_title>
+ 
+ <cmd_on>/subscribers</cmd_on>
+ <cmd_off>/subscribersoff</cmd_off>
+ 
+ <inc>30</inc>
+</sub_mod>
 
-<sub_mod_cmd_on>/subscribers</sub_mod_cmd_on>
-<sub_mod_cmd_off>/subscribersoff</sub_mod_cmd_off>
+<sql>
 
-<sub_mod_min>30</sub_mod_min>
-
-<create.sql>
-
+<create>
 CREATE TABLE IF NOT EXISTS story (datetime DATETIME,user TEXT,mes TEXT);
 CREATE INDEX IF NOT EXISTS story_datetime ON story (datetime ASC);
 CREATE INDEX IF NOT EXISTS story_user ON story (user ASC);
 
-
 CREATE TABLE IF NOT EXISTS params (name TEXT,value TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS params_name ON params (name ASC);
-
-</create.sql>
-<insert.sql>
-
+</create>
+<insert>
 INSERT INTO story ( datetime,user,mes  ) VALUES(@datetime,@user,@mes);
-
-</insert.sql>
-<list.sql>
-
+</insert>
+<list>
 //все записи
 //SELECT * FROM story;
 
 //последние 300 записей
 SELECT * FROM story LIMIT 300 OFFSET (SELECT COUNT(*) FROM story)-300;
+</list>
 
-</list.sql>
-
-<get_param.sql>
+<get_param>
 SELECT value FROM params WHERE (name=@name);
-</get_param.sql>
+</get_param>
 
-<set_param.sql>
+<set_param>
 INSERT OR REPLACE INTO params ( name,value  ) VALUES(@name,@value);
-</set_param.sql>
+</set_param>
+
+</sql>
+
 
