@@ -948,6 +948,8 @@ begin
   end;
  end;
 
+ SystemTray.Icon:=Application.Icon;
+
  {$I DialogControl.lrs}
  {$I KPageControl.lrs}
 
