@@ -78,6 +78,10 @@ type
     function  CanSetTimerSubMode(m:Boolean):Boolean;
     procedure SetTimerSubMode(m:Boolean);
     procedure SubModeTimerUpdate(Sender:TObject);
+    procedure _inc_SubModeTime(var cmd:RawByteString);
+    procedure _dec_SubModeTime(var cmd:RawByteString);
+    procedure OnBtnIncSubModeClick(Sender:TObject);
+    procedure OnBtnDecSubModeClick(Sender:TObject);
     procedure LoadXML;
   private
 
@@ -145,6 +149,8 @@ var
   cmd_on :RawByteString;
   cmd_off:RawByteString;
   inc_min:DWORD;
+  max_inc:DWORD;
+  max_dec:DWORD;
  end;
 
  SubModeTimer:TTimer;
@@ -506,31 +512,11 @@ begin
   end else
   if reward_title=sub_mod.inc_title then //add sub mode
   begin
-   SubModeTime:=SubModeTime+sub_mod.inc_min*60;
-   dbSubModeTime:=SubModeTime;
-   if SubModeTime>0 then
-   begin
-    if CanSetTimerSubMode(True) then
-    begin
-     cmd:=sub_mod.cmd_on;
-     push_irc_msg(cmd);
-    end;
-   end;
-   UpdateTextSubTime(True);
+   _inc_SubModeTime(cmd);
   end else
   if reward_title=sub_mod.dec_title then //dec sub mode
   begin
-   SubModeTime:=SubModeTime-sub_mod.inc_min*60;
-   dbSubModeTime:=SubModeTime;
-   if SubModeTime<=0 then
-   begin
-    if CanSetTimerSubMode(False) then
-    begin
-     cmd:=sub_mod.cmd_off;
-     push_irc_msg(cmd);
-    end;
-   end;
-   UpdateTextSubTime(True);
+   _dec_SubModeTime(cmd);
   end;
 
   if cmd<>'' then
@@ -957,7 +943,9 @@ begin
  try
   FrmSubParam.EdtTitleSubInc.Text:=sub_mod.inc_title;
   FrmSubParam.EdtTitleSubDec.Text:=sub_mod.dec_title;
-  FrmSubParam.EdtSubInc.Text:=IntToStr(sub_mod.inc_min);
+  FrmSubParam.EdtSubInc.Text     :=IntToStr(sub_mod.inc_min);
+  FrmSubParam.EdtSub_max_inc.Text:=IntToStr(sub_mod.max_inc);
+  FrmSubParam.EdtSub_max_dec.Text:=IntToStr(sub_mod.max_dec);
 
  except
   on E:Exception do
@@ -972,10 +960,15 @@ begin
   sub_mod.dec_title:=FrmSubParam.EdtTitleSubDec.Text;
   sub_mod.inc_min  :=StrToIntDef(FrmSubParam.EdtSubInc.Text,1);
 
+  sub_mod.max_inc  :=StrToIntDef(FrmSubParam.EdtSub_max_inc.Text,0);
+  sub_mod.max_dec  :=StrToIntDef(FrmSubParam.EdtSub_max_dec.Text,0);
+
   try
    Config.WriteString('sub_mod','inc_title',sub_mod.inc_title);
    Config.WriteString('sub_mod','dec_title',sub_mod.dec_title);
    Config.WriteString('sub_mod','inc_min'  ,IntToStr(sub_mod.inc_min));
+   Config.WriteString('sub_mod','max_inc'  ,IntToStr(sub_mod.max_inc));
+   Config.WriteString('sub_mod','max_dec'  ,IntToStr(sub_mod.max_dec));
   except
    on E:Exception do
    begin
@@ -1154,6 +1147,8 @@ begin
   try
    Config:=TINIFile.Create(D);
 
+   //read
+
    chat   :=Trim(Config.ReadString('base','chat'   ,chat));
    chat_id:=Trim(Config.ReadString('base','chat_id',chat_id));
 
@@ -1163,8 +1158,9 @@ begin
 
    sub_mod.inc_title:=Trim(Config.ReadString('sub_mod','inc_title',sub_mod.inc_title));
    sub_mod.dec_title:=Trim(Config.ReadString('sub_mod','dec_title',sub_mod.dec_title));
-
-   sub_mod.inc_min:=StrToDWORDDef(Config.ReadString('sub_mod','inc_min',IntToStr(sub_mod.inc_min)),30);
+   sub_mod.inc_min  :=StrToDWORDDef(Config.ReadString('sub_mod','inc_min',IntToStr(sub_mod.inc_min)),30);
+   sub_mod.max_inc  :=StrToDWORDDef(Config.ReadString('sub_mod','max_inc',IntToStr(sub_mod.max_inc)),0);
+   sub_mod.max_dec  :=StrToDWORDDef(Config.ReadString('sub_mod','max_inc',IntToStr(sub_mod.max_dec)),0);
 
   except
    on E:Exception do
@@ -1175,6 +1171,8 @@ begin
  end else
  begin
   try
+   //write
+
    Config:=TINIFile.Create(D);
    Config.WriteString('base','zurl'   ,DefZURL);
    Config.WriteString('base','login'  ,'');
@@ -1195,6 +1193,8 @@ begin
    Config.WriteString('sub_mod','inc_title',sub_mod.inc_title);
    Config.WriteString('sub_mod','dec_title',sub_mod.dec_title);
    Config.WriteString('sub_mod','inc_min'  ,IntToStr(sub_mod.inc_min));
+   Config.WriteString('sub_mod','max_inc'  ,IntToStr(sub_mod.max_inc));
+   Config.WriteString('sub_mod','max_inc'  ,IntToStr(sub_mod.max_dec));
 
   except
    on E:Exception do
@@ -1517,6 +1517,21 @@ begin
  Btn.Left:=10;
  Btn.AnchorSide[akTop].Side:=asrBottom;
  Btn.AnchorSide[akTop].Control:=TextSubTime;
+ Btn.BorderSpacing.Top:=5;
+ Btn.Parent:=PanelSub;
+
+ Pointer(Item):=Btn;
+
+ Btn:=TButton.Create(PanelSub);
+ Btn.OnClick:=@OnBtnIncSubModeClick;
+ Btn.AutoSize:=True;
+ Btn.Caption:='[+]';
+ Btn.AnchorSide[akTop].Side:=asrBottom;
+ Btn.AnchorSide[akTop].Control:=TextSubTime;
+ Btn.AnchorSide[akLeft].Side:=asrRight;
+ Btn.AnchorSide[akLeft].Control:=TControl(Item);
+ Btn.BorderSpacing.Top:=5;
+ Btn.BorderSpacing.Left:=5;
  Btn.Parent:=PanelSub;
 
  Btn:=TButton.Create(PanelSub);
@@ -1527,6 +1542,22 @@ begin
  Btn.Left:=PanelSub.ClientWidth-Btn.Width-10;
  Btn.AnchorSide[akTop].Side:=asrBottom;
  Btn.AnchorSide[akTop].Control:=TextSubTime;
+ Btn.BorderSpacing.Top:=5;
+ Btn.Parent:=PanelSub;
+
+ Pointer(Item):=Btn;
+
+ Btn:=TButton.Create(PanelSub);
+ Btn.OnClick:=@OnBtnDecSubModeClick;
+ Btn.AutoSize:=True;
+ Btn.Caption:='[-]';
+ Btn.Anchors:=[akTop,akRight];
+ Btn.AnchorSide[akTop].Side:=asrBottom;
+ Btn.AnchorSide[akTop].Control:=TextSubTime;
+ Btn.AnchorSide[akRight].Side:=asrLeft;
+ Btn.AnchorSide[akRight].Control:=TControl(Item);
+ Btn.BorderSpacing.Top:=5;
+ Btn.BorderSpacing.Right:=5;
  Btn.Parent:=PanelSub;
 
  SetShowChat(True);
@@ -1575,11 +1606,31 @@ begin
 
 end;
 
+function unixTime2String(T:Int64):RawByteString;
+var
+ Hr:Int64;
+ Mn,Sc:Byte;
+begin
+ Sc:=(abs(T) mod 60);
+ Mn:=(abs(T) div 60) mod 60;
+ Hr:=(abs(T) div (60*60)) mod 24;
+
+ if T>=0 then
+ begin
+  Result:='+'+AddChar('0',IntToStr(Abs(Hr)),2)
+         +':'+AddChar('0',IntToStr(Mn),2)
+         +':'+AddChar('0',IntToStr(Sc),2);
+ end else
+ begin
+  Result:='-'+AddChar('0',IntToStr(Abs(Hr)),2)
+         +':'+AddChar('0',IntToStr(Mn),2)
+         +':'+AddChar('0',IntToStr(Sc),2);
+ end;
+end;
+
 procedure TFrmMain.UpdateTextSubTime(db:Boolean);
 var
  S,L:Integer;
- i,Hr:Int64;
- Mn,Sc:Byte;
 begin
  if db then
  begin
@@ -1587,16 +1638,7 @@ begin
   dbSubModeTime:=SubModeTime;
  end;
 
- Sc:=(SubModeTime mod 60);
- Mn:=(SubModeTime div 60) mod 60;
- Hr:=(SubModeTime div (60*60)) mod 24;
-
- S:=TextSubTime.SelStart ;
- L:=TextSubTime.SelLength;
-
- TextSubTime.Text:=AddChar('+',AddChar('0',IntToStr(Hr),2),3)
-                  +':'+AddChar('0',IntToStr(Mn),2)
-                  +':'+AddChar('0',IntToStr(Sc),2);
+ TextSubTime.Text:=unixTime2String(SubModeTime);
 
  TextSubTime.SelStart :=S;
  TextSubTime.SelLength:=L;
@@ -1722,6 +1764,62 @@ begin
  end;
 end;
 
+procedure TFrmMain._inc_SubModeTime(var cmd:RawByteString);
+begin
+ SubModeTime:=SubModeTime+sub_mod.inc_min*60;
+ dbSubModeTime:=SubModeTime;
+ if SubModeTime>0 then
+ begin
+  if (sub_mod.max_inc<>0) and (SubModeTime>sub_mod.max_inc*60*60) then
+  begin
+   SubModeTime:=sub_mod.max_inc*60*60;
+  end;
+  if CanSetTimerSubMode(True) then
+  begin
+   cmd:=sub_mod.cmd_on;
+   push_irc_msg(cmd);
+  end;
+ end;
+ UpdateTextSubTime(True);
+end;
+
+procedure TFrmMain._dec_SubModeTime(var cmd:RawByteString);
+begin
+ SubModeTime:=SubModeTime-sub_mod.inc_min*60;
+ dbSubModeTime:=SubModeTime;
+ if SubModeTime<=0 then
+ begin
+  if (sub_mod.max_dec=0) then
+  begin
+   SubModeTime:=0;
+  end else
+  if (abs(SubModeTime)>sub_mod.max_dec*60*60) then
+  begin
+   SubModeTime:=-sub_mod.max_dec*60*60;
+  end;
+  if CanSetTimerSubMode(False) then
+  begin
+   cmd:=sub_mod.cmd_off;
+   push_irc_msg(cmd);
+  end;
+ end;
+ UpdateTextSubTime(True);
+end;
+
+procedure TFrmMain.OnBtnIncSubModeClick(Sender:TObject);
+var
+ cmd:RawByteString;
+begin
+ _inc_SubModeTime(cmd);
+end;
+
+procedure TFrmMain.OnBtnDecSubModeClick(Sender:TObject);
+var
+ cmd:RawByteString;
+begin
+ _dec_SubModeTime(cmd);
+end;
+
 Const
  XmlName='data.xml';
 
@@ -1754,7 +1852,7 @@ type
   class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
  end;
 
- TLoadSubIncTime_Func=class(TNodeFunc)
+ TLoadDWORD_Func=class(TNodeFunc)
   class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
  end;
 
@@ -1832,12 +1930,12 @@ begin
  end;
 end;
 
-class procedure TLoadSubIncTime_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+class procedure TLoadDWORD_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
 begin
  Case Name of
   '':
   begin
-   sub_mod.inc_min:=StrToDWORDDef(Value,30);
+   PDWORD(Node.CData)^:=StrToDWORDDef(Value,0);
   end;
  end;
 end;
@@ -1883,9 +1981,17 @@ begin
    begin
     Node.Push(TLoadStr_Func,@sub_mod.cmd_off);
    end;
-  'inc':
+  'inc_min':
    begin
-    Node.Push(TLoadSubIncTime_Func,nil);
+    Node.Push(TLoadDWORD_Func,@sub_mod.inc_min);
+   end;
+  'max_inc':
+   begin
+    Node.Push(TLoadDWORD_Func,@sub_mod.max_inc);
+   end;
+  'max_dec':
+   begin
+    Node.Push(TLoadDWORD_Func,@sub_mod.max_dec);
    end;
  end;
 end;

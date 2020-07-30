@@ -16,6 +16,8 @@ type
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
     EdtSubInc: TLabeledEdit;
+    EdtSub_max_inc: TLabeledEdit;
+    EdtSub_max_dec: TLabeledEdit;
     EdtTitleSubDec: TLabeledEdit;
     EdtTitleSubInc: TLabeledEdit;
     procedure EdtSubExit(Sender: TObject);

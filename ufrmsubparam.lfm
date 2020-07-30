@@ -1,12 +1,12 @@
 object FrmSubParam: TFrmSubParam
-  Left = 493
-  Height = 204
-  Top = 159
-  Width = 422
+  Left = 531
+  Height = 309
+  Top = 131
+  Width = 353
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры саб мода'
-  ClientHeight = 204
-  ClientWidth = 422
+  ClientHeight = 309
+  ClientWidth = 353
   OnKeyDown = FormKeyDown
   Position = poMainFormCenter
   LCLVersion = '2.0.10.0'
@@ -15,10 +15,10 @@ object FrmSubParam: TFrmSubParam
     Height = 25
     Hint = 'Заголовок награды для добавлении времени и'#13#10' включении сабмода если время>0'
     Top = 32
-    Width = 403
+    Width = 334
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 403
+    EditLabel.Width = 334
     EditLabel.Caption = 'Заголовок награды [+]:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -35,10 +35,10 @@ object FrmSubParam: TFrmSubParam
     Height = 25
     Hint = 'Заголовок награды для уменьшения времени и'#13#10' выключении сабмода если время<=0'
     Top = 80
-    Width = 403
+    Width = 334
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 403
+    EditLabel.Width = 334
     EditLabel.Caption = 'Заголовок награды [-]:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -55,10 +55,10 @@ object FrmSubParam: TFrmSubParam
     Height = 25
     Hint = 'Время которе добавляеться/отнимаеться у таймера'
     Top = 128
-    Width = 403
+    Width = 334
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 403
+    EditLabel.Width = 334
     EditLabel.Caption = 'Время в минутах:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -75,7 +75,7 @@ object FrmSubParam: TFrmSubParam
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 164
+    Top = 269
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -148,9 +148,9 @@ object FrmSubParam: TFrmSubParam
     TabOrder = 3
   end
   object BtnCancel: TBitBtn
-    Left = 320
+    Left = 251
     Height = 30
-    Top = 164
+    Top = 269
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -221,5 +221,49 @@ object FrmSubParam: TFrmSubParam
     }
     OnClick = BtnCancelClick
     TabOrder = 4
+  end
+  object EdtSub_max_inc: TLabeledEdit
+    Left = 8
+    Height = 25
+    Hint = 'Максимальное положительное время таймера в часах.'#13#10' 0 - без ограничения.'
+    Top = 176
+    Width = 334
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 334
+    EditLabel.Caption = 'Максимум положительного таймера в часах:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 5
+    OnExit = EdtSubExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtSubKeyPress
+  end
+  object EdtSub_max_dec: TLabeledEdit
+    Left = 8
+    Height = 25
+    Hint = 'Максимальное отрицательное время таймера в часах.'#13#10' 0 - без отрицательного таймера.'
+    Top = 232
+    Width = 334
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 334
+    EditLabel.Caption = 'Максимум отрицательного таймера в часах:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 6
+    OnExit = EdtSubExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtSubKeyPress
   end
 end

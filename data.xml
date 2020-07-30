@@ -17,7 +17,11 @@
  <cmd_on>/subscribers</cmd_on>
  <cmd_off>/subscribersoff</cmd_off>
  
- <inc>30</inc>
+ <inc_min>30</inc_min>
+
+ <max_inc>6</max_inc>
+ <max_dec>6</max_dec>
+
 </sub_mod>
 
 <sql>
