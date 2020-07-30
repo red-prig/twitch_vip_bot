@@ -1,17 +1,18 @@
 object FrmParam: TFrmParam
   Left = 560
-  Height = 450
+  Height = 351
   Top = 149
   Width = 346
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры'
-  ClientHeight = 450
+  ClientHeight = 351
   ClientWidth = 346
   OnKeyDown = FormKeyDown
   LCLVersion = '2.0.10.0'
   object EdtLogin: TLabeledEdit
     Left = 8
     Height = 25
+    Hint = 'Логин пользователя'
     Top = 24
     Width = 308
     Anchors = [akTop, akLeft, akRight]
@@ -23,6 +24,8 @@ object FrmParam: TFrmParam
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
     TabOrder = 0
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
@@ -30,6 +33,7 @@ object FrmParam: TFrmParam
   object EdtPassword: TLabeledEdit
     Left = 8
     Height = 25
+    Hint = 'OAuth токен твича, сгенерировать можно к примеру на: https://twitchapps.com/tmi/'
     Top = 71
     Width = 308
     Anchors = [akTop, akLeft, akRight]
@@ -42,7 +46,9 @@ object FrmParam: TFrmParam
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
+    ParentShowHint = False
     PasswordChar = '*'
+    ShowHint = True
     TabOrder = 1
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
@@ -50,7 +56,7 @@ object FrmParam: TFrmParam
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 410
+    Top = 311
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -126,7 +132,7 @@ object FrmParam: TFrmParam
   object BtnCancel: TBitBtn
     Left = 244
     Height = 30
-    Top = 410
+    Top = 311
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -218,6 +224,7 @@ object FrmParam: TFrmParam
   object EdtChat: TLabeledEdit
     Left = 8
     Height = 25
+    Hint = 'Текстовое наименование чата (стримера)'
     Top = 120
     Width = 308
     Anchors = [akTop, akLeft, akRight]
@@ -229,6 +236,8 @@ object FrmParam: TFrmParam
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
     TabOrder = 5
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
@@ -236,67 +245,39 @@ object FrmParam: TFrmParam
   object EdtChatId: TLabeledEdit
     Left = 8
     Height = 25
+    Hint = 'Подробно смотрите на: https://dev.twitch.tv/docs/v5/reference/channels#get-channel'
     Top = 168
     Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
     EditLabel.Width = 308
-    EditLabel.Caption = 'Номер чата:'
+    EditLabel.Caption = 'Номер чат канала:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
     TabOrder = 6
     OnKeyDown = EdtNumKeyDown
   end
   object EdtTitle: TLabeledEdit
     Left = 8
     Height = 25
+    Hint = 'Заголовок VIP награды должен совпадать с '
     Top = 224
     Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
     EditLabel.Width = 308
-    EditLabel.Caption = 'Заголовок награды:'
+    EditLabel.Caption = 'Заголовок VIP награды:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
     TabOrder = 7
-  end
-  object EdtMsg: TLabeledEdit
-    Left = 8
-    Height = 25
-    Top = 320
-    Width = 308
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 308
-    EditLabel.Caption = 'Команда в чат:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    TabOrder = 8
-  end
-  object EdtMsg2: TLabeledEdit
-    Left = 8
-    Height = 25
-    Top = 376
-    Width = 308
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 308
-    EditLabel.Caption = 'Команда в чат 2:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    TabOrder = 9
   end
   object EdtPercent: TLabeledEdit
     Left = 8
@@ -306,13 +287,13 @@ object FrmParam: TFrmParam
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
     EditLabel.Width = 308
-    EditLabel.Caption = 'Вероятность первой команды %0-%100:'
+    EditLabel.Caption = 'Вероятность VIP %0-%100:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
-    TabOrder = 10
+    TabOrder = 8
     OnExit = EdtPercentExit
     OnKeyDown = FormKeyDown
     OnKeyPress = EdtPercentKeyPress

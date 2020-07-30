@@ -16,13 +16,11 @@ type
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
     EdtPercent: TLabeledEdit;
-    EdtMsg2: TLabeledEdit;
     EdtTitle: TLabeledEdit;
     EdtChatId: TLabeledEdit;
     EdtLogin: TLabeledEdit;
     EdtChat: TLabeledEdit;
     EdtPassword: TLabeledEdit;
-    EdtMsg: TLabeledEdit;
     TBView: TToggleBox;
     procedure EdtKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure EdtPercentExit(Sender: TObject);
@@ -75,7 +73,6 @@ procedure TFrmParam.EdtPercentKeyPress(Sender: TObject; var Key: char);
 begin
  prev_perc:=StrToQWORDDef(EdtPercent.Text,70);
  if prev_perc>100 then prev_perc:=100;
- //if [ssAlt,ssCtrl]*Shift=[] then
  Case Key of
   #8,#37,#39:;
   '0'..'9':;

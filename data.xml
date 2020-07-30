@@ -1,0 +1,33 @@
+<?xml version="1.1" encoding="UTF-8"?>
+
+<chat>karmikkoala</chat>
+<chat_id>54742538</chat_id>
+
+<rnd_title>VIP или БАН</rnd_title>
+<rnd_msg_cmd>/vip %s</rnd_msg_cmd>
+<rnd_msg_cmd2>/timeout %s 86400</rnd_msg_cmd2>
+<rnd_perc>70</rnd_perc>
+
+<create.sql>
+
+CREATE TABLE IF NOT EXISTS story (datetime DATETIME,user TEXT,mes TEXT);
+
+CREATE INDEX IF NOT EXISTS story_datetime ON story (datetime ASC);
+
+CREATE INDEX IF NOT EXISTS story_user ON story (user ASC);
+
+</create.sql>
+<insert.sql>
+
+INSERT INTO story ( datetime,user,mes  ) VALUES(@datetime,@user,@mes);
+
+</insert.sql>
+<list.sql>
+
+//все записи
+//SELECT * FROM story;
+
+//последние 300 записей
+SELECT * FROM story LIMIT 300 OFFSET (SELECT COUNT(*) FROM story)-300;
+
+</list.sql>

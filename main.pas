@@ -22,6 +22,8 @@ uses
 
   ujson,
 
+  xml_parse,
+
   TaskManager,DbcEngine,
   ZDbcIntfs,
   ZDbcSqLite,ZDbcInterbase6,DbcScript;
@@ -63,9 +65,12 @@ type
     Procedure OnList(Sender:TBaseTask);
     procedure OnPopupClose(Sender:TObject);
     procedure FormCreate(Sender: TObject);
+    procedure LoadXML;
   private
 
   public
+   FCreateScript:TSQLScript;
+   FListScript  :TSQLScript;
    FInsertScript:TSQLScript;
 
    login:RawByteString;
@@ -105,6 +110,9 @@ var
  Config:TINIFile;
 
  RCT:TMTRandomContext;
+
+ chat:RawByteString;
+ chat_id:RawByteString;
 
  rule_title:RawByteString;
  rule_cmd:RawByteString;
@@ -612,8 +620,7 @@ begin
    reply_irc_Connect(
      login,
      Trim(Config.ReadString('base','oAuth','')),
-     Config.ReadString('base','chat',''),
-     Config.ReadString('base','chat_id','')
+     chat,chat_id
    );
   except
    on E:Exception do
@@ -762,12 +769,10 @@ begin
  try
   FrmParam.EdtLogin.Text   :=Config.ReadString('base','login','');
   FrmParam.EdtPassword.Text:=Config.ReadString('base','oAuth','');
-  FrmParam.EdtChat.Text    :=Config.ReadString('base','chat','');
-  FrmParam.EdtChatID.Text  :=Config.ReadString('base','chat_id','');
-  FrmParam.EdtTitle.Text   :=Config.ReadString('rule','title','');
-  FrmParam.EdtMsg.Text     :=Config.ReadString('rule','msg_cmd','');
-  FrmParam.EdtMsg2.Text    :=Config.ReadString('rule','msg_cmd2','');
-  FrmParam.EdtPercent.Text :=Config.ReadString('rule','msg_perc','');
+  FrmParam.EdtChat.Text    :=chat;
+  FrmParam.EdtChatID.Text  :=chat_id;
+  FrmParam.EdtTitle.Text   :=rule_title;
+  FrmParam.EdtPercent.Text :=IntToStr(rule_perc);
  except
   on E:Exception do
   begin
@@ -777,20 +782,19 @@ begin
 
  if FrmParam.ShowModal=1 then
  begin
+  chat   :=FrmParam.EdtChat.Text;
+  chat_id:=FrmParam.EdtChatID.Text;
+
   rule_title:=Trim(FrmParam.EdtTitle.Text);
-  rule_cmd  :=Trim(FrmParam.EdtMsg.Text);
-  rule_cmd2 :=Trim(FrmParam.EdtMsg2.Text);
   rule_perc :=StrToQWORDDef(FrmParam.EdtPercent.Text,70);
   if rule_perc>100 then rule_perc:=100;
 
   try
    Config.WriteString('base','login'   ,FrmParam.EdtLogin.Text);
    Config.WriteString('base','oAuth'   ,FrmParam.EdtPassword.Text);
-   Config.WriteString('base','chat'    ,FrmParam.EdtChat.Text);
-   Config.WriteString('base','chat_id' ,FrmParam.EdtChatID.Text);
+   Config.WriteString('base','chat'    ,chat);
+   Config.WriteString('base','chat_id' ,chat_id);
    Config.WriteString('rule','title'   ,rule_title);
-   Config.WriteString('rule','msg_cmd' ,rule_cmd);
-   Config.WriteString('rule','msg_cmd2',rule_cmd2);
    Config.WriteString('rule','msg_perc',IntToStr(rule_perc));
   except
    on E:Exception do
@@ -844,8 +848,8 @@ begin
    reply_irc_Connect(
      login,
      frmLogin.EdtPassword.Text,
-     Config.ReadString('base','chat',''),
-     Config.ReadString('base','chat_id','')
+     chat,
+     chat_id
    );
 
   frmLogin.EdtPassword.Text:='';
@@ -888,12 +892,13 @@ procedure TFrmMain.FormCreate(Sender: TObject);
 Var
  Item:TMenuItem;
  D:RawByteString;
- FMem:TMemoryStream;
  FDbcScript:TDbcStatementScript;
 begin
 
  RCT:=Default(TMTRandomContext);
  RandomInit(RCT);
+
+ LoadXML;
 
  D:=GetLocalIni;
 
@@ -902,11 +907,11 @@ begin
   try
    Config:=TINIFile.Create(D);
 
-   rule_title:=Trim(Config.ReadString('rule','title'   ,'VIP на хз сколько'));
-   rule_cmd  :=Trim(Config.ReadString('rule','msg_cmd' ,'/vip %s'));
-   rule_cmd2 :=Trim(Config.ReadString('rule','msg_cmd2','/timeout %s 86400'));
-   rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',''),70);
-   if rule_perc=0 then   rule_perc:=1;
+   chat   :=Trim(Config.ReadString('base','chat'   ,chat));
+   chat_id:=Trim(Config.ReadString('base','chat_id',chat_id));
+
+   rule_title:=Trim(Config.ReadString('rule','title',rule_title));
+   rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',IntToStr(rule_perc)),70);
    if rule_perc>100 then rule_perc:=100;
 
   except
@@ -922,22 +927,17 @@ begin
    Config.WriteString('base','zurl'   ,DefZURL);
    Config.WriteString('base','login'  ,'');
    Config.WriteString('base','oAuth'  ,'');
-   Config.WriteString('base','chat'   ,'karmikkoala');
-   Config.WriteString('base','chat_id','54742538');
+   Config.WriteString('base','chat'   ,chat);
+   Config.WriteString('base','chat_id',chat_id);
 
-   Config.WriteString('rule','title'   ,'VIP на хз сколько');
-   Config.WriteString('rule','msg_cmd' ,'/vip %s');
-   Config.WriteString('rule','msg_cmd2','/timeout %s 86400');
-   Config.WriteString('rule','msg_perc','70');
+   Config.WriteString('rule','title'   ,rule_title);
+   Config.WriteString('rule','msg_perc',IntToStr(rule_perc));
 
    Config.WriteString('view','autologin','0');
    Config.WriteString('view','systray'  ,'1');
 
-   rule_title:=Trim(Config.ReadString('rule','title'   ,'VIP на хз сколько'));
-   rule_cmd  :=Trim(Config.ReadString('rule','msg_cmd' ,'/vip %s'));
-   rule_cmd2 :=Trim(Config.ReadString('rule','msg_cmd2','/timeout %s 86400'));
+   rule_title:=Trim(Config.ReadString('rule','title',rule_title));
    rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',''),70);
-   if rule_perc=0 then   rule_perc:=1;
    if rule_perc>100 then rule_perc:=100;
 
   except
@@ -1213,7 +1213,6 @@ begin
 
  ///////////////////
 
-
  try
   DbcThread:=TDbcConnection.Create;
   DbcThread.Open(Config.ReadString('base','zurl',DefZURL));
@@ -1224,35 +1223,184 @@ begin
   end;
  end;
 
- FMem:=TMemoryStream.Create;
- FMem.LoadFromFile('create.sql');
- FMem.Position:=0;
-
  FDbcScript:=TDbcStatementScript.Create;
  FDbcScript.Handle.DbcConnection:=DbcThread;
- FDbcScript.ExecuteScript(FMem);
+ FDbcScript.SetSctipt(FCreateScript);
+ FDbcScript.ExecuteScript;
  FDbcScript.Start;
  FDbcScript.Release;
-
-
- FInsertScript:=Default(TSQLScript);
- FMem.LoadFromFile('insert.sql');
- FMem.Position:=0;
- FInsertScript.Parse(FMem);
-
-
- FMem.LoadFromFile('list.sql');
- FMem.Position:=0;
 
  FDbcScript:=TDbcStatementScript.Create;
  FDbcScript.Handle.DbcConnection:=DbcThread;
  FDbcScript.Notify.Add(T_FIN,@OnList);
- FDbcScript.ExecuteScript(FMem);
+ FDbcScript.SetSctipt(FListScript);
+ FDbcScript.ExecuteScript;
  FDbcScript.Start;
  FDbcScript.Release;
 
- FreeAndNil(FMem);
+end;
 
+type
+ TPCharStream=class(TCustomMemoryStream)
+  public
+   constructor Create(P:PChar;len:SizeUint); virtual; overload;
+ end;
+
+constructor TPCharStream.Create(P:PChar;len:SizeUint);
+begin
+ inherited Create;
+ SetPointer(P,len);
+end;
+
+Const
+ XmlName='data.xml';
+
+function GetLocalXml:RawByteString;
+begin
+ Result:=ParamStr(0);
+ Result:=ExtractFileDir(Result);
+ Result:=IncludeTrailingPathDelimiter(Result);
+ Result:=Result+XmlName;
+end;
+
+type
+ TXmlNodeReader=class(TNodeReader)
+  procedure onDataEvent(Sender:TObject);
+ end;
+
+ TRoot_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TLoadSQL_Func=class(TNodeFunc)
+  class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
+ end;
+
+ TLoadStr_Func=class(TNodeFunc)
+  class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
+ end;
+
+ TLoadPerc_Func=class(TNodeFunc)
+  class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
+ end;
+
+class procedure TRoot_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'create.sql':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FCreateScript);
+   end;
+  'list.sql':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FListScript);
+   end;
+  'insert.sql':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FInsertScript);
+   end;
+  'rnd_title':
+   begin
+    Node.Push(TLoadStr_Func,@rule_title);
+   end;
+  'rnd_msg_cmd':
+   begin
+    Node.Push(TLoadStr_Func,@rule_cmd);
+   end;
+  'rnd_msg_cmd2':
+   begin
+    Node.Push(TLoadStr_Func,@rule_cmd2);
+   end;
+  'chat':
+   begin
+    Node.Push(TLoadStr_Func,@chat);
+   end;
+  'chat_id':
+   begin
+    Node.Push(TLoadStr_Func,@chat_id);
+   end;
+  'rnd_perc':
+   begin
+    Node.Push(TLoadPerc_Func,nil);
+   end;
+ end;
+end;
+
+class procedure TLoadSQL_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+Var
+ FMem:TPCharStream;
+begin
+ Case Name of
+  '':
+  begin
+   FMem:=TPCharStream.Create(PChar(Value),Length(Value));
+   PSQLScript(Node.CData)^:=Default(TSQLScript);
+   PSQLScript(Node.CData)^.Parse(FMem);
+   FMem.Free;
+  end;
+ end;
+end;
+
+class procedure TLoadStr_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+begin
+ Case Name of
+  '':
+  begin
+   Writeln(Value);
+   PRawByteString(Node.CData)^:=Value;
+  end;
+ end;
+end;
+
+
+class procedure TLoadPerc_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+begin
+ Case Name of
+  '':
+  begin
+   Writeln(Value);
+   rule_perc :=StrToQWORDDef(Value,70);
+   if rule_perc>100 then rule_perc:=100;
+  end;
+ end;
+end;
+
+procedure TXmlNodeReader.onDataEvent(Sender:TObject);
+begin
+ With TXmlTextReader(Sender) do
+ begin
+  DoSet(nodeType,Name,Value);
+ end;
+end;
+
+procedure TFrmMain.LoadXML;
+Var
+ F:RawByteString;
+ M:TMemoryStream;
+ XmlReader:TXmlTextReader;
+ NodeReader:TXmlNodeReader;
+begin
+ F:=GetLocalXml;
+ if not FileExists(F) then
+ begin
+  ShowMessage('Файл '+XmlName+' не найден!');
+  Halt;
+ end;
+ M:=TMemoryStream.Create;
+ M.LoadFromFile(F);
+ M.Position:=0;
+
+ XmlReader:=TXmlTextReader.Create;
+ NodeReader:=TXmlNodeReader.Create;
+
+ NodeReader.Push(TRoot_Func,FrmMain);
+
+ XmlReader.SrcCP:=CP_UTF8;
+ XmlReader.Event:=@NodeReader.onDataEvent;
+ XmlReader.Parse(M.Memory,M.Size);
+
+ XmlReader.Free;
+ NodeReader.Free;
 end;
 
 end.
