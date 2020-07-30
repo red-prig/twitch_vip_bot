@@ -773,6 +773,7 @@ Type
   msg:RawByteString;
   slow:QWORD;
   _mod,_sub:Byte;
+  subs_only:Byte;
   procedure parse(var S:RawByteString);
  end;
 
@@ -869,9 +870,10 @@ begin
   //Writeln(n,'*',v,'*');
 
   Case n of
-   'subscriber':_sub:=StrToIntDef(v,0);
-   'mod' :_mod:=StrToIntDef(v,0);
-   'slow':slow:=StrToQWordDef(v,0);
+   'subs-only'   :subs_only:=StrToIntDef(v,0);
+   'subscriber'  :_sub:=StrToIntDef(v,0);
+   'mod'         :_mod:=StrToIntDef(v,0);
+   'slow'        :slow:=StrToQWordDef(v,0);
    'display-name':display_name:=v;
    //Writeln(n,'*',v,'*');
   end;
@@ -923,6 +925,7 @@ begin
                   begin
                    ws_irc.time_kd:=msg_parse.slow*1000000;
                   end;
+                  push_subs_only(msg_parse.subs_only<>0);
                  end;
 
      '001':begin

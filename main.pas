@@ -53,6 +53,8 @@ type
     procedure FormDestroy(Sender: TObject);
     procedure SetShowChat(V:Boolean);
     procedure SetShowStory(V:Boolean);
+    procedure SetShowSubPanel(V:Boolean);
+    procedure OnPopupClickSubPanel(Sender:TObject);
     procedure OnPopupClickChat(Sender:TObject);
     procedure OnPopupClickStory(Sender:TObject);
     procedure OnPopupClickAutoEnter(Sender:TObject);
@@ -63,8 +65,15 @@ type
     procedure OnBtnEnterClick(Sender:TObject);
     procedure OnBtnCloseClick(Sender:TObject);
     Procedure OnList(Sender:TBaseTask);
+    Procedure OnGetSubTime(Sender:TBaseTask);
     procedure OnPopupClose(Sender:TObject);
     procedure FormCreate(Sender: TObject);
+    procedure UpdateTextSubTime;
+    procedure SetDBParam(Const fname,fvalue:RawByteString);
+    procedure BtnClickSubModeOn(Sender:TObject);
+    procedure BtnClickSubModeOff(Sender:TObject);
+    function  SetTimerSubMode(m:Boolean):Boolean;
+    procedure SubModeTimerUpdate(Sender:TObject);
     procedure LoadXML;
   private
 
@@ -72,6 +81,9 @@ type
    FCreateScript:TSQLScript;
    FListScript  :TSQLScript;
    FInsertScript:TSQLScript;
+
+   FGetParamScript:TSQLScript;
+   FSetParamScript:TSQLScript;
 
    login:RawByteString;
 
@@ -89,6 +101,7 @@ type
 
    Item_Chat,
    Item_Story,
+   Item_Subp,
    Item_AutoEnter,
    Item_UseTray:TMenuItem;
 
@@ -104,6 +117,7 @@ var
 
 procedure push_chat(const S:RawByteString);
 procedure push_login;
+procedure push_subs_only(m:Boolean);
 procedure push_reward(const S:RawByteString);
 
 var
@@ -118,6 +132,17 @@ var
  rule_cmd:RawByteString;
  rule_cmd2:RawByteString;
  rule_perc:Byte;
+
+ sub_mod_inc_title:RawByteString;
+ sub_mod_dec_title:RawByteString;
+ sub_mod_cmd_on :RawByteString;
+ sub_mod_cmd_off:RawByteString;
+
+ sub_mod_min:DWORD;
+
+ SubModeTimer:TTimer;
+ SubModeTick:Int64;
+ SubModeTime:Int64;
 
 function fetch_random_no_more(Var Context:TMTRandomContext):Boolean;
 
@@ -136,11 +161,15 @@ uses
  //zeosdbo;zeosdbo\component;zeosdbo\core;zeosdbo\plain;zeosdbo\parsesql;zeosdbo\dbc
 
 var
+ KCLOSE,KCLOSE_D,DIMAGE:TImageList;
+
  GridChat:TExtStringGrid;
  GridStory:TExtStringGrid;
  Pages:TKCustomPageControl;
 
- KCLOSE,KCLOSE_D,DIMAGE:TImageList;
+ PanelSub:TPanel;
+ LabelSubMode:TLabel;
+ TextSubTime:TEdit;
 
  DbcThread:TDbcConnection;
 
@@ -195,11 +224,25 @@ type
  PQNode_login=^TQNode_login;
  TQNode_login=object(UAsyncQueue.TQNode)
   Procedure OnParent;
+  Procedure OnParent2;
+  Procedure OnParent3;
  end;
 
 Procedure TQNode_login.OnParent;
 begin
  FrmMain.SetLognBtn(True);
+ FreeMem(@Self);
+end;
+
+Procedure TQNode_login.OnParent2;
+begin
+ FrmMain.SetTimerSubMode(False);
+ FreeMem(@Self);
+end;
+
+Procedure TQNode_login.OnParent3;
+begin
+ FrmMain.SetTimerSubMode(True);
  FreeMem(@Self);
 end;
 
@@ -210,6 +253,33 @@ begin
  P:=AllocMem(SizeOf(TQNode_login));
  P^.Parent:=@P^.OnParent;
  SendMainQueue(P);
+end;
+
+procedure push_subs_only(m:Boolean);
+var
+ P:PQNode_login;
+begin
+ P:=AllocMem(SizeOf(TQNode_login));
+ Case m of
+  False:P^.Parent:=@P^.OnParent2;
+  True :P^.Parent:=@P^.OnParent3;
+ end;
+ SendMainQueue(P);
+end;
+
+const
+ permission='You don''t have permission to perform that action.';
+
+var
+ last_cmd:RawByteString;
+
+procedure push_irc_msg(const msg:RawByteString);
+begin
+ if (msg<>'') and (msg[1]='/') then
+ begin
+  last_cmd:=msg;
+ end;
+ reply_irc_msg(msg);
 end;
 
 procedure TFrmMain.SetLognBtn(Login:Boolean);
@@ -348,19 +418,29 @@ begin
   end;
 end;
 
+type
+ TPCharStream=class(TCustomMemoryStream)
+  public
+   constructor Create(P:PChar;len:SizeUint); virtual; overload;
+ end;
+
+constructor TPCharStream.Create(P:PChar;len:SizeUint);
+begin
+ inherited Create;
+ SetPointer(P,len);
+end;
+
 procedure TFrmMain.add_reward(const S:RawByteString);
 var
  DT:TDateTime;
- ms:TMemoryStream;
+ ms:TStream;
  msg2:TJson;
- msg,cmd,user,rs:RawByteString;
+ msg,cmd,user,rs,reward_title:RawByteString;
  FDbcScript:TDbcStatementScript;
 
 begin
 
- ms:=TMemoryStream.Create;
- ms.Write(PAnsiChar(s)^,Length(s));
- ms.Position:=0;
+ ms:=TPCharStream.Create(PAnsiChar(s),Length(s));
 
  msg2:=Default(TJson);
  try
@@ -385,30 +465,23 @@ begin
 
   rs:=s;
 
-  if rule_title=Trim(msg2.Path['data.redemption.reward.title'].AsStr) then
+  reward_title:=Trim(msg2.Path['data.redemption.reward.title'].AsStr);
+  cmd:='';
+
+  if reward_title=rule_title then //vip/ban
   begin
 
    if fetch_random_no_more(RCT) then
    begin
     cmd:=Format(rule_cmd,[msg2.Path['data.redemption.user.login'].AsStr]);
-    reply_irc_msg(cmd);
+    push_irc_msg(cmd);
     //add_to_chat('>'+login+': '+cmd);
    end else
    begin
     cmd:=Format(rule_cmd2,[msg2.Path['data.redemption.user.login'].AsStr]);
-    reply_irc_msg(cmd);
+    push_irc_msg(cmd);
     //add_to_chat('>'+login+': '+cmd);
    end;
-
-   msg:=msg+' ('+cmd+')';
-
-   msg2.Values['msg_cmd']:=cmd;
-   ms:=TMemoryStream.Create;
-   msg2.Dump(ms);
-   SetLength(rs,ms.Size);
-   ms.Position:=0;
-   ms.Read(PAnsiChar(rs)^,Length(rs));
-   FreeAndNil(ms);
 
    //Writeln('id               :',msg2.Path['data.redemption.id'].AsStr);
    //Writeln('user.id          :',msg2.Path['data.redemption.user.id'].AsStr);
@@ -420,6 +493,44 @@ begin
    //Writeln('reward.prompt    :',msg2.Path['data.redemption.reward.prompt'].AsStr);
    //Writeln('user_input       :',msg2.Path['data.redemption.user_input'].AsStr);
    //Writeln('status           :',msg2.Path['data.redemption.status'].AsStr);
+  end else
+  if reward_title=sub_mod_inc_title then //add sub mode
+  begin
+   SubModeTime:=SubModeTime+sub_mod_min*60;
+   if SubModeTime>0 then
+   begin
+    if SetTimerSubMode(True) then
+    begin
+     cmd:=sub_mod_cmd_on;
+     push_irc_msg(cmd);
+    end;
+   end;
+   UpdateTextSubTime;
+  end else
+  if reward_title=sub_mod_dec_title then //dec sub mode
+  begin
+   SubModeTime:=SubModeTime-sub_mod_min*60;
+   if SubModeTime<=0 then
+   begin
+    if SetTimerSubMode(False) then
+    begin
+     cmd:=sub_mod_cmd_off;
+     push_irc_msg(cmd);
+    end;
+   end;
+   UpdateTextSubTime;
+  end;
+
+  if cmd<>'' then
+  begin
+   msg:=msg+' ('+cmd+')';
+   msg2.Values['msg_cmd']:=cmd;
+   ms:=TMemoryStream.Create;
+   msg2.Dump(ms);
+   SetLength(rs,ms.Size);
+   ms.Position:=0;
+   ms.Read(PAnsiChar(rs)^,Length(rs));
+   FreeAndNil(ms);
   end;
 
   add_to_story(DT,user,msg);
@@ -447,7 +558,31 @@ var
  Sc:Word;
  Ms:Word;
  aRow:Integer;
+ t:RawByteString;
 begin
+
+ if Trim(s)=permission then
+ begin
+  t:=last_cmd;
+  aRow:=Pos(' ',t);
+  if aRow<>0 then t:=Copy(t,1,aRow-1);
+
+  Case LowerCase(t) of
+   '/vip'           :ShowMessage('У вас нет прав для назначения ВИП!');
+   '/timeout'       :ShowMessage('У вас нет прав для таймаута!');
+   '/subscribers'   :
+   begin
+    SetTimerSubMode(False);
+    ShowMessage('У вас нет прав для включения сабмода!');
+   end;
+   '/subscribersoff':
+   begin
+    ShowMessage('У вас нет прав для выключения сабмода!');
+   end;
+  end;
+
+ end;
+
  if (GridChat.RowCount=2) and (GridChat.FieldValue['mes',1]='') then
  begin
   aRow:=1;
@@ -480,7 +615,7 @@ begin
  begin
   msg:=EdtSend.Text;
   EdtSend.Text:='';
-  reply_irc_msg(msg);
+  push_irc_msg(msg);
   //add_to_chat('>'+login+': '+msg);
  end;
 end;
@@ -544,6 +679,8 @@ Var
 begin
  ResultSet:=TDbcStatementScript(Sender).ResultSet;
 
+ if ResultSet=nil then Exit;
+
  c:=0;
  if ResultSet.Last then
  begin
@@ -595,6 +732,23 @@ begin
  GridStory.ScrollBy(0,c);
 
  GridStory.Columns[0].Extent:=GridStory.Columns[0].MinExtent;
+
+end;
+
+Procedure TFrmMain.OnGetSubTime(Sender:TBaseTask);
+Var
+ ResultSet:TZResultSet;
+
+begin
+ ResultSet:=TDbcStatementScript(Sender).ResultSet;
+
+ if ResultSet=nil then Exit;
+
+ if ResultSet.First then
+ begin
+  SubModeTime:=ResultSet.GetInt(0);
+  UpdateTextSubTime;
+ end;
 
 end;
 
@@ -722,6 +876,33 @@ begin
  end;
 end;
 
+procedure TFrmMain.SetShowSubPanel(V:Boolean);
+Var
+ Page:TKTabSheet;
+begin
+ Item_Subp.Checked:=V;
+ Case V of
+  True :begin
+         Page:=Pages.AddPage(Pages);
+         Page.Caption:='Сабмод';
+         Page.Tag:=2;
+         Page.ImageIndex:=-1;
+         Page.Show;
+         PanelSub.Parent:=Page;
+        end;
+  False:begin
+         Page:=TKTabSheet(PanelSub.Parent);
+         PanelSub.Parent:=nil;
+         Application.ReleaseComponent(Page);
+        end;
+ end;
+end;
+
+procedure TFrmMain.OnPopupClickSubPanel(Sender:TObject);
+begin
+ SetShowSubPanel(not Item_Subp.Checked);
+end;
+
 procedure TFrmMain.OnPopupClickChat(Sender:TObject);
 begin
  SetShowChat(not Item_Chat.Checked);
@@ -818,6 +999,7 @@ begin
  Case Pages.Pages[TabIndex].Tag of
   0:SetShowChat(False);
   1:SetShowStory(False);
+  2:SetShowSubPanel(False);
  end;
 end;
 
@@ -890,6 +1072,7 @@ end;
 
 procedure TFrmMain.FormCreate(Sender: TObject);
 Var
+ Btn:TButton;
  Item:TMenuItem;
  D:RawByteString;
  FDbcScript:TDbcStatementScript;
@@ -913,6 +1096,11 @@ begin
    rule_title:=Trim(Config.ReadString('rule','title',rule_title));
    rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',IntToStr(rule_perc)),70);
    if rule_perc>100 then rule_perc:=100;
+
+   sub_mod_inc_title:=Trim(Config.ReadString('sub_mod','inc_title',sub_mod_inc_title));
+   sub_mod_dec_title:=Trim(Config.ReadString('sub_mod','dec_title',sub_mod_dec_title));
+
+   sub_mod_min:=StrToDWORDDef(Config.ReadString('sub_mod','min',IntToStr(sub_mod_min)),30);
 
   except
    on E:Exception do
@@ -939,6 +1127,11 @@ begin
    rule_title:=Trim(Config.ReadString('rule','title',rule_title));
    rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',''),70);
    if rule_perc>100 then rule_perc:=100;
+
+   Config.WriteString('sub_mod','inc_title',sub_mod_inc_title);
+   Config.WriteString('sub_mod','dec_title',sub_mod_dec_title);
+
+   Config.WriteString('sub_mod','min',IntToStr(sub_mod_min));
 
   except
    on E:Exception do
@@ -1060,6 +1253,21 @@ begin
   end;
  end;
 
+ KCLOSE:=TImageList.Create(FrmMain);
+ KCLOSE.AddLazarusResource('KCLOSE');
+ KCLOSE.AddLazarusResource('KLEFT');
+ KCLOSE.AddLazarusResource('KRIGHT');
+
+ KCLOSE_D:=TImageList.Create(FrmMain);
+ KCLOSE_D.AddLazarusResource('KCLOSE_D');
+
+
+ DIMAGE:=TImageList.Create(FrmMain);
+ DIMAGE.Width:=28;
+ DIMAGE.Height:=28;
+ DIMAGE.AddLazarusResource('DGRAY');
+ DIMAGE.AddLazarusResource('DGREEN');
+
  BtnView:=TButton.Create(RightBar);
  BtnView.Caption:='Вид';
  BtnView.AutoSize:=True;
@@ -1083,6 +1291,13 @@ begin
  Item_Story.Tag:=1;
  Item_Story.OnClick:=@OnPopupClickStory;
  PopupView.Items.Add(Item_Story);
+
+ Item_Subp:=TMenuItem.Create(PopupView);
+ Item_Subp.Caption:='Сабмод';
+ Item_Subp.Checked:=False;
+ Item_Subp.Tag:=2;
+ Item_Subp.OnClick:=@OnPopupClickSubPanel;
+ PopupView.Items.Add(Item_Subp);
 
  BtnView.OnClick:=@BtnToolPopupClick;
  BtnView.PopupMenu:=PopupView;
@@ -1113,21 +1328,6 @@ begin
  BtnClose.Visible:=False;
  BtnClose.Parent:=RightBar;
 
- KCLOSE:=TImageList.Create(FrmMain);
- KCLOSE.AddLazarusResource('KCLOSE');
- KCLOSE.AddLazarusResource('KLEFT');
- KCLOSE.AddLazarusResource('KRIGHT');
-
- KCLOSE_D:=TImageList.Create(FrmMain);
- KCLOSE_D.AddLazarusResource('KCLOSE_D');
-
-
- DIMAGE:=TImageList.Create(FrmMain);
- DIMAGE.Width:=28;
- DIMAGE.Height:=28;
- DIMAGE.AddLazarusResource('DGRAY');
- DIMAGE.AddLazarusResource('DGREEN');
-
  BtnEnter.Images:=DIMAGE;
  BtnEnter.ImageIndex:=0;
  BtnEnter.Layout:=blGlyphRight;
@@ -1148,7 +1348,6 @@ begin
  BtnClose.Layout:=blGlyphRight;
  BtnClose.AutoSize:=false;
  BtnClose.Width:=32;
-
 
  Pages:=TKCustomPageControl.Create(FrmMain);
  Pages.Parent:=FrmMain;
@@ -1204,8 +1403,60 @@ begin
  GridStory.AddColumn('user',' ЛЕВ ');
  GridStory.AddColumn('mes',' Сообщение');
 
+ PanelSub:=TPanel.Create(FrmMain);
+ PanelSub.Align:=alClient;
+ PanelSub.BevelInner:=bvNone;
+ PanelSub.BevelOuter:=bvNone;
+
+ LabelSubMode:=TLabel.Create(PanelSub);
+ LabelSubMode.AutoSize:=True;
+ LabelSubMode.Left:=10;
+ LabelSubMode.Top:=10;
+ LabelSubMode.Font.Color:=0;
+ LabelSubMode.Font.Size:=12;
+ LabelSubMode.Caption:='Сабмод выключен';
+ LabelSubMode.Parent:=PanelSub;
+
+ TextSubTime:=TEdit.Create(PanelSub);
+
+ TextSubTime.Anchors:=[akTop,akLeft,akRight];
+ TextSubTime.AutoSize:=True;
+ TextSubTime.Left:=10;
+
+ TextSubTime.Width :=PanelSub.ClientWidth-20;
+ TextSubTime.Height:=PanelSub.ClientHeight-20;
+ TextSubTime.Modified:=False;
+ TextSubTime.Font.Size:=20;
+ TextSubTime.Parent:=PanelSub;
+
+ TextSubTime.AnchorSide[akTop].Side:=asrBottom;
+ TextSubTime.AnchorSide[akTop].Control:=LabelSubMode;
+ TextSubTime.BorderSpacing.Top:=5;
+
+ UpdateTextSubTime;
+
+ Btn:=TButton.Create(PanelSub);
+ Btn.OnClick:=@BtnClickSubModeOn;
+ Btn.AutoSize:=True;
+ Btn.Caption:='Включить';
+ Btn.Left:=10;
+ Btn.AnchorSide[akTop].Side:=asrBottom;
+ Btn.AnchorSide[akTop].Control:=TextSubTime;
+ Btn.Parent:=PanelSub;
+
+ Btn:=TButton.Create(PanelSub);
+ Btn.OnClick:=@BtnClickSubModeOff;
+ Btn.AutoSize:=True;
+ Btn.Anchors:=[akTop,akRight];
+ Btn.Caption:='Выключить';
+ Btn.Left:=PanelSub.ClientWidth-Btn.Width-10;
+ Btn.AnchorSide[akTop].Side:=asrBottom;
+ Btn.AnchorSide[akTop].Control:=TextSubTime;
+ Btn.Parent:=PanelSub;
+
  SetShowChat(True);
  SetShowStory(True);
+ SetShowSubPanel(True);
 
  Pages.Pages[0].Show;
 
@@ -1238,18 +1489,144 @@ begin
  FDbcScript.Start;
  FDbcScript.Release;
 
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.Notify.Add(T_FIN,@OnGetSubTime);
+ FDbcScript.SetSctipt(FGetParamScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetRawByteString('name','SubTime');
+ FDbcScript.Start;
+ FDbcScript.Release;
+
 end;
 
-type
- TPCharStream=class(TCustomMemoryStream)
-  public
-   constructor Create(P:PChar;len:SizeUint); virtual; overload;
- end;
-
-constructor TPCharStream.Create(P:PChar;len:SizeUint);
+procedure TFrmMain.UpdateTextSubTime;
+var
+ S,L:Integer;
+ Hr:Int64;
+ Mn,Sc:Byte;
 begin
- inherited Create;
- SetPointer(P,len);
+ SetDBParam('SubTime',IntToStr(SubModeTime));
+
+ Hr:=(SubModeTime mod 24);
+ Mn:=(SubModeTime div 60) mod 60;
+ Sc:=(SubModeTime mod 60);
+
+ S:=TextSubTime.SelStart ;
+ L:=TextSubTime.SelLength;
+
+ TextSubTime.Text:=AddChar('+',AddChar('0',IntToStr(Hr),2),3)
+                  +':'+AddChar('0',IntToStr(Mn),2)
+                  +':'+AddChar('0',IntToStr(Sc),2);
+
+ TextSubTime.SelStart :=S;
+ TextSubTime.SelLength:=L;
+end;
+
+procedure TFrmMain.SetDBParam(Const fname,fvalue:RawByteString);
+var
+ FDbcScript:TDbcStatementScript;
+begin
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.SetSctipt(FSetParamScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetRawByteString('name',fname);
+ FDbcScript.Params.SetRawByteString('value',fvalue);
+ FDbcScript.Start;
+ FDbcScript.Release;
+end;
+
+function TFrmMain.SetTimerSubMode(m:Boolean):Boolean;
+begin
+ Case m of
+  True :
+  begin
+   if (SubModeTimer=nil) then
+   begin
+    SubModeTimer:=TTimer.Create(Self);
+    SubModeTimer.Interval:=500;
+    SubModeTimer.OnTimer:=@SubModeTimerUpdate;
+    Result:=True;
+   end else
+   begin
+    Result:=not SubModeTimer.Enabled;
+   end;
+   if Result then
+   begin
+    LabelSubMode.Font.Color:=$FF00;
+    LabelSubMode.Caption:='Сабмод включён';
+    SubModeTick:=GetTickCount64;
+    SubModeTimer.Enabled:=m;
+   end;
+  end;
+  False:
+  begin
+   if (SubModeTimer=nil) then
+   begin
+    Result:=False;
+   end else
+   begin
+    Result:=SubModeTimer.Enabled;
+   end;
+   if Result then
+   begin
+    LabelSubMode.Font.Color:=0;
+    LabelSubMode.Caption:='Сабмод выключен';
+    SubModeTimer.Enabled:=m;
+   end;
+  end;
+ end;
+end;
+
+procedure TFrmMain.BtnClickSubModeOn(Sender:TObject);
+begin
+ //submode send on
+ if SetTimerSubMode(true) then
+ begin
+  push_irc_msg(sub_mod_cmd_on);
+ end;
+end;
+
+procedure TFrmMain.BtnClickSubModeOff(Sender:TObject);
+begin
+ //submode send off
+ if SetTimerSubMode(false) then
+ begin
+  push_irc_msg(sub_mod_cmd_off);
+ end;
+end;
+
+procedure TFrmMain.SubModeTimerUpdate(Sender:TObject);
+var
+ s:Int64;
+begin
+ s:=(GetTickCount64-SubModeTick) div 1000;
+ SubModeTick:=SubModeTick+s*1000;
+ if SubModeTime=0 then
+ begin
+  //wtf? submode without timer
+ end else
+ if (s<>0) then
+ begin
+  if (SubModeTime>0) then
+  begin
+   SubModeTime:=SubModeTime-s;
+   if SubModeTime<=0 then
+   begin
+    SubModeTime:=0;
+    //submode send off
+    if SetTimerSubMode(false) then
+    begin
+     push_irc_msg(sub_mod_cmd_off);
+    end;
+   end;
+  end else
+  begin
+   //reverse submode time
+  end;
+  UpdateTextSubTime;
+ end;
 end;
 
 Const
@@ -1284,6 +1661,10 @@ type
   class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
  end;
 
+ TLoadSubMin_Func=class(TNodeFunc)
+  class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
+ end;
+
 class procedure TRoot_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin
  Case Name of
@@ -1299,6 +1680,14 @@ begin
    begin
     Node.Push(TLoadSQL_Func,@frmMain.FInsertScript);
    end;
+  'get_param.sql':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FGetParamScript);
+   end;
+  'set_param.sql':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FSetParamScript);
+   end;
   'rnd_title':
    begin
     Node.Push(TLoadStr_Func,@rule_title);
@@ -1311,6 +1700,30 @@ begin
    begin
     Node.Push(TLoadStr_Func,@rule_cmd2);
    end;
+  'rnd_perc':
+   begin
+    Node.Push(TLoadPerc_Func,nil);
+   end;
+  'sub_mod_inc_title':
+   begin
+    Node.Push(TLoadStr_Func,@sub_mod_inc_title);
+   end;
+  'sub_mod_dec_title':
+   begin
+    Node.Push(TLoadStr_Func,@sub_mod_dec_title);
+   end;
+  'sub_mod_cmd_on':
+   begin
+    Node.Push(TLoadStr_Func,@sub_mod_cmd_on);
+   end;
+  'sub_mod_cmd_off':
+   begin
+    Node.Push(TLoadStr_Func,@sub_mod_cmd_off);
+   end;
+  'sub_mod_min':
+   begin
+    Node.Push(TLoadSubMin_Func,nil);
+   end;
   'chat':
    begin
     Node.Push(TLoadStr_Func,@chat);
@@ -1318,10 +1731,6 @@ begin
   'chat_id':
    begin
     Node.Push(TLoadStr_Func,@chat_id);
-   end;
-  'rnd_perc':
-   begin
-    Node.Push(TLoadPerc_Func,nil);
    end;
  end;
 end;
@@ -1346,21 +1755,28 @@ begin
  Case Name of
   '':
   begin
-   Writeln(Value);
    PRawByteString(Node.CData)^:=Value;
   end;
  end;
 end;
-
 
 class procedure TLoadPerc_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
 begin
  Case Name of
   '':
   begin
-   Writeln(Value);
    rule_perc :=StrToQWORDDef(Value,70);
    if rule_perc>100 then rule_perc:=100;
+  end;
+ end;
+end;
+
+class procedure TLoadSubMin_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+begin
+ Case Name of
+  '':
+  begin
+   sub_mod_min:=StrToDWORDDef(Value,30);
   end;
  end;
 end;

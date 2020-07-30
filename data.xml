@@ -8,13 +8,23 @@
 <rnd_msg_cmd2>/timeout %s 86400</rnd_msg_cmd2>
 <rnd_perc>70</rnd_perc>
 
+<sub_mod_inc_title>Подрубай сабмод</sub_mod_inc_title>
+<sub_mod_dec_title>Офай сабмод</sub_mod_dec_title>
+
+<sub_mod_cmd_on>/subscribers</sub_mod_cmd_on>
+<sub_mod_cmd_off>/subscribersoff</sub_mod_cmd_off>
+
+<sub_mod_min>30</sub_mod_min>
+
 <create.sql>
 
 CREATE TABLE IF NOT EXISTS story (datetime DATETIME,user TEXT,mes TEXT);
-
 CREATE INDEX IF NOT EXISTS story_datetime ON story (datetime ASC);
-
 CREATE INDEX IF NOT EXISTS story_user ON story (user ASC);
+
+
+CREATE TABLE IF NOT EXISTS params (name TEXT,value TEXT);
+CREATE UNIQUE INDEX IF NOT EXISTS params_name ON params (name ASC);
 
 </create.sql>
 <insert.sql>
@@ -31,3 +41,12 @@ INSERT INTO story ( datetime,user,mes  ) VALUES(@datetime,@user,@mes);
 SELECT * FROM story LIMIT 300 OFFSET (SELECT COUNT(*) FROM story)-300;
 
 </list.sql>
+
+<get_param.sql>
+SELECT value FROM params WHERE (name=@name);
+</get_param.sql>
+
+<set_param.sql>
+INSERT OR REPLACE INTO params ( name,value  ) VALUES(@name,@value);
+</set_param.sql>
+

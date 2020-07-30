@@ -265,7 +265,7 @@ object FrmParam: TFrmParam
   object EdtTitle: TLabeledEdit
     Left = 8
     Height = 25
-    Hint = 'Заголовок VIP награды должен совпадать с '
+    Hint = 'Заголовок VIP награды должен совпадать с этой строкой'
     Top = 224
     Width = 308
     Anchors = [akTop, akLeft, akRight]
@@ -277,11 +277,14 @@ object FrmParam: TFrmParam
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
     TabOrder = 7
   end
   object EdtPercent: TLabeledEdit
     Left = 8
     Height = 25
+    Hint = 'Вероятность выпдения випки в процентах'
     Top = 272
     Width = 308
     Anchors = [akTop, akLeft, akRight]
@@ -293,6 +296,8 @@ object FrmParam: TFrmParam
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
     TabOrder = 8
     OnExit = EdtPercentExit
     OnKeyDown = FormKeyDown
