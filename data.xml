@@ -29,6 +29,8 @@ CREATE INDEX IF NOT EXISTS story_user ON story (user ASC);
 
 CREATE TABLE IF NOT EXISTS params (name TEXT,value TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS params_name ON params (name ASC);
+
+VACUUM
 </create>
 <insert>
 INSERT INTO story ( datetime,user,mes  ) VALUES(@datetime,@user,@mes);

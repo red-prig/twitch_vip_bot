@@ -78,10 +78,10 @@ begin
   GridPred.FieldValue['num' ,i]:=' '+IntToStr(i);
   if fetch_random_no_more(Tmp) then
   begin
-   GridPred.FieldValue['res' ,i]:=rule_cmd;
+   GridPred.FieldValue['res' ,i]:=vip_rnd.cmd;
   end else
   begin
-   GridPred.FieldValue['res' ,i]:=rule_cmd2;
+   GridPred.FieldValue['res' ,i]:=vip_rnd.cmd2;
   end;
  end;
 end;

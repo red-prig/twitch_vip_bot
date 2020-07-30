@@ -26,7 +26,8 @@ uses
 
   TaskManager,DbcEngine,
   ZDbcIntfs,
-  ZDbcSqLite,ZDbcInterbase6,DbcScript;
+  ZDbcSqLite,
+  DbcScript;
 
 type
 
@@ -59,6 +60,8 @@ type
     procedure OnPopupClickStory(Sender:TObject);
     procedure OnPopupClickAutoEnter(Sender:TObject);
     procedure OnPopupClickUseTray(Sender:TObject);
+    procedure OnPopupClickSubParam(Sender:TObject);
+    procedure OnPopupClickVipParam(Sender:TObject);
     procedure OnPopupClickParam(Sender:TObject);
     procedure OnPredClick(Sender:TObject);
     procedure OnTabClose(Sender:TObject;TabIndex:Integer;var CanClose:Boolean);
@@ -129,17 +132,20 @@ var
  chat:RawByteString;
  chat_id:RawByteString;
 
- rule_title:RawByteString;
- rule_cmd:RawByteString;
- rule_cmd2:RawByteString;
- rule_perc:Byte;
+ vip_rnd:record
+  title:RawByteString;
+  cmd:RawByteString;
+  cmd2:RawByteString;
+  perc:Byte;
+ end;
 
- sub_mod_inc_title:RawByteString;
- sub_mod_dec_title:RawByteString;
- sub_mod_cmd_on :RawByteString;
- sub_mod_cmd_off:RawByteString;
-
- sub_mod_inc:DWORD;
+ sub_mod:record
+  inc_title:RawByteString;
+  dec_title:RawByteString;
+  cmd_on :RawByteString;
+  cmd_off:RawByteString;
+  inc_min:DWORD;
+ end;
 
  SubModeTimer:TTimer;
  SubModeTick:Int64;
@@ -154,6 +160,8 @@ uses
  ufrmpred,
  UFrmAbout,
  UFrmParam,
+ UFrmVipParam,
+ UFrmSubParam,
  Uloginf;
 
 {$R *.lfm}
@@ -406,17 +414,17 @@ var
  n:Boolean;
 begin
              //0..99         //70 0-69
- Result:=Random(Context,100)<rule_perc;
+ Result:=Random(Context,100)<vip_rnd.perc;
  if max<>0 then
   For p:=0 to 3 do
   begin
    Tmp:=Context;
    For i:=0 to max-1 do
    begin
-    n:=Random(Tmp,100)<rule_perc; //pred
+    n:=Random(Tmp,100)<vip_rnd.perc; //pred
     if n<>Result then Exit;
    end;
-   n:=Random(Context,100)<rule_perc; //step up
+   n:=Random(Context,100)<vip_rnd.perc; //step up
   end;
 end;
 
@@ -470,17 +478,17 @@ begin
   reward_title:=Trim(msg2.Path['data.redemption.reward.title'].AsStr);
   cmd:='';
 
-  if reward_title=rule_title then //vip/ban
+  if reward_title=vip_rnd.title then //vip/ban
   begin
 
    if fetch_random_no_more(RCT) then
    begin
-    cmd:=Format(rule_cmd,[msg2.Path['data.redemption.user.login'].AsStr]);
+    cmd:=Format(vip_rnd.cmd,[msg2.Path['data.redemption.user.login'].AsStr]);
     push_irc_msg(cmd);
     //add_to_chat('>'+login+': '+cmd);
    end else
    begin
-    cmd:=Format(rule_cmd2,[msg2.Path['data.redemption.user.login'].AsStr]);
+    cmd:=Format(vip_rnd.cmd2,[msg2.Path['data.redemption.user.login'].AsStr]);
     push_irc_msg(cmd);
     //add_to_chat('>'+login+': '+cmd);
    end;
@@ -496,29 +504,29 @@ begin
    //Writeln('user_input       :',msg2.Path['data.redemption.user_input'].AsStr);
    //Writeln('status           :',msg2.Path['data.redemption.status'].AsStr);
   end else
-  if reward_title=sub_mod_inc_title then //add sub mode
+  if reward_title=sub_mod.inc_title then //add sub mode
   begin
-   SubModeTime:=SubModeTime+sub_mod_inc*60;
+   SubModeTime:=SubModeTime+sub_mod.inc_min*60;
    dbSubModeTime:=SubModeTime;
    if SubModeTime>0 then
    begin
     if CanSetTimerSubMode(True) then
     begin
-     cmd:=sub_mod_cmd_on;
+     cmd:=sub_mod.cmd_on;
      push_irc_msg(cmd);
     end;
    end;
    UpdateTextSubTime(True);
   end else
-  if reward_title=sub_mod_dec_title then //dec sub mode
+  if reward_title=sub_mod.dec_title then //dec sub mode
   begin
-   SubModeTime:=SubModeTime-sub_mod_inc*60;
+   SubModeTime:=SubModeTime-sub_mod.inc_min*60;
    dbSubModeTime:=SubModeTime;
    if SubModeTime<=0 then
    begin
     if CanSetTimerSubMode(False) then
     begin
-     cmd:=sub_mod_cmd_off;
+     cmd:=sub_mod.cmd_off;
      push_irc_msg(cmd);
     end;
    end;
@@ -944,6 +952,70 @@ begin
  end;
 end;
 
+procedure TFrmMain.OnPopupClickSubParam(Sender:TObject);
+begin
+ try
+  FrmSubParam.EdtTitleSubInc.Text:=sub_mod.inc_title;
+  FrmSubParam.EdtTitleSubDec.Text:=sub_mod.dec_title;
+  FrmSubParam.EdtSubInc.Text:=IntToStr(sub_mod.inc_min);
+
+ except
+  on E:Exception do
+  begin
+   DumpExceptionCallStack(E);
+  end;
+ end;
+
+ if FrmSubParam.ShowModal=1 then
+ begin
+  sub_mod.inc_title:=FrmSubParam.EdtTitleSubInc.Text;
+  sub_mod.dec_title:=FrmSubParam.EdtTitleSubDec.Text;
+  sub_mod.inc_min  :=StrToIntDef(FrmSubParam.EdtSubInc.Text,1);
+
+  try
+   Config.WriteString('sub_mod','inc_title',sub_mod.inc_title);
+   Config.WriteString('sub_mod','dec_title',sub_mod.dec_title);
+   Config.WriteString('sub_mod','inc_min'  ,IntToStr(sub_mod.inc_min));
+  except
+   on E:Exception do
+   begin
+    DumpExceptionCallStack(E);
+   end;
+  end;
+ end;
+end;
+
+procedure TFrmMain.OnPopupClickVipParam(Sender:TObject);
+begin
+ try
+  FrmVipParam.EdtTitle.Text   :=vip_rnd.title;
+  FrmVipParam.EdtPercent.Text :=IntToStr(vip_rnd.perc);
+
+ except
+  on E:Exception do
+  begin
+   DumpExceptionCallStack(E);
+  end;
+ end;
+
+ if FrmVipParam.ShowModal=1 then
+ begin
+  vip_rnd.title:=Trim(FrmVipParam.EdtTitle.Text);
+  vip_rnd.perc :=StrToQWORDDef(FrmVipParam.EdtPercent.Text,70);
+  if vip_rnd.perc>100 then vip_rnd.perc:=100;
+
+  try
+   Config.WriteString('vip' ,'title'   ,vip_rnd.title);
+   Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
+  except
+   on E:Exception do
+   begin
+    DumpExceptionCallStack(E);
+   end;
+  end;
+ end;
+end;
+
 procedure TFrmMain.OnPopupClickParam(Sender:TObject);
 begin
  try
@@ -951,14 +1023,6 @@ begin
   FrmParam.EdtPassword.Text:=Config.ReadString('base','oAuth','');
   FrmParam.EdtChat.Text    :=chat;
   FrmParam.EdtChatID.Text  :=chat_id;
-  FrmParam.EdtTitle.Text   :=rule_title;
-  FrmParam.EdtPercent.Text :=IntToStr(rule_perc);
-
-  FrmParam.EdtTitleSubInc.Text:=sub_mod_inc_title;
-  FrmParam.EdtTitleSubDec.Text:=sub_mod_dec_title;
-
-  FrmParam.EdtSubInc.Text:=IntToStr(sub_mod_inc);
-
  except
   on E:Exception do
   begin
@@ -971,27 +1035,11 @@ begin
   chat   :=FrmParam.EdtChat.Text;
   chat_id:=FrmParam.EdtChatID.Text;
 
-  rule_title:=Trim(FrmParam.EdtTitle.Text);
-  rule_perc :=StrToQWORDDef(FrmParam.EdtPercent.Text,70);
-  if rule_perc>100 then rule_perc:=100;
-
-  sub_mod_inc_title:=FrmParam.EdtTitleSubInc.Text;
-  sub_mod_dec_title:=FrmParam.EdtTitleSubDec.Text;
-
-  sub_mod_inc:=StrToIntDef(FrmParam.EdtSubInc.Text,1);
-
   try
    Config.WriteString('base','login'   ,FrmParam.EdtLogin.Text);
    Config.WriteString('base','oAuth'   ,FrmParam.EdtPassword.Text);
    Config.WriteString('base','chat'    ,chat);
    Config.WriteString('base','chat_id' ,chat_id);
-   Config.WriteString('rule','title'   ,rule_title);
-   Config.WriteString('rule','msg_perc',IntToStr(rule_perc));
-
-   Config.WriteString('sub_mod','inc_title',sub_mod_inc_title);
-   Config.WriteString('sub_mod','dec_title',sub_mod_dec_title);
-   Config.WriteString('sub_mod','dec_title',IntToStr(sub_mod_inc));
-
   except
    on E:Exception do
    begin
@@ -1109,14 +1157,14 @@ begin
    chat   :=Trim(Config.ReadString('base','chat'   ,chat));
    chat_id:=Trim(Config.ReadString('base','chat_id',chat_id));
 
-   rule_title:=Trim(Config.ReadString('rule','title',rule_title));
-   rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',IntToStr(rule_perc)),70);
-   if rule_perc>100 then rule_perc:=100;
+   vip_rnd.title:=Trim(Config.ReadString('vip' ,'title',vip_rnd.title));
+   vip_rnd.perc :=StrToQWORDDef(Config.ReadString('vip' ,'msg_perc',IntToStr(vip_rnd.perc)),70);
+   if vip_rnd.perc>100 then vip_rnd.perc:=100;
 
-   sub_mod_inc_title:=Trim(Config.ReadString('sub_mod','inc_title',sub_mod_inc_title));
-   sub_mod_dec_title:=Trim(Config.ReadString('sub_mod','dec_title',sub_mod_dec_title));
+   sub_mod.inc_title:=Trim(Config.ReadString('sub_mod','inc_title',sub_mod.inc_title));
+   sub_mod.dec_title:=Trim(Config.ReadString('sub_mod','dec_title',sub_mod.dec_title));
 
-   sub_mod_inc:=StrToDWORDDef(Config.ReadString('sub_mod','min',IntToStr(sub_mod_inc)),30);
+   sub_mod.inc_min:=StrToDWORDDef(Config.ReadString('sub_mod','inc_min',IntToStr(sub_mod.inc_min)),30);
 
   except
    on E:Exception do
@@ -1134,20 +1182,19 @@ begin
    Config.WriteString('base','chat'   ,chat);
    Config.WriteString('base','chat_id',chat_id);
 
-   Config.WriteString('rule','title'   ,rule_title);
-   Config.WriteString('rule','msg_perc',IntToStr(rule_perc));
+   Config.WriteString('vip' ,'title'   ,vip_rnd.title);
+   Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
 
    Config.WriteString('view','autologin','0');
    Config.WriteString('view','systray'  ,'1');
 
-   rule_title:=Trim(Config.ReadString('rule','title',rule_title));
-   rule_perc :=StrToQWORDDef(Config.ReadString('rule','msg_perc',''),70);
-   if rule_perc>100 then rule_perc:=100;
+   vip_rnd.title:=Trim(Config.ReadString('vip' ,'title',vip_rnd.title));
+   vip_rnd.perc :=StrToQWORDDef(Config.ReadString('vip' ,'msg_perc',''),70);
+   if vip_rnd.perc>100 then vip_rnd.perc:=100;
 
-   Config.WriteString('sub_mod','inc_title',sub_mod_inc_title);
-   Config.WriteString('sub_mod','dec_title',sub_mod_dec_title);
-
-   Config.WriteString('sub_mod','min',IntToStr(sub_mod_inc));
+   Config.WriteString('sub_mod','inc_title',sub_mod.inc_title);
+   Config.WriteString('sub_mod','dec_title',sub_mod.dec_title);
+   Config.WriteString('sub_mod','inc_min'  ,IntToStr(sub_mod.inc_min));
 
   except
    on E:Exception do
@@ -1205,8 +1252,20 @@ begin
 
  //param
  Item:=TMenuItem.Create(PopupCfg);
- Item.Caption:='Параметры';
+ Item.Caption:='Общие';
  Item.OnClick:=@OnPopupClickParam;
+ PopupCfg.Items.Add(Item);
+
+ //vip param
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='VIP или БАН';
+ Item.OnClick:=@OnPopupClickVipParam;
+ PopupCfg.Items.Add(Item);
+
+ //sub param
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='Саб мод';
+ Item.OnClick:=@OnPopupClickSubParam;
  PopupCfg.Items.Add(Item);
 
  //------
@@ -1618,7 +1677,7 @@ begin
  //submode send on
  if CanSetTimerSubMode(true) then
  begin
-  push_irc_msg(sub_mod_cmd_on);
+  push_irc_msg(sub_mod.cmd_on);
  end;
 end;
 
@@ -1627,7 +1686,7 @@ begin
  //submode send off
  if CanSetTimerSubMode(false) then
  begin
-  push_irc_msg(sub_mod_cmd_off);
+  push_irc_msg(sub_mod.cmd_off);
  end;
 end;
 
@@ -1652,7 +1711,7 @@ begin
     //submode send off
     if CanSetTimerSubMode(false) then
     begin
-     push_irc_msg(sub_mod_cmd_off);
+     push_irc_msg(sub_mod.cmd_off);
     end;
    end;
    UpdateTextSubTime(abs(dbSubModeTime-SubModeTime)>=10);
@@ -1767,8 +1826,8 @@ begin
  Case Name of
   '':
   begin
-   rule_perc :=StrToQWORDDef(Value,70);
-   if rule_perc>100 then rule_perc:=100;
+   vip_rnd.perc :=StrToQWORDDef(Value,70);
+   if vip_rnd.perc>100 then vip_rnd.perc:=100;
   end;
  end;
 end;
@@ -1778,7 +1837,7 @@ begin
  Case Name of
   '':
   begin
-   sub_mod_inc:=StrToDWORDDef(Value,30);
+   sub_mod.inc_min:=StrToDWORDDef(Value,30);
   end;
  end;
 end;
@@ -1788,15 +1847,15 @@ begin
  Case Name of
   'title':
    begin
-    Node.Push(TLoadStr_Func,@rule_title);
+    Node.Push(TLoadStr_Func,@vip_rnd.title);
    end;
   'msg_cmd':
    begin
-    Node.Push(TLoadStr_Func,@rule_cmd);
+    Node.Push(TLoadStr_Func,@vip_rnd.cmd);
    end;
   'msg_cmd2':
    begin
-    Node.Push(TLoadStr_Func,@rule_cmd2);
+    Node.Push(TLoadStr_Func,@vip_rnd.cmd2);
    end;
   'perc':
    begin
@@ -1810,19 +1869,19 @@ begin
  Case Name of
   'inc_title':
    begin
-    Node.Push(TLoadStr_Func,@sub_mod_inc_title);
+    Node.Push(TLoadStr_Func,@sub_mod.inc_title);
    end;
   'dec_title':
    begin
-    Node.Push(TLoadStr_Func,@sub_mod_dec_title);
+    Node.Push(TLoadStr_Func,@sub_mod.dec_title);
    end;
   'cmd_on':
    begin
-    Node.Push(TLoadStr_Func,@sub_mod_cmd_on);
+    Node.Push(TLoadStr_Func,@sub_mod.cmd_on);
    end;
   'cmd_off':
    begin
-    Node.Push(TLoadStr_Func,@sub_mod_cmd_off);
+    Node.Push(TLoadStr_Func,@sub_mod.cmd_off);
    end;
   'inc':
    begin

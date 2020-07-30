@@ -8,6 +8,7 @@ object FrmPred: TFrmPred
   ClientHeight = 549
   ClientWidth = 361
   OnCreate = FormCreate
+  Position = poMainFormCenter
   LCLVersion = '2.0.10.0'
   object BtnNewSedd: TButton
     Left = 8

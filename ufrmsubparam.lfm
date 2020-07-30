@@ -1,24 +1,25 @@
-object FrmParam: TFrmParam
-  Left = 617
-  Height = 250
-  Top = 179
-  Width = 425
+object FrmSubParam: TFrmSubParam
+  Left = 493
+  Height = 204
+  Top = 159
+  Width = 422
   BorderIcons = [biSystemMenu]
-  Caption = 'Параметры'
-  ClientHeight = 250
-  ClientWidth = 425
+  Caption = 'Параметры саб мода'
+  ClientHeight = 204
+  ClientWidth = 422
   OnKeyDown = FormKeyDown
+  Position = poMainFormCenter
   LCLVersion = '2.0.10.0'
-  object EdtLogin: TLabeledEdit
+  object EdtTitleSubInc: TLabeledEdit
     Left = 8
     Height = 25
-    Hint = 'Логин пользователя'
+    Hint = 'Заголовок награды для добавлении времени и'#13#10' включении сабмода если время>0'
     Top = 32
-    Width = 387
+    Width = 403
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 387
-    EditLabel.Caption = 'Логин:'
+    EditLabel.Width = 403
+    EditLabel.Caption = 'Заголовок награды [+]:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
     EditLabel.Font.Height = -16
@@ -27,36 +28,54 @@ object FrmParam: TFrmParam
     ParentShowHint = False
     ShowHint = True
     TabOrder = 0
-    OnKeyDown = EdtKeyDown
-    OnUTF8KeyPress = EdtUTF8KeyPress
+    OnKeyDown = FormKeyDown
   end
-  object EdtPassword: TLabeledEdit
+  object EdtTitleSubDec: TLabeledEdit
     Left = 8
     Height = 25
-    Hint = 'OAuth токен твича, сгенерировать можно к примеру на: https://twitchapps.com/tmi/'
-    Top = 79
-    Width = 387
+    Hint = 'Заголовок награды для уменьшения времени и'#13#10' выключении сабмода если время<=0'
+    Top = 80
+    Width = 403
     Anchors = [akTop, akLeft, akRight]
-    EchoMode = emPassword
     EditLabel.Height = 21
-    EditLabel.Width = 387
-    EditLabel.Caption = 'OAuth ключ:'
+    EditLabel.Width = 403
+    EditLabel.Caption = 'Заголовок награды [-]:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
     ParentShowHint = False
-    PasswordChar = '*'
     ShowHint = True
     TabOrder = 1
-    OnKeyDown = EdtKeyDown
-    OnUTF8KeyPress = EdtUTF8KeyPress
+    OnKeyDown = FormKeyDown
+  end
+  object EdtSubInc: TLabeledEdit
+    Left = 8
+    Height = 25
+    Hint = 'Время которе добавляеться/отнимаеться у таймера'
+    Top = 128
+    Width = 403
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 403
+    EditLabel.Caption = 'Время в минутах:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 2
+    OnExit = EdtSubExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtSubKeyPress
   end
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 210
+    Top = 164
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -126,13 +145,12 @@ object FrmParam: TFrmParam
       FF00FFFFFF00FFFFFF00
     }
     OnClick = BtnOkClick
-    OnKeyDown = FormKeyDown
-    TabOrder = 5
+    TabOrder = 3
   end
   object BtnCancel: TBitBtn
-    Left = 323
+    Left = 320
     Height = 30
-    Top = 210
+    Top = 164
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -202,64 +220,6 @@ object FrmParam: TFrmParam
       FF00FFFFFF00FFFFFF00
     }
     OnClick = BtnCancelClick
-    OnKeyDown = FormKeyDown
-    TabOrder = 6
-  end
-  object TBView: TToggleBox
-    Left = 395
-    Height = 26
-    Hint = 'Показать/Скрыть пароль'
-    Top = 78
-    Width = 28
-    Anchors = [akTop, akRight]
-    Caption = 'a'
-    Font.Height = -16
-    OnChange = TBViewChange
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 2
-    TabStop = False
-  end
-  object EdtChat: TLabeledEdit
-    Left = 8
-    Height = 25
-    Hint = 'Текстовое наименование чата (стримера)'#13#10'Используеться для подключения к чату.'
-    Top = 128
-    Width = 387
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 387
-    EditLabel.Caption = 'Чат:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 3
-    OnKeyDown = EdtKeyDown
-    OnUTF8KeyPress = EdtUTF8KeyPress
-  end
-  object EdtChatId: TLabeledEdit
-    Left = 8
-    Height = 25
-    Hint = 'Подробно смотрите на: https://dev.twitch.tv/docs/v5/reference/channels#get-channel'#13#10'Используеться для подписки на различные события. (награды за поинты, битцы и тд)'
-    Top = 176
-    Width = 387
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 387
-    EditLabel.Caption = 'Номер чат канала:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
     TabOrder = 4
-    OnKeyDown = EdtNumKeyDown
   end
 end

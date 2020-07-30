@@ -34,7 +34,7 @@
         <PackageName Value="LCL"/>
       </Item2>
     </RequiredPackages>
-    <Units Count="9">
+    <Units Count="11">
       <Unit0>
         <Filename Value="twitch_vip_bot.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -89,6 +89,21 @@
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
       </Unit8>
+      <Unit9>
+        <Filename Value="ufrmvipparam.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="FrmVipParam"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="UFrmVipParam"/>
+      </Unit9>
+      <Unit10>
+        <Filename Value="ufrmsubparam.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="FrmSubParam"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="UFrmSubParam"/>
+      </Unit10>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

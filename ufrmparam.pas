@@ -19,19 +19,8 @@ type
     EdtLogin: TLabeledEdit;
     EdtChat: TLabeledEdit;
     EdtPassword: TLabeledEdit;
-    EdtPercent: TLabeledEdit;
-    EdtTitle: TLabeledEdit;
-    EdtSubInc: TLabeledEdit;
-    EdtTitleSubInc: TLabeledEdit;
-    EdtTitleSubDec: TLabeledEdit;
-    GBoxVip: TGroupBox;
-    GBSubMode: TGroupBox;
     TBView: TToggleBox;
     procedure EdtKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
-    procedure EdtPercentExit(Sender: TObject);
-    procedure EdtPercentKeyPress(Sender: TObject; var Key: char);
-    procedure EdtSubExit(Sender: TObject);
-    procedure EdtSubKeyPress(Sender: TObject; var Key: char);
     procedure EdtUTF8KeyPress(Sender:TObject;var UTF8Key:TUTF8Char);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure TBViewChange(Sender:TObject);
@@ -40,7 +29,6 @@ type
     procedure BtnCancelClick(Sender:TObject);
   private
     DigLastChar:Char;
-    prev_perc:Byte;
     prev_dw:DWORD;
   public
   end;
@@ -75,61 +63,6 @@ begin
   end;
  end;
  FormKeyDown(Sender,Key,Shift);
-end;
-
-procedure TFrmParam.EdtPercentKeyPress(Sender: TObject; var Key: char);
-begin
- prev_perc:=StrToQWORDDef(EdtPercent.Text,70);
- if prev_perc>100 then prev_perc:=100;
- Case Key of
-  #8,#37,#39:;
-  '0'..'9':;
-  else
-   Key:=#0;
- end;
-end;
-
-procedure TFrmParam.EdtSubExit(Sender: TObject);
-var
- S,L:Integer;
- d:DWORD;
-begin
- if not TryStrToDWord(TLabeledEdit(Sender).Text,d) then
- begin
-  S:=EdtPercent.SelStart ;
-  L:=EdtPercent.SelLength;
-  TLabeledEdit(Sender).Text:=IntToStr(prev_dw);
-  TLabeledEdit(Sender).SelStart :=S;
-  TLabeledEdit(Sender).SelLength:=L;
- end;
-end;
-
-procedure TFrmParam.EdtSubKeyPress(Sender: TObject; var Key: char);
-begin
- prev_dw:=StrToDWORDDef(TLabeledEdit(Sender).Text,1);
- Case Key of
-  #8,#37,#39:;
-  '0'..'9':;
-  else
-   Key:=#0;
- end;
-end;
-
-procedure TFrmParam.EdtPercentExit(Sender: TObject);
-var
- S,L:Integer;
-begin
- case StrToDWordDef(EdtPercent.Text,0) of
-  1..100:;
-  else
-  begin
-   S:=EdtPercent.SelStart ;
-   L:=EdtPercent.SelLength;
-   EdtPercent.Text:=IntToStr(prev_perc);
-   EdtPercent.SelStart :=S;
-   EdtPercent.SelLength:=L;
-  end;
- end;
 end;
 
 procedure TFrmParam.EdtUTF8KeyPress(Sender:TObject;var UTF8Key:TUTF8Char);

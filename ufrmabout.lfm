@@ -8,7 +8,8 @@ object FrmAbout: TFrmAbout
   ClientHeight = 396
   ClientWidth = 461
   OnCreate = FormCreate
-  LCLVersion = '2.0.8.0'
+  Position = poDesktopCenter
+  LCLVersion = '2.0.10.0'
   object LAbout: TLabel
     Left = 0
     Height = 396
