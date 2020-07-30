@@ -603,21 +603,83 @@ begin
  inherited;
 end;
 
+Const
+ PRIVMSG_HEAD='PRIVMSG #';
+ PRIVMSG_TAIL=' :';
+ PRIVMSG_LEN=Length(PRIVMSG_HEAD)+Length(PRIVMSG_TAIL);
+
 function _submit_vec(session:PfpWebsocket_session;
                      source:PfpWebsocket_data_provider;
                      frame_len:size_t;
                      block:Pio_block):ssize_t;
+
+ procedure _send_data_vec(data:Pointer;datalen:size_t);
+ Var
+  Node:Piovec;
+ begin
+  Node:=GetMem(datalen+SizeOf(Tiovec));
+  if Node=nil then Exit;
+  With Node^ do
+  begin
+   base:=@PByte(Node)[SizeOf(Tiovec)];
+   len:=datalen;
+   pos:=0;
+   buf_free:=nil;
+   vec_free:=Freemem_ptr;
+  end;
+  Move(data^,Node^.base^,datalen);
+  block^.data:=iovec_getdata(Node);
+  block^.len :=iovec_getlen(Node);
+  block^.free:=nil;
+  block^.user:=Node;
+ end;
+
+var
+ ws_irc:Tws_irc;
 begin
- Result:=WS_CB_FIN;
- block^.data:=source^.data;
- block^.len :=frame_len;
- block^.free:=nil;
- block^.user:=source^.user;
- source^.data:=nil;
- source^.user:=nil;
+
+ ws_irc:=Tws_irc(fpWebsocket_session_get_user_data(session));
+ if ws_irc=nil then Exit(WS_CB_ERR);
+
+ Case PtrUint(source^.data) of
+  0:begin
+     Result:=WS_CB_CON;
+     _send_data_vec(PAnsiChar(PRIVMSG_HEAD),Length(PRIVMSG_HEAD));
+     PtrUint(source^.data):=1;
+    end;
+  1:begin
+     Result:=WS_CB_CON;
+     _send_data_vec(PAnsiChar(ws_irc.chat),Length(ws_irc.chat));
+     PtrUint(source^.data):=2;
+    end;
+  2:begin
+     Result:=WS_CB_CON;
+     _send_data_vec(PAnsiChar(PRIVMSG_TAIL),Length(PRIVMSG_TAIL));
+     PtrUint(source^.data):=3;
+    end;
+  3:begin
+     Result:=WS_CB_FIN;
+     block^.data:=iovec_getdata(source^.user);
+     block^.len :=iovec_getlen(source^.user);
+     block^.free:=nil;
+     block^.user:=source^.user;
+     source^.data:=nil;
+     PtrUint(source^.data):=4;
+    end;
+  else
+    Result:=WS_CB_ERR;
+ end;
+
+ //Result:=WS_CB_FIN;
+ //block^.data:=iovec_getdata(source^.user);//source^.data;
+ //block^.len :=frame_len;
+ //block^.free:=nil;
+ //block^.user:=source^.user;
+ //source^.data:=nil;
+ //source^.user:=nil;
 end;
 
-function fpWebsocket_session_submit_text_vec(session:PfpWebsocket_session;v:Piovec):Boolean;
+function fpWebsocket_session_submit_msg_vec(session:PfpWebsocket_session;msg:Piovec;chat_len:ssize_t):Boolean;
 Const
  op_code=$01;
 var
@@ -626,21 +688,21 @@ begin
  Result:=false;
  if (session=nil) then Exit;
 
- if (v=nil) or (v^.len=0) then
+ if (msg=nil) or (msg^.len=0) then
  begin
   Result:=fpWebsocket_session_submit_frame_stream(session,nil,0,op_code);
  end else
  begin
-  data_prd.data    :=iovec_getdata(v);
-  data_prd.user    :=v;
+  data_prd.data    :=nil; //iovec_getdata(v);
+  data_prd.user    :=msg;
   data_prd.close_cb:=nil;
   data_prd.read_cb :=@_submit_vec;
-  Result:=fpWebsocket_session_submit_frame_stream(session,@data_prd,iovec_getlen(v),op_code);
+  Result:=fpWebsocket_session_submit_frame_stream(session,@data_prd,iovec_getlen(msg)+chat_len+PRIVMSG_LEN,op_code);
  end;
 
  if not Result then
  begin
-  FreeMem(data_prd.data);
+  iovec_free(msg);
  end;
 end;
 
@@ -653,8 +715,11 @@ begin
  if (v<>nil) then
  begin
   Log(irc_log,0,['<',GetStr(iovec_getdata(v),iovec_getlen(v))]);
+
+  main.push_chat('>'+ws_irc.login+': '+GetStr(iovec_getdata(v),iovec_getlen(v)));
+
   //Writeln(GetStr(iovec_getdata(v),iovec_getlen(v)));
-  fpWebsocket_session_submit_text_vec(ws_irc.ws_session,v);
+  fpWebsocket_session_submit_msg_vec(ws_irc.ws_session,v,Length(ws_irc.chat));
 
   if ws_irc.msg_timer=nil then
   begin
@@ -676,8 +741,8 @@ end;
 function _gen_nonce:RawByteString; forward;
 
 procedure _submit_msg(const msg:RawByteString);
-var
- S:RawByteString;
+//var
+// S:RawByteString;
 begin
  if msg_send_buf=nil then
  begin
@@ -686,9 +751,9 @@ begin
 
  if (msg='') or (ws_irc=nil) then Exit;
 
- S:={'@client-nonce='+_gen_nonce+' '+}'PRIVMSG #'+ws_irc.chat+' :'+msg;
+ //S:={'@client-nonce='+_gen_nonce+' '+}'PRIVMSG #'+ws_irc.chat+' :'+msg;
 
- evbuffer_add(msg_send_buf,PAnsiChar(S),Length(S));
+ evbuffer_add(msg_send_buf,PAnsiChar(msg),Length(msg));
 
  if ws_irc.msg_timer=nil then
  begin
@@ -978,6 +1043,7 @@ begin
      FreeMem(param2);
     end;
   1:begin
+     evbuffer_clear(msg_send_buf);
      FreeAndNil(ws_irc);
      FreeAndNil(ws_pub);
     end;

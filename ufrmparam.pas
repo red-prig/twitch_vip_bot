@@ -25,8 +25,8 @@ type
     EdtMsg: TLabeledEdit;
     TBView: TToggleBox;
     procedure EdtKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
-    procedure EdtPercentKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
-    procedure EdtPercentKeyUp(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure EdtPercentExit(Sender: TObject);
+    procedure EdtPercentKeyPress(Sender: TObject; var Key: char);
     procedure EdtUTF8KeyPress(Sender:TObject;var UTF8Key:TUTF8Char);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure TBViewChange(Sender:TObject);
@@ -71,22 +71,20 @@ begin
  FormKeyDown(Sender,Key,Shift);
 end;
 
-procedure TFrmParam.EdtPercentKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+procedure TFrmParam.EdtPercentKeyPress(Sender: TObject; var Key: char);
 begin
  prev_perc:=StrToQWORDDef(EdtPercent.Text,70);
- if prev_perc=0 then   prev_perc:=1;
  if prev_perc>100 then prev_perc:=100;
- if [ssAlt,ssCtrl]*Shift=[] then
+ //if [ssAlt,ssCtrl]*Shift=[] then
  Case Key of
-  8,37,39:;
-  ord('0')..ord('9'):;
+  #8,#37,#39:;
+  '0'..'9':;
   else
-   Key:=0;
+   Key:=#0;
  end;
- FormKeyDown(Sender,Key,Shift);
 end;
 
-procedure TFrmParam.EdtPercentKeyUp(Sender: TObject; var Key: Word;Shift: TShiftState);
+procedure TFrmParam.EdtPercentExit(Sender: TObject);
 var
  S,L:Integer;
 begin

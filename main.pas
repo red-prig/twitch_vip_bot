@@ -15,6 +15,7 @@ uses
   LResources,Menus,LCLType,Clipbrd, ExtCtrls, Buttons,
   ExtStringGrid,
 
+  mtRandom,
   UAsyncQueue,
   ulog,
   u_irc,
@@ -55,6 +56,7 @@ type
     procedure OnPopupClickAutoEnter(Sender:TObject);
     procedure OnPopupClickUseTray(Sender:TObject);
     procedure OnPopupClickParam(Sender:TObject);
+    procedure OnPredClick(Sender:TObject);
     procedure OnTabClose(Sender:TObject;TabIndex:Integer;var CanClose:Boolean);
     procedure OnBtnEnterClick(Sender:TObject);
     procedure OnBtnCloseClick(Sender:TObject);
@@ -67,10 +69,6 @@ type
    FInsertScript:TSQLScript;
 
    login:RawByteString;
-   rule_title:RawByteString;
-   rule_cmd:RawByteString;
-   rule_cmd2:RawByteString;
-   rule_perc:Byte;
 
    frmPanel:TPanel;
    LeftBar,RightBar:TToolbar;
@@ -106,10 +104,19 @@ procedure push_reward(const S:RawByteString);
 var
  Config:TINIFile;
 
+ RCT:TMTRandomContext;
+
+ rule_title:RawByteString;
+ rule_cmd:RawByteString;
+ rule_cmd2:RawByteString;
+ rule_perc:Byte;
+
+function fetch_random_no_more(Var Context:TMTRandomContext):Boolean;
+
 implementation
 
 uses
- mtRandom,
+ ufrmpred,
  UFrmAbout,
  UFrmParam,
  Uloginf;
@@ -128,8 +135,6 @@ var
  KCLOSE,KCLOSE_D,DIMAGE:TImageList;
 
  DbcThread:TDbcConnection;
-
- RCT:TMTRandomContext;
 
 type
  PQNode_push=^TQNode_push;
@@ -312,6 +317,29 @@ begin
          msg2.Path['data.redemption.user_input'].AsStr;
 end;
 
+function fetch_random_no_more(Var Context:TMTRandomContext):Boolean;
+Const
+ max=3;
+var
+ Tmp:TMTRandomContext;
+ i,p:Byte;
+ n:Boolean;
+begin
+             //0..99         //70 0-69
+ Result:=Random(Context,100)<rule_perc;
+ if max<>0 then
+  For p:=0 to 3 do
+  begin
+   Tmp:=Context;
+   For i:=0 to max-1 do
+   begin
+    n:=Random(Tmp,100)<rule_perc; //pred
+    if n<>Result then Exit;
+   end;
+   n:=Random(Context,100)<rule_perc; //step up
+  end;
+end;
+
 procedure TFrmMain.add_reward(const S:RawByteString);
 var
  DT:TDateTime;
@@ -352,17 +380,16 @@ begin
   if rule_title=Trim(msg2.Path['data.redemption.reward.title'].AsStr) then
   begin
 
-      //0..99         //70 0-69
-   if Random(RCT,100)<rule_perc then
+   if fetch_random_no_more(RCT) then
    begin
     cmd:=Format(rule_cmd,[msg2.Path['data.redemption.user.login'].AsStr]);
     reply_irc_msg(cmd);
-    add_to_chat('>'+login+': '+cmd);
+    //add_to_chat('>'+login+': '+cmd);
    end else
    begin
     cmd:=Format(rule_cmd2,[msg2.Path['data.redemption.user.login'].AsStr]);
     reply_irc_msg(cmd);
-    add_to_chat('>'+login+': '+cmd);
+    //add_to_chat('>'+login+': '+cmd);
    end;
 
    msg:=msg+' ('+cmd+')';
@@ -446,7 +473,7 @@ begin
   msg:=EdtSend.Text;
   EdtSend.Text:='';
   reply_irc_msg(msg);
-  add_to_chat('>'+login+': '+msg);
+  //add_to_chat('>'+login+': '+msg);
  end;
 end;
 
@@ -754,7 +781,6 @@ begin
   rule_cmd  :=Trim(FrmParam.EdtMsg.Text);
   rule_cmd2 :=Trim(FrmParam.EdtMsg2.Text);
   rule_perc :=StrToQWORDDef(FrmParam.EdtPercent.Text,70);
-  if rule_perc=0 then   rule_perc:=1;
   if rule_perc>100 then rule_perc:=100;
 
   try
@@ -773,6 +799,13 @@ begin
    end;
   end;
  end;
+end;
+
+procedure TFrmMain.OnPredClick(Sender:TObject);
+begin
+ FrmPred.CR:=RCT;
+ FrmPred.fetch_pred;
+ FrmPred.Show;
 end;
 
 procedure TFrmMain.OnTabClose(Sender:TObject;TabIndex:Integer;var CanClose:Boolean);
@@ -963,6 +996,17 @@ begin
  Item:=TMenuItem.Create(PopupCfg);
  Item.Caption:='Параметры';
  Item.OnClick:=@OnPopupClickParam;
+ PopupCfg.Items.Add(Item);
+
+ //------
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='-';
+ PopupCfg.Items.Add(Item);
+
+
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='Оракул';
+ Item.OnClick:=@OnPredClick;
  PopupCfg.Items.Add(Item);
 
  //------

@@ -1,21 +1,22 @@
 object FrmParam: TFrmParam
-  Left = 567
+  Left = 560
   Height = 450
-  Top = 119
-  Width = 359
+  Top = 149
+  Width = 346
+  BorderIcons = [biSystemMenu]
   Caption = 'Параметры'
   ClientHeight = 450
-  ClientWidth = 359
+  ClientWidth = 346
   OnKeyDown = FormKeyDown
   LCLVersion = '2.0.10.0'
   object EdtLogin: TLabeledEdit
     Left = 8
     Height = 25
     Top = 24
-    Width = 312
+    Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 312
+    EditLabel.Width = 308
     EditLabel.Caption = 'Логин:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -30,11 +31,11 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 71
-    Width = 312
+    Width = 308
     Anchors = [akTop, akLeft, akRight]
     EchoMode = emPassword
     EditLabel.Height = 21
-    EditLabel.Width = 312
+    EditLabel.Width = 308
     EditLabel.Caption = 'OAuth ключ:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -123,7 +124,7 @@ object FrmParam: TFrmParam
     TabOrder = 3
   end
   object BtnCancel: TBitBtn
-    Left = 257
+    Left = 244
     Height = 30
     Top = 410
     Width = 91
@@ -199,7 +200,7 @@ object FrmParam: TFrmParam
     TabOrder = 4
   end
   object TBView: TToggleBox
-    Left = 320
+    Left = 316
     Height = 26
     Hint = 'Показать/Скрыть пароль'
     Top = 71
@@ -218,10 +219,10 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 120
-    Width = 312
+    Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 312
+    EditLabel.Width = 308
     EditLabel.Caption = 'Чат:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -236,10 +237,10 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 168
-    Width = 312
+    Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 312
+    EditLabel.Width = 308
     EditLabel.Caption = 'Номер чата:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -253,10 +254,10 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 224
-    Width = 312
+    Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 312
+    EditLabel.Width = 308
     EditLabel.Caption = 'Заголовок награды:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -269,10 +270,10 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 320
-    Width = 312
+    Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 312
+    EditLabel.Width = 308
     EditLabel.Caption = 'Команда в чат:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -285,10 +286,10 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 376
-    Width = 312
+    Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 312
+    EditLabel.Width = 308
     EditLabel.Caption = 'Команда в чат 2:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
@@ -301,18 +302,19 @@ object FrmParam: TFrmParam
     Left = 8
     Height = 25
     Top = 272
-    Width = 312
+    Width = 308
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
-    EditLabel.Width = 312
-    EditLabel.Caption = 'Вероятность первой команды %1-%100:'
+    EditLabel.Width = 308
+    EditLabel.Caption = 'Вероятность первой команды %0-%100:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
     EditLabel.Font.Height = -16
     Font.Height = -13
     ParentFont = False
     TabOrder = 10
-    OnKeyDown = EdtPercentKeyDown
-    OnKeyUp = EdtPercentKeyUp
+    OnExit = EdtPercentExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtPercentKeyPress
   end
 end
