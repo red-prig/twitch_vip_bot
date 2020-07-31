@@ -15,6 +15,7 @@ type
   TFrmSubParam = class(TForm)
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
+    CBSubEnable: TCheckBox;
     EdtSubInc: TLabeledEdit;
     EdtSub_max_inc: TLabeledEdit;
     EdtSub_max_dec: TLabeledEdit;

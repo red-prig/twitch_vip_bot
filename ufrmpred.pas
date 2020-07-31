@@ -71,17 +71,21 @@ procedure TFrmPred.fetch_pred;
 var
  Tmp:TMTRandomContext;
  i:Byte;
+ cmd,cmd2:RawByteString;
 begin
+ cmd :=_get_first_cmd(vip_rnd.cmd);
+ cmd2:=_get_first_cmd(vip_rnd.cmd2);
+
  Tmp:=CR;
  For i:=1 to 20 do
  begin
   GridPred.FieldValue['num' ,i]:=' '+IntToStr(i);
   if fetch_random_no_more(Tmp) then
   begin
-   GridPred.FieldValue['res' ,i]:=vip_rnd.cmd;
+   GridPred.FieldValue['res' ,i]:=cmd;
   end else
   begin
-   GridPred.FieldValue['res' ,i]:=vip_rnd.cmd2;
+   GridPred.FieldValue['res' ,i]:=cmd2;
   end;
  end;
 end;

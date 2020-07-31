@@ -15,6 +15,7 @@ type
   TFrmVipParam = class(TForm)
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
+    CBVipEnable: TCheckBox;
     EdtPercent: TLabeledEdit;
     EdtTitle: TLabeledEdit;
     procedure BtnCancelClick(Sender: TObject);

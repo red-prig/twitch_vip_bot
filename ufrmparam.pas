@@ -103,13 +103,6 @@ end;
 
 procedure TFrmParam.BtnOkClick(Sender:TObject);
 begin
- if Length(EdtLogin.Text)=0 then
- begin
-  EdtLogin.SetFocus;
-  Application.ProcessMessages;
-  Exit;
- end;
-
  ModalResult:=mrOk;
  Hide;
 end;

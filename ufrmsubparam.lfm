@@ -1,7 +1,7 @@
 object FrmSubParam: TFrmSubParam
-  Left = 531
+  Left = 623
   Height = 309
-  Top = 131
+  Top = 149
   Width = 353
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры саб мода'
@@ -265,5 +265,14 @@ object FrmSubParam: TFrmSubParam
     OnExit = EdtSubExit
     OnKeyDown = FormKeyDown
     OnKeyPress = EdtSubKeyPress
+  end
+  object CBSubEnable: TCheckBox
+    Left = 265
+    Height = 19
+    Top = 8
+    Width = 77
+    Anchors = [akTop, akRight]
+    Caption = 'Включено'
+    TabOrder = 7
   end
 end

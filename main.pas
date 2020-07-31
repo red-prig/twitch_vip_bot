@@ -70,6 +70,8 @@ type
     Procedure OnList(Sender:TBaseTask);
     Procedure OnGetSubTime(Sender:TBaseTask);
     procedure OnPopupClose(Sender:TObject);
+    procedure SetViewFlag(f:byte;b:Boolean);
+    function  GetViewFlag(f:byte):Boolean;
     procedure FormCreate(Sender: TObject);
     procedure UpdateTextSubTime(db:Boolean);
     procedure SetDBParam(Const fname,fvalue:RawByteString);
@@ -78,8 +80,8 @@ type
     function  CanSetTimerSubMode(m:Boolean):Boolean;
     procedure SetTimerSubMode(m:Boolean);
     procedure SubModeTimerUpdate(Sender:TObject);
-    procedure _inc_SubModeTime(var cmd:RawByteString);
-    procedure _dec_SubModeTime(var cmd:RawByteString);
+    procedure _inc_SubModeTime(var cmd:RawByteString;Const user:RawByteString);
+    procedure _dec_SubModeTime(var cmd:RawByteString;Const user:RawByteString);
     procedure OnBtnIncSubModeClick(Sender:TObject);
     procedure OnBtnDecSubModeClick(Sender:TObject);
     procedure LoadXML;
@@ -128,6 +130,8 @@ procedure push_login;
 procedure push_subs_only(m:Boolean);
 procedure push_reward(const S:RawByteString);
 
+function  _get_first_cmd(L:TStringList):RawByteString;
+
 var
  Config:TINIFile;
 
@@ -136,18 +140,24 @@ var
  chat:RawByteString;
  chat_id:RawByteString;
 
+ view_mask:Byte;
+
  vip_rnd:record
+  Enable:Boolean;
   title:RawByteString;
-  cmd:RawByteString;
-  cmd2:RawByteString;
+  cmd:TStringList;
+  cmd2:TStringList;
   perc:Byte;
  end;
 
  sub_mod:record
+  Enable:Boolean;
   inc_title:RawByteString;
   dec_title:RawByteString;
-  cmd_on :RawByteString;
-  cmd_off:RawByteString;
+  cmd_on :TStringList;
+  cmd_off:TStringList;
+  cmd_inc:TStringList;
+  cmd_dec:TStringList;
   inc_min:DWORD;
   max_inc:DWORD;
   max_dec:DWORD;
@@ -283,20 +293,58 @@ begin
  SendMainQueue(P);
 end;
 
+type
+ TPCharStream=class(TCustomMemoryStream)
+  public
+   constructor Create(P:PChar;len:SizeUint); virtual; overload;
+   procedure   SetNew(P:PChar;len:SizeUint);
+ end;
+
+constructor TPCharStream.Create(P:PChar;len:SizeUint);
+begin
+ inherited Create;
+ SetPointer(P,len);
+end;
+
+procedure TPCharStream.SetNew(P:PChar;len:SizeUint);
+begin
+ SetPosition(0);
+ SetPointer(P,len);
+end;
+
 const
  permission='You don''t have permission to perform that action.';
 
-var
- last_cmd:RawByteString;
+//var
+// last_cmd:RawByteString;
 
 procedure push_irc_msg(const msg:RawByteString);
 begin
- if (msg<>'') and (msg[1]='/') then
+ {if (msg<>'') and (msg[1]='/') then
  begin
   last_cmd:=msg;
- end;
+ end;}
  reply_irc_msg(msg);
 end;
+
+function _get_first_cmd(L:TStringList):RawByteString;
+begin
+ Result:='';
+ if (L<>nil) and (L.Count<>0) then
+  Result:=L.Strings[0];
+end;
+
+procedure push_irc_list(L:TStringList;const Args:Array of const);
+var
+ i:SizeInt;
+begin
+ if (L=nil) or (L.Count=0) then Exit;
+ For i:=0 to L.Count-1 do
+ begin
+  push_irc_msg(Format(L.Strings[i],Args));
+ end;
+end;
+
 
 procedure TFrmMain.SetLognBtn(Login:Boolean);
 begin
@@ -315,7 +363,7 @@ begin
            'ser":{"id":"84616392","login":"satan_rulezz","display_name":"Satan_R'+
            'ulezz"},"channel_id":"54742538","redeemed_at":"2020-07-08T18:38:23.01829'+
            '9023Z","reward":{"id":"9c25cd82-30e4-4e23-8dae-e3ae630b9bab","channel_id'+
-           '":"54742538","title":"VIP или БАН","prompt":"Может передумаю и  '+
+           '":"54742538","title":"Подрубай сабмод","prompt":"Может передумаю и  '+
            'отниму випку.","cost":450000,"is_user_input_required":true,"is_sub_only":'+
            'false,"image":null,"default_image":{"url_1x":"https://static-cdn.jtvnw.ne'+
            't/custom-reward-images/default-1.png","url_2x":"https://static-cdn.jtvnw.net'+
@@ -326,8 +374,7 @@ begin
            'se,"template_id":null,"updated_for_indicator_at":"2020-07-06T17:34:56.82009'+
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
-           'I5OTAyM1o="}}}');
-           }
+           'I5OTAyM1o="}}}');}
 
          {add_reward(
             '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:49:22.'+
@@ -400,9 +447,14 @@ begin
  Result:=Rfc3339toDateTime(msg2.Path['data.redemption.redeemed_at'].AsStr,false);
 end;
 
-function fetch_user(msg2:TJson):RawByteString; inline;
+function fetch_user_display_name(msg2:TJson):RawByteString; inline;
 begin
  Result:=msg2.Path['data.redemption.user.display_name'].AsStr;
+end;
+
+function fetch_user_login(msg2:TJson):RawByteString; inline;
+begin
+ Result:=msg2.Path['data.redemption.user.login'].AsStr;
 end;
 
 function fetch_msg(msg2:TJson):RawByteString; inline;
@@ -434,24 +486,15 @@ begin
   end;
 end;
 
-type
- TPCharStream=class(TCustomMemoryStream)
-  public
-   constructor Create(P:PChar;len:SizeUint); virtual; overload;
- end;
-
-constructor TPCharStream.Create(P:PChar;len:SizeUint);
-begin
- inherited Create;
- SetPointer(P,len);
-end;
-
 procedure TFrmMain.add_reward(const S:RawByteString);
 var
  DT:TDateTime;
  ms:TStream;
  msg2:TJson;
- msg,cmd,user,rs,reward_title:RawByteString;
+ msg,cmd,
+ user,
+ rs,
+ reward_title:RawByteString;
  FDbcScript:TDbcStatementScript;
 
 begin
@@ -474,7 +517,7 @@ begin
  if IsNullValue(DT) then DT:=Now;
 
  msg:=fetch_msg(msg2);
- user:=fetch_user(msg2);
+ user:=fetch_user_display_name(msg2);
 
  if msg2.Path['type'].AsStr='reward-redeemed' then
  begin
@@ -484,19 +527,19 @@ begin
   reward_title:=Trim(msg2.Path['data.redemption.reward.title'].AsStr);
   cmd:='';
 
-  if reward_title=vip_rnd.title then //vip/ban
+  if (vip_rnd.Enable) and (reward_title=vip_rnd.title) then //vip/ban
   begin
 
    if fetch_random_no_more(RCT) then
    begin
-    cmd:=Format(vip_rnd.cmd,[msg2.Path['data.redemption.user.login'].AsStr]);
-    push_irc_msg(cmd);
+    push_irc_list(vip_rnd.cmd,[fetch_user_login(msg2)]);
     //add_to_chat('>'+login+': '+cmd);
+    cmd:=Format(_get_first_cmd(vip_rnd.cmd),[fetch_user_login(msg2)]);
    end else
    begin
-    cmd:=Format(vip_rnd.cmd2,[msg2.Path['data.redemption.user.login'].AsStr]);
-    push_irc_msg(cmd);
+    push_irc_list(vip_rnd.cmd2,[fetch_user_login(msg2)]);
     //add_to_chat('>'+login+': '+cmd);
+    cmd:=Format(_get_first_cmd(vip_rnd.cmd2),[fetch_user_login(msg2)]);
    end;
 
    //Writeln('id               :',msg2.Path['data.redemption.id'].AsStr);
@@ -510,13 +553,16 @@ begin
    //Writeln('user_input       :',msg2.Path['data.redemption.user_input'].AsStr);
    //Writeln('status           :',msg2.Path['data.redemption.status'].AsStr);
   end else
-  if reward_title=sub_mod.inc_title then //add sub mode
+  if sub_mod.Enable then
   begin
-   _inc_SubModeTime(cmd);
-  end else
-  if reward_title=sub_mod.dec_title then //dec sub mode
-  begin
-   _dec_SubModeTime(cmd);
+   if reward_title=sub_mod.inc_title then //add sub mode
+   begin
+    _inc_SubModeTime(cmd,fetch_user_login(msg2));
+   end else
+   if reward_title=sub_mod.dec_title then //dec sub mode
+   begin
+    _dec_SubModeTime(cmd,fetch_user_login(msg2));
+   end;
   end;
 
   if cmd<>'' then
@@ -592,10 +638,12 @@ begin
   Dec(aRow);
  end;
 
- GridChat.ScrollModeVert:=smCell;
- GridChat.ScrollModeVert:=smSmooth;
-
- GridChat.ScrollBy(0,aRow);
+ if GridChat.HandleAllocated then
+ begin
+  GridChat.ScrollModeVert:=smCell;
+  GridChat.ScrollModeVert:=smSmooth;
+  GridChat.ScrollBy(0,aRow);
+ end;
 
 end;
 
@@ -654,10 +702,13 @@ begin
   Dec(aRow);
  end;
 
- GridStory.ScrollModeVert:=smCell;
- GridStory.ScrollModeVert:=smSmooth;
+ if GridStory.HandleAllocated then
+ begin
+  GridStory.ScrollModeVert:=smCell;
+  GridStory.ScrollModeVert:=smSmooth;
+  GridStory.ScrollBy(0,aRow);
+ end;
 
- GridStory.ScrollBy(0,aRow);
 end;
 
 Procedure TFrmMain.OnList(Sender:TBaseTask);
@@ -665,7 +716,7 @@ Var
  datetime_f,user_f,mes_f:SizeInt;
  i,c:SizeInt;
  ResultSet:TZResultSet;
- ms:TMemoryStream;
+ ms:TPCharStream;
  msg2:TJson;
  msg,cmd:RawByteString;
 begin
@@ -682,7 +733,7 @@ begin
 
  if c>0 then
  begin
-  ms:=TMemoryStream.Create;
+  ms:=TPCharStream.Create(nil,0);
   datetime_f:=ResultSet.FindColumn('datetime');
   user_f    :=ResultSet.FindColumn('user');
   mes_f     :=ResultSet.FindColumn('mes');
@@ -692,9 +743,7 @@ begin
 
    msg:=ResultSet.GetRawByteString(mes_f);
 
-   ms.Clear;
-   ms.Write(PAnsiChar(msg)^,Length(msg));
-   ms.Position:=0;
+   ms.SetNew(PAnsiChar(msg),Length(msg));
 
    msg2:=Default(TJson);
    try
@@ -718,12 +767,13 @@ begin
   FreeAndNil(ms);
  end;
 
- GridStory.ScrollModeVert:=smCell;
- GridStory.ScrollModeVert:=smSmooth;
-
- GridStory.ScrollBy(0,c);
-
- GridStory.Columns[0].Extent:=GridStory.Columns[0].MinExtent;
+ if GridStory.HandleAllocated then
+ begin
+  GridStory.ScrollModeVert:=smCell;
+  GridStory.ScrollModeVert:=smSmooth;
+  GridStory.ScrollBy(0,c);
+  GridStory.Columns[0].Extent:=GridStory.Columns[0].MinExtent;
+ end;
 
 end;
 
@@ -749,16 +799,26 @@ procedure TFrmMain.FormActivate(Sender: TObject);
 var
  cx:SizeInt;
 begin
- GridChat.AutoSizeCol(0,true);
- GridChat.Columns[0].MinExtent:=GridChat.Columns[0].Extent;
 
- cx:=GridStory.Canvas.TextExtent(' 0000.00.00 00:00:000').cx;
- GridStory.Columns[0].Extent:=cx;
- GridStory.Columns[0].MinExtent:=cx;
+ SetShowChat    (GetViewFlag(1));
+ SetShowStory   (GetViewFlag(2));
+ SetShowSubPanel(GetViewFlag(4));
 
- cx:=GridStory.Canvas.TextExtent(' YAEBALETOT').cx;
- GridStory.Columns[1].Extent:=cx;
- GridStory.Columns[1].MinExtent:=cx;
+ if GridChat.HandleAllocated then
+ begin
+  GridChat.AutoSizeCol(0,true);
+  GridChat.Columns[0].MinExtent:=GridChat.Columns[0].Extent;
+ end;
+
+ if GridStory.HandleAllocated then
+ begin
+  cx:=Canvas.TextExtent(' 0000.00.00 00:00:000').cx;
+  GridStory.Columns[0].Extent:=cx;
+  GridStory.Columns[0].MinExtent:=cx;
+  cx:=Canvas.TextExtent(' YAEBALETOT').cx;
+  GridStory.Columns[1].Extent:=cx;
+  GridStory.Columns[1].MinExtent:=cx;
+ end;
 
  if Item_AutoEnter.Checked then
  begin
@@ -776,6 +836,7 @@ begin
    end;
   end;
  end;
+
 end;
 
 procedure TFrmMain.BtnToolPopupClick(Sender:TObject);
@@ -804,9 +865,12 @@ procedure TFrmMain.SetShowChat(V:Boolean);
 Var
  Page:TKTabSheet;
 begin
+ SetViewFlag(1,V);
  Item_Chat.Checked:=V;
  Case V of
   True :begin
+         if GridChat.Parent<>nil then Exit;
+
          Page:=Pages.AddPage(Pages);
          Page.Caption:='[-_-] Чат';
          Page.Tag:=0;
@@ -817,6 +881,7 @@ begin
          EdtSend.Parent:=Page;
          EdtSend.Align:=alBottom;
          EdtSend.Anchors:=[akLeft,akRight,akBottom];
+
 
          GridChat.Parent:=Page;
          GridChat.Anchors:=[akTop,akLeft,akRight,akBottom];
@@ -830,29 +895,42 @@ begin
          GridChat.AnchorSide[akRight].Control:=Page;
          Page.EnableAlign;
 
+         if not GridChat.HandleAllocated then
+         begin
+          GridChat.AutoSizeCol(0,true);
+          GridChat.Columns[0].MinExtent:=GridChat.Columns[0].Extent;
+         end;
+
          Page.Show;
 
         end;
   False:begin
          Page:=TKTabSheet(GridChat.Parent);
-         Page.DisableAlign;
-         GridChat.Parent:=nil;
-         GridChat.Anchors:=[];
-         GridChat.AnchorSide[akBottom].Control:=nil;
-         EdtSend.Parent:=nil;
-         Page.EnableAlign;
-         Application.ReleaseComponent(Page);
+         if Page<>nil then
+         begin
+          Page.DisableAlign;
+          GridChat.Parent:=nil;
+          GridChat.Anchors:=[];
+          GridChat.AnchorSide[akBottom].Control:=nil;
+          EdtSend.Parent:=nil;
+          Page.EnableAlign;
+          Application.ReleaseComponent(Page);
+         end;
         end;
  end;
 end;
 
 procedure TFrmMain.SetShowStory(V:Boolean);
 Var
+ cx:Integer;
  Page:TKTabSheet;
 begin
+ SetViewFlag(2,V);
  Item_Story.Checked:=V;
  Case V of
   True :begin
+         if GridStory.Parent<>nil then Exit;
+
          Page:=Pages.AddPage(Pages);
          Page.Caption:='История наград';
          Page.Tag:=1;
@@ -860,11 +938,23 @@ begin
          Page.Show;
          GridStory.Parent:=Page;
          GridStory.AnchorAsAlign(alClient,1);
+
+         if not GridStory.HandleAllocated then
+         begin
+          cx:=Canvas.TextExtent(' 0000.00.00 00:00:000').cx;
+          GridStory.Columns[0].Extent:=cx;
+          GridStory.Columns[0].MinExtent:=cx;
+          cx:=Canvas.TextExtent(' YAEBALETOT').cx;
+          GridStory.Columns[1].Extent:=cx;
+          GridStory.Columns[1].MinExtent:=cx;
+         end;
+
         end;
   False:begin
          Page:=TKTabSheet(GridStory.Parent);
          GridStory.Parent:=nil;
-         Application.ReleaseComponent(Page);
+         if Page<>nil then
+          Application.ReleaseComponent(Page);
         end;
  end;
 end;
@@ -873,9 +963,12 @@ procedure TFrmMain.SetShowSubPanel(V:Boolean);
 Var
  Page:TKTabSheet;
 begin
+ SetViewFlag(4,V);
  Item_Subp.Checked:=V;
  Case V of
   True :begin
+         if PanelSub.Parent<>nil then Exit;
+
          Page:=Pages.AddPage(Pages);
          Page.Caption:='Сабмод';
          Page.Tag:=2;
@@ -886,7 +979,8 @@ begin
   False:begin
          Page:=TKTabSheet(PanelSub.Parent);
          PanelSub.Parent:=nil;
-         Application.ReleaseComponent(Page);
+         if Page<>nil then
+          Application.ReleaseComponent(Page);
         end;
  end;
 end;
@@ -941,6 +1035,7 @@ end;
 procedure TFrmMain.OnPopupClickSubParam(Sender:TObject);
 begin
  try
+  FrmSubParam.CBSubEnable.Checked:=sub_mod.Enable;
   FrmSubParam.EdtTitleSubInc.Text:=sub_mod.inc_title;
   FrmSubParam.EdtTitleSubDec.Text:=sub_mod.dec_title;
   FrmSubParam.EdtSubInc.Text     :=IntToStr(sub_mod.inc_min);
@@ -956,14 +1051,18 @@ begin
 
  if FrmSubParam.ShowModal=1 then
  begin
+  sub_mod.Enable   :=FrmSubParam.CBSubEnable.Checked;
   sub_mod.inc_title:=FrmSubParam.EdtTitleSubInc.Text;
   sub_mod.dec_title:=FrmSubParam.EdtTitleSubDec.Text;
   sub_mod.inc_min  :=StrToIntDef(FrmSubParam.EdtSubInc.Text,1);
-
   sub_mod.max_inc  :=StrToIntDef(FrmSubParam.EdtSub_max_inc.Text,0);
   sub_mod.max_dec  :=StrToIntDef(FrmSubParam.EdtSub_max_dec.Text,0);
 
   try
+   case sub_mod.Enable of
+    True :Config.WriteString('sub_mod','enable','1');
+    False:Config.WriteString('sub_mod','enable','0');
+   end;
    Config.WriteString('sub_mod','inc_title',sub_mod.inc_title);
    Config.WriteString('sub_mod','dec_title',sub_mod.dec_title);
    Config.WriteString('sub_mod','inc_min'  ,IntToStr(sub_mod.inc_min));
@@ -981,8 +1080,9 @@ end;
 procedure TFrmMain.OnPopupClickVipParam(Sender:TObject);
 begin
  try
-  FrmVipParam.EdtTitle.Text   :=vip_rnd.title;
-  FrmVipParam.EdtPercent.Text :=IntToStr(vip_rnd.perc);
+  FrmVipParam.CBVipEnable.Checked:=vip_rnd.Enable;
+  FrmVipParam.EdtTitle.Text      :=vip_rnd.title;
+  FrmVipParam.EdtPercent.Text    :=IntToStr(vip_rnd.perc);
 
  except
   on E:Exception do
@@ -993,11 +1093,16 @@ begin
 
  if FrmVipParam.ShowModal=1 then
  begin
-  vip_rnd.title:=Trim(FrmVipParam.EdtTitle.Text);
-  vip_rnd.perc :=StrToQWORDDef(FrmVipParam.EdtPercent.Text,70);
+  vip_rnd.Enable:=FrmVipParam.CBVipEnable.Checked;
+  vip_rnd.title :=Trim(FrmVipParam.EdtTitle.Text);
+  vip_rnd.perc  :=StrToQWORDDef(FrmVipParam.EdtPercent.Text,70);
   if vip_rnd.perc>100 then vip_rnd.perc:=100;
 
   try
+   case vip_rnd.Enable of
+    True :Config.WriteString('vip' ,'enable','1');
+    False:Config.WriteString('vip' ,'enable','0');
+   end;
    Config.WriteString('vip' ,'title'   ,vip_rnd.title);
    Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
   except
@@ -1127,6 +1232,30 @@ begin
  Close;
 end;
 
+procedure TFrmMain.SetViewFlag(f:byte;b:Boolean);
+begin
+ if b<>GetViewFlag(f) then
+ begin
+  Case b of
+   True :view_mask:=view_mask or f;
+   False:view_mask:=view_mask and (not f);
+  end;
+  try
+   Config.WriteString('view','mask',IntToStr(view_mask));
+  except
+   on E:Exception do
+   begin
+    DumpExceptionCallStack(E);
+   end;
+  end;
+ end;
+end;
+
+function  TFrmMain.GetViewFlag(f:byte):Boolean;
+begin
+ Result:=view_mask and f<>0;
+end;
+
 procedure TFrmMain.FormCreate(Sender: TObject);
 Var
  Btn:TButton;
@@ -1152,15 +1281,19 @@ begin
    chat   :=Trim(Config.ReadString('base','chat'   ,chat));
    chat_id:=Trim(Config.ReadString('base','chat_id',chat_id));
 
-   vip_rnd.title:=Trim(Config.ReadString('vip' ,'title',vip_rnd.title));
-   vip_rnd.perc :=StrToQWORDDef(Config.ReadString('vip' ,'msg_perc',IntToStr(vip_rnd.perc)),70);
+   vip_rnd.Enable:=Trim(Config.ReadString('vip','enable','0'))='1';
+   vip_rnd.title :=Trim(Config.ReadString('vip','title',vip_rnd.title));
+   vip_rnd.perc  :=StrToQWORDDef(Config.ReadString('vip','msg_perc',IntToStr(vip_rnd.perc)),70);
    if vip_rnd.perc>100 then vip_rnd.perc:=100;
 
+   view_mask:=StrToDWORDDef(Config.ReadString('view','mask','1'),1);
+
+   sub_mod.Enable   :=Trim(Config.ReadString('sub_mod','enable','0'))='1';
    sub_mod.inc_title:=Trim(Config.ReadString('sub_mod','inc_title',sub_mod.inc_title));
    sub_mod.dec_title:=Trim(Config.ReadString('sub_mod','dec_title',sub_mod.dec_title));
    sub_mod.inc_min  :=StrToDWORDDef(Config.ReadString('sub_mod','inc_min',IntToStr(sub_mod.inc_min)),30);
    sub_mod.max_inc  :=StrToDWORDDef(Config.ReadString('sub_mod','max_inc',IntToStr(sub_mod.max_inc)),0);
-   sub_mod.max_dec  :=StrToDWORDDef(Config.ReadString('sub_mod','max_inc',IntToStr(sub_mod.max_dec)),0);
+   sub_mod.max_dec  :=StrToDWORDDef(Config.ReadString('sub_mod','max_dec',IntToStr(sub_mod.max_dec)),0);
 
   except
    on E:Exception do
@@ -1173,6 +1306,10 @@ begin
   try
    //write
 
+   vip_rnd.Enable:=True;
+   sub_mod.Enable:=False;
+   view_mask:=1;
+
    Config:=TINIFile.Create(D);
    Config.WriteString('base','zurl'   ,DefZURL);
    Config.WriteString('base','login'  ,'');
@@ -1180,21 +1317,24 @@ begin
    Config.WriteString('base','chat'   ,chat);
    Config.WriteString('base','chat_id',chat_id);
 
+   Config.WriteString('vip' ,'enable'  ,'1');
    Config.WriteString('vip' ,'title'   ,vip_rnd.title);
    Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
 
    Config.WriteString('view','autologin','0');
    Config.WriteString('view','systray'  ,'1');
+   Config.WriteString('view','mask'     ,IntToStr(view_mask));
 
    vip_rnd.title:=Trim(Config.ReadString('vip' ,'title',vip_rnd.title));
    vip_rnd.perc :=StrToQWORDDef(Config.ReadString('vip' ,'msg_perc',''),70);
    if vip_rnd.perc>100 then vip_rnd.perc:=100;
 
+   Config.WriteString('sub_mod','enable','0');
    Config.WriteString('sub_mod','inc_title',sub_mod.inc_title);
    Config.WriteString('sub_mod','dec_title',sub_mod.dec_title);
    Config.WriteString('sub_mod','inc_min'  ,IntToStr(sub_mod.inc_min));
    Config.WriteString('sub_mod','max_inc'  ,IntToStr(sub_mod.max_inc));
-   Config.WriteString('sub_mod','max_inc'  ,IntToStr(sub_mod.max_dec));
+   Config.WriteString('sub_mod','max_dec'  ,IntToStr(sub_mod.max_dec));
 
   except
    on E:Exception do
@@ -1319,8 +1459,8 @@ begin
  BtnCfg.PopupMenu:=PopupCfg;
 
  try
-  Item_UseTray.Checked  :=Config.ReadString('view','systray'  ,'1')='1';
-  Item_AutoEnter.Checked:=Config.ReadString('view','autologin','0')='1';
+  Item_UseTray  .Checked:=Trim(Config.ReadString('view','systray'  ,'1'))='1';
+  Item_AutoEnter.Checked:=Trim(Config.ReadString('view','autologin','0'))='1';
  except
   on E:Exception do
   begin
@@ -1525,7 +1665,7 @@ begin
  Btn:=TButton.Create(PanelSub);
  Btn.OnClick:=@OnBtnIncSubModeClick;
  Btn.AutoSize:=True;
- Btn.Caption:='[+]';
+ Btn.Caption:='[+] время';
  Btn.AnchorSide[akTop].Side:=asrBottom;
  Btn.AnchorSide[akTop].Control:=TextSubTime;
  Btn.AnchorSide[akLeft].Side:=asrRight;
@@ -1550,7 +1690,7 @@ begin
  Btn:=TButton.Create(PanelSub);
  Btn.OnClick:=@OnBtnDecSubModeClick;
  Btn.AutoSize:=True;
- Btn.Caption:='[-]';
+ Btn.Caption:='[-] время';
  Btn.Anchors:=[akTop,akRight];
  Btn.AnchorSide[akTop].Side:=asrBottom;
  Btn.AnchorSide[akTop].Control:=TextSubTime;
@@ -1560,11 +1700,11 @@ begin
  Btn.BorderSpacing.Right:=5;
  Btn.Parent:=PanelSub;
 
- SetShowChat(True);
- SetShowStory(True);
- SetShowSubPanel(True);
+ //SetShowChat    (True);
+ //SetShowStory   (True);
+ //SetShowSubPanel(True);
 
- Pages.Pages[0].Show;
+ //Pages.Pages[0].Show;
 
  //add_to_chat('Включение!');
 
@@ -1693,7 +1833,7 @@ begin
    if (SubModeTimer=nil) then
    begin
     SubModeTimer:=TTimer.Create(Self);
-    SubModeTimer.Interval:=500;
+    SubModeTimer.Interval:=400;
     SubModeTimer.OnTimer:=@SubModeTimerUpdate;
    end;
    LabelSubMode.Font.Color:=$FF00;
@@ -1719,7 +1859,7 @@ begin
  //submode send on
  if CanSetTimerSubMode(true) then
  begin
-  push_irc_msg(sub_mod.cmd_on);
+  push_irc_list(sub_mod.cmd_on,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
  end;
 end;
 
@@ -1728,7 +1868,7 @@ begin
  //submode send off
  if CanSetTimerSubMode(false) then
  begin
-  push_irc_msg(sub_mod.cmd_off);
+  push_irc_list(sub_mod.cmd_off,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
  end;
 end;
 
@@ -1753,7 +1893,7 @@ begin
     //submode send off
     if CanSetTimerSubMode(false) then
     begin
-     push_irc_msg(sub_mod.cmd_off);
+     push_irc_list(sub_mod.cmd_off,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
     end;
    end;
    UpdateTextSubTime(abs(dbSubModeTime-SubModeTime)>=10);
@@ -1764,7 +1904,7 @@ begin
  end;
 end;
 
-procedure TFrmMain._inc_SubModeTime(var cmd:RawByteString);
+procedure TFrmMain._inc_SubModeTime(var cmd:RawByteString;Const user:RawByteString);
 begin
  SubModeTime:=SubModeTime+sub_mod.inc_min*60;
  dbSubModeTime:=SubModeTime;
@@ -1776,14 +1916,14 @@ begin
   end;
   if CanSetTimerSubMode(True) then
   begin
-   cmd:=sub_mod.cmd_on;
-   push_irc_msg(cmd);
+   push_irc_list(sub_mod.cmd_on,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_on),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
   end;
  end;
  UpdateTextSubTime(True);
 end;
 
-procedure TFrmMain._dec_SubModeTime(var cmd:RawByteString);
+procedure TFrmMain._dec_SubModeTime(var cmd:RawByteString;Const user:RawByteString);
 begin
  SubModeTime:=SubModeTime-sub_mod.inc_min*60;
  dbSubModeTime:=SubModeTime;
@@ -1799,8 +1939,8 @@ begin
   end;
   if CanSetTimerSubMode(False) then
   begin
-   cmd:=sub_mod.cmd_off;
-   push_irc_msg(cmd);
+   push_irc_list(sub_mod.cmd_off,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_off),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
   end;
  end;
  UpdateTextSubTime(True);
@@ -1810,14 +1950,14 @@ procedure TFrmMain.OnBtnIncSubModeClick(Sender:TObject);
 var
  cmd:RawByteString;
 begin
- _inc_SubModeTime(cmd);
+ _inc_SubModeTime(cmd,login);
 end;
 
 procedure TFrmMain.OnBtnDecSubModeClick(Sender:TObject);
 var
  cmd:RawByteString;
 begin
- _dec_SubModeTime(cmd);
+ _dec_SubModeTime(cmd,login);
 end;
 
 Const
@@ -1845,6 +1985,10 @@ type
  end;
 
  TLoadStr_Func=class(TNodeFunc)
+  class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
+ end;
+
+ TLoadList_Func=class(TNodeFunc)
   class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
  end;
 
@@ -1919,6 +2063,41 @@ begin
  end;
 end;
 
+Procedure LoadStringList(Var S:TStringList;Const Value:RawByteString);
+var
+ M:TPCharStream;
+ i:SizeInt;
+begin
+ if S<>nil then
+ begin
+  S.Clear;
+ end else
+ begin
+  S:=TStringList.Create;
+ end;
+ M:=TPCharStream.Create(PChar(Value),Length(Value));
+ S.LoadFromStream(M,True);
+ M.Free;
+
+ if S.Count<>0 then
+ For i:=0 to S.Count-1 do
+ begin
+  S.Strings[i]:=Trim(S.Strings[i]);
+ end;
+end;
+
+class procedure TLoadList_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+type
+ PStringList=^TStringList;
+begin
+ Case Name of
+  '':
+  begin
+   LoadStringList(PStringList(Node.CData)^,Value);
+  end;
+ end;
+end;
+
 class procedure TLoadPerc_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
 begin
  Case Name of
@@ -1945,15 +2124,15 @@ begin
  Case Name of
   'title':
    begin
-    Node.Push(TLoadStr_Func,@vip_rnd.title);
+    Node.Push(TLoadStr_Func ,@vip_rnd.title);
    end;
   'msg_cmd':
    begin
-    Node.Push(TLoadStr_Func,@vip_rnd.cmd);
+    Node.Push(TLoadList_Func,@vip_rnd.cmd);
    end;
   'msg_cmd2':
    begin
-    Node.Push(TLoadStr_Func,@vip_rnd.cmd2);
+    Node.Push(TLoadList_Func,@vip_rnd.cmd2);
    end;
   'perc':
    begin
@@ -1967,19 +2146,27 @@ begin
  Case Name of
   'inc_title':
    begin
-    Node.Push(TLoadStr_Func,@sub_mod.inc_title);
+    Node.Push(TLoadStr_Func  ,@sub_mod.inc_title);
    end;
   'dec_title':
    begin
-    Node.Push(TLoadStr_Func,@sub_mod.dec_title);
+    Node.Push(TLoadStr_Func  ,@sub_mod.dec_title);
    end;
   'cmd_on':
    begin
-    Node.Push(TLoadStr_Func,@sub_mod.cmd_on);
+    Node.Push(TLoadList_Func ,@sub_mod.cmd_on);
    end;
   'cmd_off':
    begin
-    Node.Push(TLoadStr_Func,@sub_mod.cmd_off);
+    Node.Push(TLoadList_Func ,@sub_mod.cmd_off);
+   end;
+  'cmd_inc':
+   begin
+    Node.Push(TLoadList_Func ,@sub_mod.cmd_inc);
+   end;
+  'cmd_dec':
+   begin
+    Node.Push(TLoadList_Func ,@sub_mod.cmd_dec);
    end;
   'inc_min':
    begin

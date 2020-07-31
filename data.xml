@@ -5,8 +5,14 @@
 
 <vip_rnd>
  <title>VIP или БАН</title>
- <msg_cmd>/vip %s</msg_cmd>
- <msg_cmd2>/timeout %s 86400</msg_cmd2>
+ <msg_cmd>
+  /vip %s
+  Лев %s полчает випку!
+ </msg_cmd>
+ <msg_cmd2>
+  /timeout %s 86400
+  Лев %s идёт отдыхать в баню на 24ч!
+ </msg_cmd2>
  <perc>70</perc>
 </vip_rnd>
 
@@ -14,47 +20,59 @@
  <inc_title>Подрубай сабмод</inc_title>
  <dec_title>Офай сабмод</dec_title>
  
- <cmd_on>/subscribers</cmd_on>
- <cmd_off>/subscribersoff</cmd_off>
+ <cmd_on>
+  /subscribers
+  Лев %s включает сабмод, время: %2:s
+ </cmd_on>
+
+ <cmd_off>
+  /subscribersoff
+  Лев %s выключает сабмод, время: %2:s
+ </cmd_off>
  
+ <cmd_inc>
+  Лев %s продляет сабмод на %s, время: %s
+ </cmd_inc>
+
+ <cmd_dec>
+  Лев %s укорачивает сабмод на %s, время: %s
+ </cmd_dec>
+
  <inc_min>30</inc_min>
 
  <max_inc>6</max_inc>
  <max_dec>6</max_dec>
-
 </sub_mod>
 
 <sql>
-
-<create>
-CREATE TABLE IF NOT EXISTS story (datetime DATETIME,user TEXT,mes TEXT);
-CREATE INDEX IF NOT EXISTS story_datetime ON story (datetime ASC);
-CREATE INDEX IF NOT EXISTS story_user ON story (user ASC);
-
-CREATE TABLE IF NOT EXISTS params (name TEXT,value TEXT);
-CREATE UNIQUE INDEX IF NOT EXISTS params_name ON params (name ASC);
-
-VACUUM
-</create>
-<insert>
-INSERT INTO story ( datetime,user,mes  ) VALUES(@datetime,@user,@mes);
-</insert>
-<list>
-//все записи
-//SELECT * FROM story;
-
-//последние 300 записей
-SELECT * FROM story LIMIT 300 OFFSET (SELECT COUNT(*) FROM story)-300;
-</list>
-
-<get_param>
-SELECT value FROM params WHERE (name=@name);
-</get_param>
-
-<set_param>
-INSERT OR REPLACE INTO params ( name,value  ) VALUES(@name,@value);
-</set_param>
-
+ <create>
+  CREATE TABLE IF NOT EXISTS story (datetime DATETIME,user TEXT,mes TEXT);
+  CREATE INDEX IF NOT EXISTS story_datetime ON story (datetime ASC);
+  CREATE INDEX IF NOT EXISTS story_user ON story (user ASC);
+ 
+  CREATE TABLE IF NOT EXISTS params (name TEXT,value TEXT);
+  CREATE UNIQUE INDEX IF NOT EXISTS params_name ON params (name ASC);
+ 
+  VACUUM
+ </create>
+ <insert>
+  INSERT INTO story ( datetime,user,mes  ) VALUES(@datetime,@user,@mes);
+ </insert>
+ <list>
+  //все записи
+  //SELECT * FROM story;
+ 
+  //последние 300 записей
+  SELECT * FROM story LIMIT 300 OFFSET (SELECT COUNT(*) FROM story)-300;
+ </list>
+ 
+ <get_param>
+  SELECT value FROM params WHERE (name=@name);
+ </get_param>
+ 
+ <set_param>
+  INSERT OR REPLACE INTO params ( name,value  ) VALUES(@name,@value);
+ </set_param>
 </sql>
 
 
