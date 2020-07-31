@@ -79,7 +79,7 @@ procedure TFrmSubParam.EdtSubKeyPress(Sender: TObject; var Key: char);
 begin
  prev_dw:=StrToDWORDDef(TLabeledEdit(Sender).Text,1);
  Case Key of
-  #8,#37,#39:;
+  #8,#9,#37,#39:;
   '0'..'9':;
   else
    Key:=#0;

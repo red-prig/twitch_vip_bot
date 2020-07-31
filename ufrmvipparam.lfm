@@ -1,7 +1,7 @@
 object FrmVipParam: TFrmVipParam
-  Left = 229
+  Left = 319
   Height = 154
-  Top = 116
+  Top = 114
   Width = 410
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры VIP'
@@ -27,7 +27,7 @@ object FrmVipParam: TFrmVipParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 0
+    TabOrder = 1
     OnKeyDown = FormKeyDown
   end
   object EdtPercent: TLabeledEdit
@@ -47,7 +47,7 @@ object FrmVipParam: TFrmVipParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 1
+    TabOrder = 2
     OnExit = EdtPercentExit
     OnKeyDown = FormKeyDown
     OnKeyPress = EdtPercentKeyPress
@@ -126,7 +126,7 @@ object FrmVipParam: TFrmVipParam
     }
     OnClick = BtnCancelClick
     OnKeyDown = FormKeyDown
-    TabOrder = 2
+    TabOrder = 4
   end
   object BtnOk: TBitBtn
     Left = 8
@@ -211,6 +211,6 @@ object FrmVipParam: TFrmVipParam
     Width = 77
     Anchors = [akTop, akRight]
     Caption = 'Включено'
-    TabOrder = 4
+    TabOrder = 0
   end
 end

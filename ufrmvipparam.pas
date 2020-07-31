@@ -43,7 +43,7 @@ begin
  prev_perc:=StrToQWORDDef(EdtPercent.Text,70);
  if prev_perc>100 then prev_perc:=100;
  Case Key of
-  #8,#37,#39:;
+  #8,#9,#37,#39:;
   '0'..'9':;
   else
    Key:=#0;

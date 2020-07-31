@@ -93,7 +93,7 @@ procedure TFrmParam.EdtNumKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState)
 begin
  if [ssAlt,ssCtrl]*Shift=[] then
  Case Key of
-  8,37,39:;
+  8,9,37,39:;
   ord('0')..ord('9'):;
   else
    Key:=0;

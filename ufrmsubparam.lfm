@@ -27,7 +27,7 @@ object FrmSubParam: TFrmSubParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 0
+    TabOrder = 1
     OnKeyDown = FormKeyDown
   end
   object EdtTitleSubDec: TLabeledEdit
@@ -47,7 +47,7 @@ object FrmSubParam: TFrmSubParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 1
+    TabOrder = 2
     OnKeyDown = FormKeyDown
   end
   object EdtSubInc: TLabeledEdit
@@ -67,7 +67,7 @@ object FrmSubParam: TFrmSubParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 2
+    TabOrder = 3
     OnExit = EdtSubExit
     OnKeyDown = FormKeyDown
     OnKeyPress = EdtSubKeyPress
@@ -145,7 +145,7 @@ object FrmSubParam: TFrmSubParam
       FF00FFFFFF00FFFFFF00
     }
     OnClick = BtnOkClick
-    TabOrder = 3
+    TabOrder = 6
   end
   object BtnCancel: TBitBtn
     Left = 251
@@ -220,7 +220,7 @@ object FrmSubParam: TFrmSubParam
       FF00FFFFFF00FFFFFF00
     }
     OnClick = BtnCancelClick
-    TabOrder = 4
+    TabOrder = 7
   end
   object EdtSub_max_inc: TLabeledEdit
     Left = 8
@@ -239,7 +239,7 @@ object FrmSubParam: TFrmSubParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 5
+    TabOrder = 4
     OnExit = EdtSubExit
     OnKeyDown = FormKeyDown
     OnKeyPress = EdtSubKeyPress
@@ -261,7 +261,7 @@ object FrmSubParam: TFrmSubParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 6
+    TabOrder = 5
     OnExit = EdtSubExit
     OnKeyDown = FormKeyDown
     OnKeyPress = EdtSubKeyPress
@@ -273,6 +273,6 @@ object FrmSubParam: TFrmSubParam
     Width = 77
     Anchors = [akTop, akRight]
     Caption = 'Включено'
-    TabOrder = 7
+    TabOrder = 0
   end
 end

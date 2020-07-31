@@ -870,12 +870,15 @@ begin
   //Writeln(n,'*',v,'*');
 
   Case n of
-   'subs-only'   :subs_only:=StrToIntDef(v,0);
    'subscriber'  :_sub:=StrToIntDef(v,0);
    'mod'         :_mod:=StrToIntDef(v,0);
    'slow'        :slow:=StrToQWordDef(v,0);
    'display-name':display_name:=v;
-   //Writeln(n,'*',v,'*');
+   else
+     if sub_mod.room_tag=n then
+     begin
+      subs_only:=StrToIntDef(v,0);
+     end;
   end;
 
  until (param='');

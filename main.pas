@@ -152,6 +152,10 @@ var
 
  sub_mod:record
   Enable:Boolean;
+  _label:record
+   name,_on,off:RawByteString;
+  end;
+  room_tag:RawByteString;
   inc_title:RawByteString;
   dec_title:RawByteString;
   cmd_on :TStringList;
@@ -474,7 +478,7 @@ begin
              //0..99         //70 0-69
  Result:=Random(Context,100)<vip_rnd.perc;
  if max<>0 then
-  For p:=0 to 3 do
+  For p:=0 to 1 do
   begin
    Tmp:=Context;
    For i:=0 to max-1 do
@@ -970,7 +974,7 @@ begin
          if PanelSub.Parent<>nil then Exit;
 
          Page:=Pages.AddPage(Pages);
-         Page.Caption:='Сабмод';
+         Page.Caption:=sub_mod._label.name;
          Page.Tag:=2;
          Page.ImageIndex:=-1;
          Page.Show;
@@ -1508,7 +1512,7 @@ begin
  PopupView.Items.Add(Item_Story);
 
  Item_Subp:=TMenuItem.Create(PopupView);
- Item_Subp.Caption:='Сабмод';
+ Item_Subp.Caption:=sub_mod._label.name;
  Item_Subp.Checked:=False;
  Item_Subp.Tag:=2;
  Item_Subp.OnClick:=@OnPopupClickSubPanel;
@@ -1629,7 +1633,7 @@ begin
  LabelSubMode.Top:=10;
  LabelSubMode.Font.Color:=0;
  LabelSubMode.Font.Size:=12;
- LabelSubMode.Caption:='Сабмод выключен';
+ LabelSubMode.Caption:=sub_mod._label.off;
  LabelSubMode.Parent:=PanelSub;
 
  TextSubTime:=TEdit.Create(PanelSub);
@@ -1837,7 +1841,7 @@ begin
     SubModeTimer.OnTimer:=@SubModeTimerUpdate;
    end;
    LabelSubMode.Font.Color:=$FF00;
-   LabelSubMode.Caption:='Сабмод включён';
+   LabelSubMode.Caption:=sub_mod._label._on;
    SubModeTick:=GetTickCount64;
    SubModeTimer.Enabled:=m;
   end;
@@ -1848,7 +1852,7 @@ begin
     SubModeTimer.Enabled:=m;
    end;
    LabelSubMode.Font.Color:=0;
-   LabelSubMode.Caption:='Сабмод выключен';
+   LabelSubMode.Caption:=sub_mod._label.off;
   end;
  end;
  UpdateTextSubTime(True);
@@ -1856,19 +1860,27 @@ end;
 
 procedure TFrmMain.BtnClickSubModeOn(Sender:TObject);
 begin
- //submode send on
  if CanSetTimerSubMode(true) then
  begin
+  //submode send on
   push_irc_list(sub_mod.cmd_on,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+ end else
+ begin
+  //submode send inc
+  push_irc_list(sub_mod.cmd_inc,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
  end;
 end;
 
 procedure TFrmMain.BtnClickSubModeOff(Sender:TObject);
 begin
- //submode send off
  if CanSetTimerSubMode(false) then
  begin
+  //submode send off
   push_irc_list(sub_mod.cmd_off,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+ end else
+ begin
+  //submode send dec
+  push_irc_list(sub_mod.cmd_dec,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
  end;
 end;
 
@@ -1918,7 +1930,15 @@ begin
   begin
    push_irc_list(sub_mod.cmd_on,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
    cmd:=Format(_get_first_cmd(sub_mod.cmd_on),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  end else
+  begin
+   push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
   end;
+ end else
+ begin
+  push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
  end;
  UpdateTextSubTime(True);
 end;
@@ -1941,7 +1961,15 @@ begin
   begin
    push_irc_list(sub_mod.cmd_off,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
    cmd:=Format(_get_first_cmd(sub_mod.cmd_off),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  end else
+  begin
+   push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
   end;
+ end else
+ begin
+  push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
  end;
  UpdateTextSubTime(True);
 end;
@@ -2005,6 +2033,10 @@ type
  end;
 
  TOpenSub_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TOpenSubLabel_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
@@ -2152,6 +2184,14 @@ begin
    begin
     Node.Push(TLoadStr_Func  ,@sub_mod.dec_title);
    end;
+  'label':
+   begin
+    Node.Push(TOpenSubLabel_Func,Node.CData);
+   end;
+  'room_tag':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod.room_tag);
+   end;
   'cmd_on':
    begin
     Node.Push(TLoadList_Func ,@sub_mod.cmd_on);
@@ -2183,6 +2223,23 @@ begin
  end;
 end;
 
+class procedure TOpenSubLabel_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'name':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod._label.name);
+   end;
+  'on':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod._label._on);
+   end;
+  'off':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod._label.off);
+   end;
+ end;
+end;
 
 class procedure TOpenSQL_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin

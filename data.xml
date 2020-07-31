@@ -20,6 +20,14 @@
  <inc_title>Подрубай сабмод</inc_title>
  <dec_title>Офай сабмод</dec_title>
  
+ <label>
+  <name>Сабмод</name>
+  <on>Сабмод включён</on>
+  <off>Сабмод выключен</off>
+ </label>
+
+ <room_tag>subs-only</room_tag>
+
  <cmd_on>
   /subscribers
   Лев %s включает сабмод, время: %2:s
@@ -31,11 +39,11 @@
  </cmd_off>
  
  <cmd_inc>
-  Лев %s продляет сабмод на %s, время: %s
+  Лев %s продляет сабмод на %s мин, время: %s
  </cmd_inc>
 
  <cmd_dec>
-  Лев %s укорачивает сабмод на %s, время: %s
+  Лев %s укорачивает сабмод на %s мин, время: %s
  </cmd_dec>
 
  <inc_min>30</inc_min>
