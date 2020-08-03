@@ -1644,7 +1644,7 @@ begin
 
  TextSubTime.Width :=PanelSub.ClientWidth-20;
  TextSubTime.Height:=PanelSub.ClientHeight-20;
- TextSubTime.Modified:=False;
+ TextSubTime.ReadOnly:=True;
  TextSubTime.Font.Size:=20;
  TextSubTime.Parent:=PanelSub;
 
