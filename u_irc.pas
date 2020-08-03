@@ -208,15 +208,17 @@ type
    ws_session:PfpWebsocket_session;
    time_kd:QWORD;
    url:RawByteString;
-   Constructor Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname:PAnsiChar;port:Word);
+   Constructor Init(ssl_ctx:Pssl_ctx);
+   procedure   Clear; virtual;
+   function    connect_hostname(family:Integer;hostname:PAnsiChar;port:Word):Boolean;
    Destructor  Destroy; override;
    function    session_recv:integer;
    function    session_send:integer;
    Procedure   ALPN;
    procedure   NewSession;
-   function    session_connect:integer; virtual;
-   function    session_reply:integer;   virtual;
-   procedure   session_reconnect;       virtual;
+   function    session_connect:integer;        virtual;
+   function    session_reply:integer;          virtual;
+   function    session_reconnect(sec:SizeUInt):Boolean;virtual;
  end;
 
  Tws_irc=class(TWebsocketData)
@@ -224,8 +226,9 @@ type
   msg_timer:Ptimer;
   login,oAuth,chat:RawByteString;
   msg_buf:RawByteString;
-  function    session_reply:integer;   override;
-  procedure   session_reconnect;       override;
+  function    session_reply:integer;          override;
+  function    session_reconnect(sec:SizeUInt):Boolean;override;
+  procedure   Clear;   override;
   Destructor  Destroy; override;
  end;
 
@@ -236,13 +239,17 @@ type
   nonce:RawByteString;
   msg_buf:TMemoryStream;
   function    session_reply:integer;   override;
-  procedure   session_reconnect;       override;
+  function    session_reconnect(sec:SizeUInt):Boolean;override;
+  procedure   Clear;   override;
   Destructor  Destroy; override;
  end;
 
 var
  ws_irc:Tws_irc;
  ws_pub:Tws_pub;
+
+ ws_irc_rt:Ptimer;
+ ws_pub_rt:Ptimer;
 
 function create_ssl(ssl_ctx:Pssl_ctx):PSSL;
 begin
@@ -253,22 +260,20 @@ begin
  end;
 end;
 
-Constructor TWebsocketData.Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname:PAnsiChar;port:Word);
+Constructor TWebsocketData.Init(ssl_ctx:Pssl_ctx);
 Var
  FSSL:PSSL;
 begin
- time_kd:=1500000;
-
- Log(irc_log,0,['Create:',hostname,':',port]);
+ Clear;
 
  if Assigned(ssl_ctx) then
  begin
   FSSL:=create_ssl(ssl_ctx);
-  Log(irc_log,0,'Create SSL');
+  Log(irc_log,0,'Init SSL');
  end else
  begin
   FSSL:=nil;
-  Log(irc_log,0,'Create');
+  Log(irc_log,0,'Init');
  end;
 
  if Assigned(ssl_ctx) then
@@ -281,20 +286,33 @@ begin
  end;
 
  bufferevent_setcb(bev,@Websocket_eventcb,Pointer(Self));
+end;
 
-
- if not bufferevent_socket_connect_hostname(bev,family,hostname,port) then
+function TWebsocketData.connect_hostname(family:Integer;hostname:PAnsiChar;port:Word):Boolean;
+begin
+ Log(irc_log,0,['connect_hostname:',hostname,':',port]);
+ Result:=bufferevent_socket_connect_hostname(bev,family,hostname,port);
+ if not Result then
  begin
   Log(irc_log,1,['error:bufferevent_socket_connect_hostname']);
  end;
 end;
 
-Destructor TWebsocketData.Destroy;
+procedure TWebsocketData.Clear;
 begin
+ time_kd:=1500000;
+ url:='';
  fpWebsocket_handshake_del(ws_handshake);
  fpWebsocket_session_del(ws_session);
  bufferevent_free(bev);
+ ws_handshake:=nil;
+ ws_session:=nil;
  bev:=nil;
+end;
+
+Destructor TWebsocketData.Destroy;
+begin
+ Clear;
  inherited;
 end;
 
@@ -505,7 +523,7 @@ begin
  Log(irc_log,0,'session_reply');
 end;
 
-procedure TWebsocketData.session_reconnect;
+function TWebsocketData.session_reconnect(sec:SizeUInt):Boolean;
 begin
 end;
 
@@ -521,7 +539,7 @@ begin
   begin
    if SessionData.session_recv<0 then
    begin
-    SessionData.Free;
+    if not SessionData.session_reconnect(2) then SessionData.Free;
    end else
     bufferevent_read(bev);
   end;
@@ -530,7 +548,7 @@ begin
   begin
    if SessionData.session_send<0 then
    begin
-    SessionData.Free;
+    if not SessionData.session_reconnect(2) then SessionData.Free;
    end;
   end;
 
@@ -539,7 +557,7 @@ begin
    Log(irc_log,0,['BEV_EVENT_CONNECTED:',bufferevent_get_fd(bev),':',GetThreadID]);
    if SessionData.session_connect<0 then
    begin
-    SessionData.Free;
+    if not SessionData.session_reconnect(10) then SessionData.Free;
    end;
   end;
 
@@ -550,15 +568,13 @@ begin
   Log(irc_log,0,['BEV_EVENT_ERROR_WS:',events and BEV_EVENT_EOF<>0]);
   if Assigned(SessionData) then
   begin
-   SessionData.session_reconnect;
-   FreeAndNil(SessionData);
-   Exit;
+   if not SessionData.session_reconnect(2) then SessionData.Free;
   end;
  end;
 
 end;
 
-procedure replyConnect_irc(const login,oAuth,chat:RawByteString);
+procedure replyConnect_irc(const login,oAuth,chat:RawByteString;rep:Boolean);
 Const
  Path='wss://irc-ws-r.chat.twitch.tv/';
 Var
@@ -582,24 +598,88 @@ begin
  end;
  Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
 
- ws_irc:=Tws_irc.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),port);
- ws_irc.url:=Path;
+ if ws_irc=nil then
+ begin
+  ws_irc:=Tws_irc.Create;
+ end;
+ ws_irc.Init(ctx);
+
+ ws_irc.url  :=Path;
  ws_irc.login:=login;
  ws_irc.oAuth:=oAuth;
  ws_irc.chat :=chat;
+
+ if not ws_irc.connect_hostname(AF_INET,PAnsiChar(URI.GetHost),port) then
+ begin
+  if rep then
+  begin
+   ws_irc.reconnect:=true;
+   if not ws_irc.session_reconnect(10) then FreeAndNil(ws_irc);
+  end;
+ end;
+
 end;
 
-procedure Tws_irc.session_reconnect;
+type
+ Pirc_Connect=^Tirc_Connect;
+ Tirc_Connect=record
+  login,oAuth,chat,chat_id:PAnsiChar;
+ end;
+
+function CopyPchar(Src:PAnsiChar;Len:size_t):PAnsiChar;
 begin
+ Result:=nil;
+ if (Src=nil) or (Len=0) then Exit;
+ Result:=GetMem(Len+1);
+ Move(Src^,Result^,Len);
+ Result[Len]:=#0;
+end;
+
+procedure Free_pirc_Connect(P:Pirc_Connect);
+begin
+ if P<>nil then
+ begin
+  FreeMem(P^.login  );
+  FreeMem(P^.oAuth  );
+  FreeMem(P^.chat   );
+  FreeMem(P^.chat_id);
+  FreeMem(P);
+ end;
+end;
+
+Procedure _ws_irc_rt_cb(ev:Ptimer;arg:pointer);
+begin
+ if ws_irc<>nil then
+ begin
+  replyConnect_irc(ws_irc.login,ws_irc.oAuth,ws_irc.chat,true);
+ end;
+ evtimer_del(ws_irc_rt);
+end;
+
+function Tws_irc.session_reconnect(sec:SizeUInt):Boolean;
+begin
+ Result:=False;
  if reconnect then
-  replyConnect_irc(login,oAuth,chat);
+ begin
+  evtimer_reuse(ws_irc_rt,@pool,@_ws_irc_rt_cb,nil);
+  evtimer_add  (ws_irc_rt,sec*1000000);
+  Result:=True;
+ end;
+end;
+
+procedure Tws_irc.Clear;
+begin
+ login:='';
+ oAuth:='';
+ chat:='';
+ msg_buf:='';
+ evtimer_del(msg_timer);
+ msg_timer:=nil;
 end;
 
 Destructor Tws_irc.Destroy;
 begin
  if Self=ws_irc then ws_irc:=nil;
- evtimer_del(msg_timer);
- msg_timer:=nil;
  inherited;
 end;
 
@@ -995,7 +1075,7 @@ begin
  fpWebsocket_session_submit_text(ws_session,PAnsiChar(S),Length(S));
 end;
 
-procedure replyConnect_pub(const oAuth,chat_id:RawByteString);
+procedure replyConnect_pub(const oAuth,chat_id:RawByteString;rep:Boolean);
 Const
  Path='wss://pubsub-edge.twitch.tv/v1';
 Var
@@ -1019,17 +1099,45 @@ begin
  end;
  Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
 
- ws_pub:=Tws_pub.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),port);
- ws_pub.url:=Path;
- ws_pub.oAuth:=oAuth;
+ if ws_pub=nil then
+ begin
+  ws_pub:=Tws_pub.Create;
+ end;
+ ws_pub.Init(ctx);
+
+ ws_pub.url    :=Path;
+ ws_pub.oAuth  :=oAuth;
  ws_pub.chat_id:=chat_id;
+
+ if not ws_pub.connect_hostname(AF_INET,PAnsiChar(URI.GetHost),port) then
+ begin
+  if rep then
+  begin
+   ws_pub.reconnect:=true;
+   if not ws_pub.session_reconnect(10) then FreeAndNil(ws_pub);
+  end;
+ end;
 end;
 
-type
- Pirc_Connect=^Tirc_Connect;
- Tirc_Connect=record
-  login,oAuth,chat,chat_id:PAnsiChar;
+Procedure _ws_pub_rt_cb(ev:Ptimer;arg:pointer);
+begin
+ if ws_pub<>nil then
+ begin
+  replyConnect_pub(ws_pub.oAuth,ws_pub.chat_id,true);
  end;
+ evtimer_del(ws_pub_rt);
+end;
+
+function Tws_pub.session_reconnect(sec:SizeUInt):Boolean;
+begin
+ Result:=False;
+ if reconnect then
+ begin
+  Result:=True;
+  evtimer_reuse(ws_pub_rt,@pool,@_ws_pub_rt_cb,nil);
+  evtimer_add  (ws_pub_rt,sec*1000000);
+ end;
+end;
 
 Procedure _irc_Connect_post(param1:SizeUInt;param2:Pointer);
 begin
@@ -1039,14 +1147,10 @@ begin
      FreeAndNil(ws_pub);
      With Pirc_Connect(param2)^ do
      begin
-      replyConnect_irc(GetStr(login,StrLen(login)),GetStr(oAuth,StrLen(oAuth)),GetStr(chat,StrLen(chat)));
-      replyConnect_pub(GetStr(oAuth,StrLen(oAuth)),GetStr(chat_id,StrLen(chat_id)));
-      FreeMem(login  );
-      FreeMem(oAuth  );
-      FreeMem(chat   );
-      FreeMem(chat_id);
+      replyConnect_irc(GetStr(login,StrLen(login)),GetStr(oAuth,StrLen(oAuth)),GetStr(chat,StrLen(chat)),false);
+      replyConnect_pub(GetStr(oAuth,StrLen(oAuth)),GetStr(chat_id,StrLen(chat_id)),false);
      end;
-     FreeMem(param2);
+     Free_pirc_Connect(Pirc_Connect(param2));
     end;
   1:begin
      evbuffer_clear(msg_send_buf);
@@ -1061,15 +1165,6 @@ begin
      FreeMem(param2);
     end;
  end;
-end;
-
-function CopyPchar(Src:PAnsiChar;Len:size_t):PAnsiChar;
-begin
- Result:=nil;
- if (Src=nil) or (Len=0) then Exit;
- Result:=GetMem(Len+1);
- Move(Src^,Result^,Len);
- Result[Len]:=#0;
 end;
 
 procedure reply_irc_Connect(const login,oAuth,chat,chat_id:RawByteString);
@@ -1260,11 +1355,6 @@ begin
 
 end;
 
-procedure Tws_pub.session_reconnect;
-begin
- replyConnect_pub(oAuth,chat_id);
-end;
-
 {
 
 *
@@ -1335,11 +1425,19 @@ balance\":{\"user_id\":\"436730045\",\"channel_id\":\"54742538\",\"balance\":872
 
 //{"type":"LISTEN","nonce":"0DttxLNIP5LdhN9LMJy69AIPJaKR6S","data":{"topics":["community-points-user-v1.436730045"],"auth_token":"1892vwii6x81tyd9tz0r1m3tcrmnod"}}
 
+procedure Tws_pub.Clear;
+begin
+ oAuth  :='';
+ chat_id:='';
+ nonce  :='';
+ evtimer_del(msg_timer);
+ msg_timer:=nil;
+ FreeAndNil(msg_buf);
+end;
+
 Destructor Tws_pub.Destroy;
 begin
  if Self=ws_pub then ws_pub:=nil;
- evtimer_del(msg_timer);
- FreeAndNil(msg_buf);
  inherited;
 end;
 
