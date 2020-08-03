@@ -208,7 +208,7 @@ type
    ws_session:PfpWebsocket_session;
    time_kd:QWORD;
    url:RawByteString;
-   Constructor Init(ssl_ctx:Pssl_ctx);
+   procedure   Init(ssl_ctx:Pssl_ctx);
    procedure   Clear; virtual;
    function    connect_hostname(family:Integer;hostname:PAnsiChar;port:Word):Boolean;
    Destructor  Destroy; override;
@@ -260,7 +260,7 @@ begin
  end;
 end;
 
-Constructor TWebsocketData.Init(ssl_ctx:Pssl_ctx);
+procedure TWebsocketData.Init(ssl_ctx:Pssl_ctx);
 Var
  FSSL:PSSL;
 begin
