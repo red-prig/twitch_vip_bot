@@ -17,8 +17,8 @@
 </vip_rnd>
 
 <sub_mod>
- <inc_title>Подрубай сабмод</inc_title>
- <dec_title>Офай сабмод</dec_title>
+ <inc_title>Sub Mode</inc_title>
+ <dec_title>Anti Sub Mode</dec_title>
  
  <label>
   <name>Сабмод</name>
@@ -46,10 +46,10 @@
   Лев %s укорачивает сабмод на %s мин, время: %s
  </cmd_dec>
 
- <inc_min>30</inc_min>
+ <inc_min>20</inc_min>
 
- <max_inc>6</max_inc>
- <max_dec>6</max_dec>
+ <max_inc>3</max_inc>
+ <max_dec>3</max_dec>
 </sub_mod>
 
 <sql>
