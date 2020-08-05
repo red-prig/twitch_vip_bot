@@ -2188,6 +2188,7 @@ var
 begin
  s:=(GetTickCount64-SubModeTick) div 1000;
  SubModeTick:=SubModeTick+s*1000;
+ if not sub_mod.Enable then Exit;
  if SubModeTime=0 then
  begin
   //wtf? submode without timer
