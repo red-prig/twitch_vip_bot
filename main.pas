@@ -76,8 +76,10 @@ type
     procedure SetViewFlag(f:byte;b:Boolean);
     function  GetViewFlag(f:byte):Boolean;
     procedure VipsEditorCreate(Sender:TObject;ACol,ARow:Integer;var AEditor:TWinControl);
+    function  FindVipUser(Const FValue:RawByteString):Integer;
     function  DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
+    function  DoVipDelete(aRow:Integer):Boolean;
     procedure FormCreate(Sender: TObject);
     procedure UpdateTextSubTime(db:Boolean);
     procedure SetDBParam(Const fname,fvalue:RawByteString);
@@ -101,6 +103,7 @@ type
    FListVipsScript  :TSQLScript;
    FInsertVipsScript:TSQLScript;
    FUpdateVipsScript:TSQLScript;
+   FDeleteVipsScript:TSQLScript;
 
    FGetParamScript:TSQLScript;
    FSetParamScript:TSQLScript;
@@ -170,6 +173,7 @@ var
   cmd:TStringList;
   cmd2:TStringList;
   perc:Byte;
+  days:DWORD;
  end;
 
  sub_mod:record
@@ -685,8 +689,8 @@ begin
  Show;
 end;
 
-procedure TFrmMain._set_field_story(DT:TDateTime;const user,S:RawByteString;aRow:Integer);
-Var
+function TryGetDateTime(const S:RawByteString;out Value:TDateTime):Boolean;
+var
  FS:TFormatSettings;
 begin
  FS:=DefaultFormatSettings;
@@ -695,8 +699,33 @@ begin
  FS.ShortTimeFormat:='hh:nn:ss';
  FS.LongTimeFormat:='hh:nn:ss';
  FS.TimeSeparator:=':';
+ FS.ListSeparator:=' ';
+ Result:=TryStrToDateTime2(S,Value,FS);
+end;
 
- GridStory.FieldValue['datetime',aRow]:=' '+DateTimeToStr(DT,FS,True);
+function GetDateTimeEnd(const Value:TDateTime):TDateTime;
+begin
+ Result:=IncDay(Value,vip_rnd.days);
+end;
+
+function GetDateTimeStr(Const Value:TDateTime):RawByteString;
+var
+ FS:TFormatSettings;
+begin
+ FS:=DefaultFormatSettings;
+ FS.ShortDateFormat:='yyyy/mm/dd';
+ FS.DateSeparator:='.';
+ FS.ShortTimeFormat:='hh:nn:ss';
+ FS.LongTimeFormat:='hh:nn:ss';
+ FS.TimeSeparator:=':';
+ FS.ListSeparator:=' ';
+ Result:=DateTimeToStr(Value,FS,True);
+end;
+
+procedure TFrmMain._set_field_story(DT:TDateTime;const user,S:RawByteString;aRow:Integer);
+
+begin
+ GridStory.FieldValue['datetime',aRow]:=' '+GetDateTimeStr(DT);
  GridStory.FieldValue['user'    ,aRow]:=user;
  GridStory.FieldValue['mes'     ,aRow]:=S;
 end;
@@ -820,9 +849,17 @@ begin
   begin
    ResultSet.MoveAbsolute(i);
 
-   GridVips.FieldValue['datebeg',i]:=ResultSet.GetRawByteString(datetime_f);
-   GridVips.FieldValue['user'   ,i]:=ResultSet.GetRawByteString(user_f);
-   //'dateend',' Истекает '
+   if ResultSet.IsNull(datetime_f) then
+   begin
+    GridVips.FieldValue['datebeg',i]:='';
+    GridVips.FieldValue['dateend',i]:='';
+    GridVips.FieldValue['user'   ,i]:=ResultSet.GetRawByteString(user_f);
+   end else
+   begin
+    GridVips.FieldValue['datebeg',i]:=GetDateTimeStr(ResultSet.GetDouble(datetime_f));
+    GridVips.FieldValue['dateend',i]:=GetDateTimeStr(GetDateTimeEnd(ResultSet.GetDouble(datetime_f)));
+    GridVips.FieldValue['user'   ,i]:=ResultSet.GetRawByteString(user_f);
+   end;
 
   end;
  end;
@@ -1347,14 +1384,30 @@ begin
  Result:=view_mask and f<>0;
 end;
 
+type
+ TUserMaskEdit=class(TCustomMaskEdit)
+  procedure ValidateEdit; override;
+ end;
+
+procedure TUserMaskEdit.ValidateEdit;
+begin
+ if Text='    .  .     :  :  ' then
+ begin
+  Clear;
+ end else
+ begin
+  inherited;
+ end;
+end;
+
 procedure TFrmMain.VipsEditorCreate(Sender:TObject;ACol,ARow:Integer;var AEditor:TWinControl);
 Var
- ME:TMaskEdit;
+ ME:TUserMaskEdit;
 begin
  Case GridVips.GetColumnName(ACol) of
   'datebeg':
    begin
-    ME:=TMaskEdit.Create(GridVips);
+    ME:=TUserMaskEdit.Create(GridVips);
     ME.EditMask:='0000/00/00 00:00:00';
     ME.SpaceChar:='_';
     AEditor:=ME;
@@ -1366,71 +1419,77 @@ begin
  end;
 end;
 
+function TFrmMain.FindVipUser(Const FValue:RawByteString):Integer;
+Var
+ i,u,C:Integer;
+begin
+ Result:=-1;
+ C:=GridVips.RowCount;
+ if C>1 then
+ begin
+  u:=GridVips.FindColumn('user');
+  if u<>-1 then
+   For i:=1 to C-1 do
+    if GridVips.Cells[u,i]=FValue then
+     Exit(i);
+ end;
+end;
+
 function TFrmMain.DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
 Var
  FDbcScript:TDbcStatementScript;
- FS:TFormatSettings;
  DT:TDateTime;
-
- Procedure NotSendSpace; inline;
- begin
-  Result:=False;
-  //GridVips.DeleteRow(ARow);
- end;
+ T:RawByteString;
 
 begin
  Result:=True;
-         //'    .  .     :  :  '
- Case GridVips.GetColumnName(ACol) of
+ Case FName of
   'datebeg':
    begin
     if FValue='    .  .     :  :  ' then
     begin
-     GridVips.FieldValue[FName,ARow]:='';
-     NotSendSpace;
+     GridVips.FieldValue[FName    ,ARow]:='';
+     GridVips.FieldValue['dateend',ARow]:='';
+     Result:=False;
     end else
     begin
-     FS:=DefaultFormatSettings;
-     FS.ShortDateFormat:='yyyy/mm/dd';
-     FS.DateSeparator:='.';
-     FS.ShortTimeFormat:='hh:nn:ss';
-     FS.LongTimeFormat:='hh:nn:ss';
-     FS.TimeSeparator:=':';
-     FS.ListSeparator:=' ';
-     if TryStrToDateTime2(FValue,DT,FS) then
+     if TryGetDateTime(FValue,DT) then
      begin
 
       FDbcScript:=TDbcStatementScript.Create;
       FDbcScript.Handle.DbcConnection:=DbcThread;
       FDbcScript.SetSctipt(FInsertVipsScript);
       FDbcScript.ExecuteScript;
-      FDbcScript.Params.SetAsDateTime('datetime',DT);
-      FDbcScript.Params.SetAsNull('user');
+      FDbcScript.Params.SetRawByteString(':field','datetime');
+      FDbcScript.Params.SetAsDateTime('value',DT);
       FDbcScript.Start;
       FDbcScript.Release;
+
+      GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
 
       GridVips.ResetRowInsert;
      end else
      begin
-      NotSendSpace
+      Result:=False;
      end;
     end;
 
    end;
   'user'   :
   begin
-   if Trim(FValue)='' then
+   T:=Trim(FValue);
+   if (T='') or (FindVipUser(T)<>-1) then
    begin
-    NotSendSpace;
+    Result:=False;
    end else
    begin
-    GridVips.FieldValue[FName,ARow]:=Trim(FValue);
+    GridVips.FieldValue[FName,ARow]:=T;
     FDbcScript:=TDbcStatementScript.Create;
     FDbcScript.Handle.DbcConnection:=DbcThread;
     FDbcScript.SetSctipt(FInsertVipsScript);
     FDbcScript.ExecuteScript;
-    FDbcScript.Params.SetAsNull('datetime');
-    FDbcScript.Params.SetRawByteString('user',Trim(FValue));
+    FDbcScript.Params.SetRawByteString(':field','user');
+    FDbcScript.Params.SetRawByteString('value',T);
     FDbcScript.Start;
     FDbcScript.Release;
 
@@ -1444,8 +1503,8 @@ end;
 function TFrmMain.DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
 Var
  FDbcScript:TDbcStatementScript;
- FS:TFormatSettings;
  DT:TDateTime;
+ T:RawByteString;
 
  Procedure NotSendSpace; inline;
  begin
@@ -1455,24 +1514,30 @@ Var
 
 begin
  Result:=True;
-         //'    .  .     :  :  '
- Case GridVips.GetColumnName(ACol) of
+ Case FName of
   'datebeg':
    begin
     if FValue='    .  .     :  :  ' then
     begin
-     GridVips.FieldValue[FName,ARow]:='';
-     NotSendSpace;
+
+     FDbcScript:=TDbcStatementScript.Create;
+     FDbcScript.Handle.DbcConnection:=DbcThread;
+     FDbcScript.SetSctipt(FUpdateVipsScript);
+     FDbcScript.ExecuteScript;
+     FDbcScript.Params.SetRawByteString(':field','datetime');
+     FDbcScript.Params.SetAsNull('value');
+     FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
+     FDbcScript.Start;
+     FDbcScript.Release;
+
+     GridVips.FieldValue[FName    ,ARow]:='';
+     GridVips.FieldValue['dateend',ARow]:='';
+
+     GridVips.ResetRowInsert;
+     Result:=False;
     end else
     begin
-     FS:=DefaultFormatSettings;
-     FS.ShortDateFormat:='yyyy/mm/dd';
-     FS.DateSeparator:='.';
-     FS.ShortTimeFormat:='hh:nn:ss';
-     FS.LongTimeFormat:='hh:nn:ss';
-     FS.TimeSeparator:=':';
-     FS.ListSeparator:=' ';
-     if TryStrToDateTime2(FValue,DT,FS) then
+     if TryGetDateTime(FValue,DT) then
      begin
 
       FDbcScript:=TDbcStatementScript.Create;
@@ -1485,6 +1550,8 @@ begin
       FDbcScript.Start;
       FDbcScript.Release;
 
+      GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
+
       GridVips.ResetRowInsert;
      end else
      begin
@@ -1495,34 +1562,43 @@ begin
    end;
   'user'   :
   begin
-   if Trim(FValue)='' then
+   T:=Trim(FValue);
+   if (T='') or (FindVipUser(T)<>-1) then
    begin
     NotSendSpace;
    end else
    begin
-    GridVips.FieldValue[FName,ARow]:=Trim(FValue);
     FDbcScript:=TDbcStatementScript.Create;
     FDbcScript.Handle.DbcConnection:=DbcThread;
     FDbcScript.SetSctipt(FUpdateVipsScript);
     FDbcScript.ExecuteScript;
     FDbcScript.Params.SetRawByteString(':field','user');
-    FDbcScript.Params.SetRawByteString('value',Trim(FValue));
-    if GridVips.FieldValue['user',ARow]='' then
-    begin
-     FDbcScript.Params.SetAsNull('user');
-    end
-    else
-    begin
-     FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
-    end;
+    FDbcScript.Params.SetRawByteString('value',T);
+    FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
     FDbcScript.Start;
     FDbcScript.Release;
 
+    GridVips.FieldValue[FName,ARow]:=T;
     GridVips.ResetRowInsert;
    end;
   end;
  end;
 
+end;
+
+function TFrmMain.DoVipDelete(aRow:Integer):Boolean;
+Var
+ FDbcScript:TDbcStatementScript;
+begin
+ Result:=True;
+
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.SetSctipt(FDeleteVipsScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
+ FDbcScript.Start;
+ FDbcScript.Release;
 end;
 
 procedure TFrmMain.FormCreate(Sender: TObject);
@@ -1992,6 +2068,7 @@ begin
  GridVips.OnEditorCreate:=@VipsEditorCreate;
  GridVips.FOnDbInsert:=@DoVipInsert;
  GridVips.FOnDbUpdate:=@DoVipUpdate;
+ GridVips.FOnDbDelete:=@DoVipDelete;
  GridVips.Parent:=PanelVips;
 
  //SetShowChat    (True);
@@ -2469,6 +2546,10 @@ begin
    begin
     Node.Push(TLoadPerc_Func,nil);
    end;
+  'days':
+   begin
+    Node.Push(TLoadDWORD_Func,@vip_rnd.days);
+   end;
  end;
 end;
 
@@ -2574,6 +2655,10 @@ begin
   'update_vips':
    begin
     Node.Push(TLoadSQL_Func,@frmMain.FUpdateVipsScript);
+   end;
+  'delete_vips':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FDeleteVipsScript);
    end;
  end;
 end;

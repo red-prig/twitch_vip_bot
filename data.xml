@@ -14,6 +14,7 @@
   Лев %s идёт отдыхать в баню на 24ч!
  </msg_cmd2>
  <perc>70</perc>
+ <days>30</days>
 </vip_rnd>
 
 <sub_mod>
@@ -61,7 +62,7 @@
   CREATE TABLE IF NOT EXISTS params (name TEXT,value TEXT);
   CREATE UNIQUE INDEX IF NOT EXISTS params_name ON params (name ASC);
  
-  CREATE TABLE IF NOT EXISTS vips (datetime DATETIME,user TEXT);
+  CREATE TABLE IF NOT EXISTS vips  (datetime DATETIME,user TEXT NOT NULL ON CONFLICT ROLLBACK DEFAULT '');
   CREATE INDEX IF NOT EXISTS vips_datetime ON vips (datetime ASC);
   CREATE UNIQUE INDEX IF NOT EXISTS vips_user ON vips (user ASC);
 
@@ -91,12 +92,16 @@
  </list_vips>
 
  <insert_vips>
-  INSERT INTO vips ( datetime,user  ) VALUES(@datetime,@user);
+  INSERT INTO vips ( @+field  ) VALUES(@value);
  </insert_vips>
 
  <update_vips>
   UPDATE vips SET @+field=@value WHERE user=@user;
  </update_vips>
+
+ <delete_vips>
+  DELETE FROM vips WHERE user=@user;
+ </delete_vips>
 
 </sql>
 
