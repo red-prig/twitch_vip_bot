@@ -403,6 +403,7 @@ begin
 
         end;
   False:begin
+         BtnEnter.Enabled:=True;
          BtnEnter.Visible:=True;
          BtnInfo .Visible:=False;
          BtnClose.Visible:=False;
@@ -1207,6 +1208,8 @@ begin
     DumpExceptionCallStack(E);
    end;
   end;
+
+  BtnEnter.Enabled:=False;
 
  end;
 end;
