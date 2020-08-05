@@ -118,6 +118,7 @@ type
    function   GetAsDateTime(Const FName:RawByteString):TDateTime;
    Procedure  SetRawByteString(Const FName,FValue:RawByteString);
    Procedure  SetAsDateTime(Const FName:RawByteString;FValue:TDateTime);
+   Procedure  SetAsNull(Const FName:RawByteString);
    property   ZValues[const FName:RawByteString]:TZVariant read GetValue write SetValue;
  end;
 
@@ -526,6 +527,11 @@ begin
  SetValue(FName,EncodeDateTime(FValue));
 end;
 
+Procedure TSQLVariables.SetAsNull(Const FName:RawByteString);
+begin
+ SetValue(FName,EncodeNull);
+end;
+
 procedure TSQLVariables.Clear;
 Var
  i:Longint;
@@ -606,7 +612,7 @@ type
   Procedure AddToken(Const _Token:TZToken);
   Procedure AddParam(Const _Name:RawByteString);
   Procedure AddValue(isVar:Boolean;Const _Name:RawByteString);
-  Procedure Add4String; inline;
+  Procedure Add4String(TrimR:Boolean); inline;
   Procedure Add2Param; inline;
   function  IsSpace:Boolean; inline;
   procedure Clean;
@@ -807,10 +813,26 @@ begin
  end;
 end;
 
-Procedure TQueryState.Add4String; inline;
+Procedure TQueryState.Add4String(TrimR:Boolean); inline;
+Var
+ T:RawByteString;
 begin
  if DataLen=0 then Exit;
- AddValue(false,Trim(Copy(Data,1,DataLen)));
+
+ if Length(FValues)=0 then
+ begin
+  T:=TrimLeft(Copy(Data,1,DataLen));
+ end else
+ begin
+  T:=Copy(Data,1,DataLen);
+ end;
+
+ if TrimR then
+ begin
+  T:=TrimRight(T);
+ end;
+
+ AddValue(false,T);
  DataLen:=0;
 end;
 
@@ -834,7 +856,7 @@ end;
 
 procedure TQueryState.Finish;
 begin
- Add4String;
+ Add4String(True);
 end;
 
 procedure TQueryState.Parse(Const FToken:TZToken);
@@ -844,7 +866,7 @@ begin
                 AddToken(FToken);
   ttSpecial:if GetVariableType(FToken.P,FToken.L)=3 then
             begin
-             Add4String;
+             Add4String(False);
              AddValue(true,DecodeVariable(FToken.P,FToken.L));
             end else
             begin

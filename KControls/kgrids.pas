@@ -7705,7 +7705,7 @@ procedure TKCustomGrid.EditorDestroy(var AEditor: TWinControl; ACol, ARow: Integ
 begin
   if Assigned(FOnEditorDestroy) then
     FOnEditorDestroy(Self, AEditor, ACol, ARow)
-  else if Assigned(FCells) then
+  else if Assigned(FCells) and RowValid(ARow) then
     InternalGetCell(ACol, ARow).EditorDestroy(AEditor, ACol, ARow)
   else
     DefaultEditorDestroy(AEditor, ACol, ARow);
@@ -13418,6 +13418,7 @@ procedure TKCustomGrid.UpdateEditor(Show: Boolean);
       EditorDestroy(FEditor, FEditorCell.Col, FEditorCell.Row);
       FreeAndNil(FEditor);
       if Assigned(FCells) then
+        if RowValid(FEditorCell.Row) then
         if CompareCellInstances(FEditedCell, InternalGetCell(FEditorCell.Col, FEditorCell.Row)) <> 0 then
           Changed;
       FEditorCell := GridPoint(-1, -1);

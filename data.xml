@@ -61,18 +61,22 @@
   CREATE TABLE IF NOT EXISTS params (name TEXT,value TEXT);
   CREATE UNIQUE INDEX IF NOT EXISTS params_name ON params (name ASC);
  
+  CREATE TABLE IF NOT EXISTS vips (datetime DATETIME,user TEXT);
+  CREATE INDEX IF NOT EXISTS vips_datetime ON vips (datetime ASC);
+  CREATE UNIQUE INDEX IF NOT EXISTS vips_user ON vips (user ASC);
+
   VACUUM
  </create>
- <insert>
+ <insert_story>
   INSERT INTO story ( datetime,user,mes  ) VALUES(@datetime,@user,@mes);
- </insert>
- <list>
+ </insert_story>
+ <list_story>
   //все записи
   //SELECT * FROM story;
  
   //последние 300 записей
   SELECT * FROM story LIMIT 300 OFFSET (SELECT COUNT(*) FROM story)-300;
- </list>
+ </list_story>
  
  <get_param>
   SELECT value FROM params WHERE (name=@name);
@@ -81,6 +85,19 @@
  <set_param>
   INSERT OR REPLACE INTO params ( name,value  ) VALUES(@name,@value);
  </set_param>
+
+ <list_vips>
+  SELECT * FROM vips;
+ </list_vips>
+
+ <insert_vips>
+  INSERT INTO vips ( datetime,user  ) VALUES(@datetime,@user);
+ </insert_vips>
+
+ <update_vips>
+  UPDATE vips SET @+field=@value WHERE user=@user;
+ </update_vips>
+
 </sql>
 
 

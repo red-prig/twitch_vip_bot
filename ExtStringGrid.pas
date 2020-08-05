@@ -83,8 +83,6 @@ type
    FRowInsId:Longint;
    FRowInsIsNull:Boolean;
 
-   Procedure   ResetRowInsert; inline;
-
    function    DrawCell(ACol,ARow:Integer;ARect:TRect;AState:TKGridDrawState):Boolean; override;
    function    EditorCreate(ACol,ARow:Integer):TWinControl; override;
    procedure   EditorDataFromGrid(AEditor:TWinControl;ACol,ARow:Integer); override;
@@ -103,6 +101,7 @@ type
    FOnDbInsert:TOnDbUpdateRow;
    FOnDbDelete:TOnDbDeleteRow;
 
+   Procedure   ResetRowInsert; inline;
    constructor Create(AOwner:TComponent); override;
    procedure   DoInsert;             override;
    procedure   DoDelete;             override;
@@ -909,7 +908,7 @@ begin
  begin
   FRowInsIsNull:=True;
   FRowInsId:=RowCount;
-  InsertRow(RowCount-1);
+  InsertRow(RowCount);
 
   if (goRowSelect in Options) then
   begin
@@ -947,8 +946,8 @@ begin
  begin
   if (FRowInsId<>-1) and (FRowInsId<>Row) and FRowInsIsNull then
   begin
+   DeleteRow(FRowInsId);
    FRowInsId:=-1;
-   DeleteRow(Row);
   end;
  end;
 end;
@@ -1026,16 +1025,19 @@ begin
       if FOnDbInsert(TExtGridColumn(A).Name,Value,ACol,ARow,AEditor) then
       begin
        FRowInsIsNull:=False;
-       InternalSetCells(ACol,ARow,Value);
+       if RowValid(ARow) then
+        InternalSetCells(ACol,ARow,Value);
       end;
     end else
     if Assigned(FOnDbUpdate) then
      if FOnDbUpdate(TExtGridColumn(A).Name,Value,ACol,ARow,AEditor) then
      begin
-      InternalSetCells(ACol,ARow,Value);
+      if RowValid(ARow) then
+       InternalSetCells(ACol,ARow,Value);
      end;
    end else
-    InternalSetCells(ACol,ARow,Value);
+    if RowValid(ARow) then
+     InternalSetCells(ACol,ARow,Value);
   end;
  end;
 end;

@@ -12,7 +12,7 @@ uses
   Dialogs,ComCtrls,StdCtrls,
   toolwin,
   kgrids,kpagecontrol,kcontrols,
-  LResources,Menus,LCLType,Clipbrd, ExtCtrls, Buttons,
+  LResources,Menus,LCLType,Clipbrd, ExtCtrls, Buttons, MaskEdit,
   ExtStringGrid,
 
   mtRandom,
@@ -55,6 +55,8 @@ type
     procedure SetShowChat(V:Boolean);
     procedure SetShowStory(V:Boolean);
     procedure SetShowSubPanel(V:Boolean);
+    procedure SetShowVipsPanel(V:Boolean);
+    procedure OnPopupClickVipsPanel(Sender:TObject);
     procedure OnPopupClickSubPanel(Sender:TObject);
     procedure OnPopupClickChat(Sender:TObject);
     procedure OnPopupClickStory(Sender:TObject);
@@ -67,11 +69,15 @@ type
     procedure OnTabClose(Sender:TObject;TabIndex:Integer;var CanClose:Boolean);
     procedure OnBtnEnterClick(Sender:TObject);
     procedure OnBtnCloseClick(Sender:TObject);
-    Procedure OnList(Sender:TBaseTask);
+    Procedure OnListStory(Sender:TBaseTask);
+    Procedure OnListVips(Sender:TBaseTask);
     Procedure OnGetSubTime(Sender:TBaseTask);
     procedure OnPopupClose(Sender:TObject);
     procedure SetViewFlag(f:byte;b:Boolean);
     function  GetViewFlag(f:byte):Boolean;
+    procedure VipsEditorCreate(Sender:TObject;ACol,ARow:Integer;var AEditor:TWinControl);
+    function  DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
+    function  DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     procedure FormCreate(Sender: TObject);
     procedure UpdateTextSubTime(db:Boolean);
     procedure SetDBParam(Const fname,fvalue:RawByteString);
@@ -88,34 +94,50 @@ type
   private
 
   public
-   FCreateScript:TSQLScript;
-   FListScript  :TSQLScript;
-   FInsertScript:TSQLScript;
+   FCreateScript     :TSQLScript;
+   FListStoryScript  :TSQLScript;
+   FInsertStoryScript:TSQLScript;
+
+   FListVipsScript  :TSQLScript;
+   FInsertVipsScript:TSQLScript;
+   FUpdateVipsScript:TSQLScript;
 
    FGetParamScript:TSQLScript;
    FSetParamScript:TSQLScript;
 
    login:RawByteString;
 
+   GridChat:TExtStringGrid;
+   GridStory:TExtStringGrid;
+   Pages:TKCustomPageControl;
+
    frmPanel:TPanel;
    LeftBar,RightBar:TToolbar;
-   BtnCfg:TButton;
+   BtnCfg :TButton;
    BtnView:TButton;
 
    BtnEnter:TSpeedButton;
-   BtnInfo:TSpeedButton;
+   BtnInfo :TSpeedButton;
    BtnClose:TSpeedButton;
 
    PopupView:TPopupMenu;
-   PopupCfg:TPopupMenu;
+   PopupCfg :TPopupMenu;
 
    Item_Chat,
    Item_Story,
    Item_Subp,
+   Item_Vips,
    Item_AutoEnter,
    Item_UseTray:TMenuItem;
 
    EdtSend:TEdit;
+
+   PanelSub:TPanel;
+   LabelSubMode:TLabel;
+   TextSubTime:TEdit;
+
+   PanelVips:TPanel;
+   GridVips:TDBStringGrid;
 
   end;
 
@@ -192,14 +214,6 @@ uses
 
 var
  KCLOSE,KCLOSE_D,DIMAGE:TImageList;
-
- GridChat:TExtStringGrid;
- GridStory:TExtStringGrid;
- Pages:TKCustomPageControl;
-
- PanelSub:TPanel;
- LabelSubMode:TLabel;
- TextSubTime:TEdit;
 
  DbcThread:TDbcConnection;
 
@@ -586,7 +600,7 @@ begin
 
   FDbcScript:=TDbcStatementScript.Create;
   FDbcScript.Handle.DbcConnection:=DbcThread;
-  FDbcScript.SetSctipt(FInsertScript);
+  FDbcScript.SetSctipt(FInsertStoryScript);
   FDbcScript.ExecuteScript;
   FDbcScript.Params.SetAsDateTime('datetime',DT);
   FDbcScript.Params.SetRawByteString('user',user);
@@ -716,7 +730,7 @@ begin
 
 end;
 
-Procedure TFrmMain.OnList(Sender:TBaseTask);
+Procedure TFrmMain.OnListStory(Sender:TBaseTask);
 Var
  datetime_f,user_f,mes_f:SizeInt;
  i,c:SizeInt;
@@ -779,7 +793,46 @@ begin
   GridStory.ScrollBy(0,c);
   GridStory.Columns[0].Extent:=GridStory.Columns[0].MinExtent;
  end;
+end;
 
+Procedure TFrmMain.OnListVips(Sender:TBaseTask);
+Var
+ datetime_f,user_f:SizeInt;
+ i,c:SizeInt;
+ ResultSet:TZResultSet;
+begin
+ ResultSet:=TDbcStatementScript(Sender).ResultSet;
+
+ if ResultSet=nil then Exit;
+
+ c:=0;
+ if ResultSet.Last then
+ begin
+  c:=ResultSet.GetRow;
+  GridVips.RowCount:=c+1;
+ end;
+
+ if c>0 then
+ begin
+  datetime_f:=ResultSet.FindColumn('datetime');
+  user_f    :=ResultSet.FindColumn('user');
+  For i:=1 to c do
+  begin
+   ResultSet.MoveAbsolute(i);
+
+   GridVips.FieldValue['datebeg',i]:=ResultSet.GetRawByteString(datetime_f);
+   GridVips.FieldValue['user'   ,i]:=ResultSet.GetRawByteString(user_f);
+   //'dateend',' Истекает '
+
+  end;
+ end;
+
+ if GridVips.HandleAllocated then
+ begin
+  GridVips.ScrollModeVert:=smCell;
+  GridVips.ScrollModeVert:=smSmooth;
+  GridVips.Columns[0].Extent:=GridVips.Columns[0].MinExtent;
+ end;
 end;
 
 Procedure TFrmMain.OnGetSubTime(Sender:TBaseTask);
@@ -805,25 +858,10 @@ var
  cx:SizeInt;
 begin
 
- SetShowChat    (GetViewFlag(1));
- SetShowStory   (GetViewFlag(2));
- SetShowSubPanel(GetViewFlag(4));
-
- if GridChat.HandleAllocated then
- begin
-  GridChat.AutoSizeCol(0,true);
-  GridChat.Columns[0].MinExtent:=GridChat.Columns[0].Extent;
- end;
-
- if GridStory.HandleAllocated then
- begin
-  cx:=Canvas.TextExtent(' 0000.00.00 00:00:000').cx;
-  GridStory.Columns[0].Extent:=cx;
-  GridStory.Columns[0].MinExtent:=cx;
-  cx:=Canvas.TextExtent(' YAEBALETOT').cx;
-  GridStory.Columns[1].Extent:=cx;
-  GridStory.Columns[1].MinExtent:=cx;
- end;
+ SetShowChat     (GetViewFlag(1));
+ SetShowStory    (GetViewFlag(2));
+ SetShowSubPanel (GetViewFlag(4));
+ SetShowVipsPanel(GetViewFlag(8));
 
  if Item_AutoEnter.Checked then
  begin
@@ -900,7 +938,7 @@ begin
          GridChat.AnchorSide[akRight].Control:=Page;
          Page.EnableAlign;
 
-         if not GridChat.HandleAllocated then
+         if GridChat.HandleAllocated then
          begin
           GridChat.AutoSizeCol(0,true);
           GridChat.Columns[0].MinExtent:=GridChat.Columns[0].Extent;
@@ -944,9 +982,9 @@ begin
          GridStory.Parent:=Page;
          GridStory.AnchorAsAlign(alClient,1);
 
-         if not GridStory.HandleAllocated then
+         if GridStory.HandleAllocated then
          begin
-          cx:=Canvas.TextExtent(' 0000.00.00 00:00:000').cx;
+          cx:=Canvas.TextExtent(' 0000.00.00 00:00:00M').cx;
           GridStory.Columns[0].Extent:=cx;
           GridStory.Columns[0].MinExtent:=cx;
           cx:=Canvas.TextExtent(' YAEBALETOT').cx;
@@ -988,6 +1026,51 @@ begin
           Application.ReleaseComponent(Page);
         end;
  end;
+end;
+
+procedure TFrmMain.SetShowVipsPanel(V:Boolean);
+Var
+ cx:Integer;
+ Page:TKTabSheet;
+begin
+ SetViewFlag(8,V);
+ Item_Vips.Checked:=V;
+ Case V of
+  True :begin
+         if PanelVips.Parent<>nil then Exit;
+
+         Page:=Pages.AddPage(Pages);
+         Page.Caption:='Список випов';
+         Page.Tag:=3;
+         Page.ImageIndex:=-1;
+         Page.Show;
+         PanelVips.Parent:=Page;
+
+         if GridVips.HandleAllocated then
+         begin
+          cx:=Canvas.TextExtent(' 0000.00.00 00:00:00M').cx;
+          GridVips.Columns[0].Extent:=cx;
+          GridVips.Columns[0].MinExtent:=cx;
+          GridVips.Columns[1].Extent:=cx;
+          GridVips.Columns[1].MinExtent:=cx;
+          cx:=Canvas.TextExtent(' YAEBALETOT').cx;
+          GridVips.Columns[2].Extent:=cx;
+          GridVips.Columns[2].MinExtent:=cx;
+         end;
+
+        end;
+  False:begin
+         Page:=TKTabSheet(PanelVips.Parent);
+         PanelVips.Parent:=nil;
+         if Page<>nil then
+          Application.ReleaseComponent(Page);
+        end;
+ end;
+end;
+
+procedure TFrmMain.OnPopupClickVipsPanel(Sender:TObject);
+begin
+ SetShowVipsPanel(not Item_Vips.Checked);
 end;
 
 procedure TFrmMain.OnPopupClickSubPanel(Sender:TObject);
@@ -1166,6 +1249,7 @@ begin
   0:SetShowChat(False);
   1:SetShowStory(False);
   2:SetShowSubPanel(False);
+  3:SetShowVipsPanel(False);
  end;
 end;
 
@@ -1261,6 +1345,184 @@ end;
 function  TFrmMain.GetViewFlag(f:byte):Boolean;
 begin
  Result:=view_mask and f<>0;
+end;
+
+procedure TFrmMain.VipsEditorCreate(Sender:TObject;ACol,ARow:Integer;var AEditor:TWinControl);
+Var
+ ME:TMaskEdit;
+begin
+ Case GridVips.GetColumnName(ACol) of
+  'datebeg':
+   begin
+    ME:=TMaskEdit.Create(GridVips);
+    ME.EditMask:='0000/00/00 00:00:00';
+    ME.SpaceChar:='_';
+    AEditor:=ME;
+   end;
+  'user'   :
+  begin
+   AEditor:=TEdit.Create(GridVips);
+  end;
+ end;
+end;
+
+function TFrmMain.DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
+Var
+ FDbcScript:TDbcStatementScript;
+ FS:TFormatSettings;
+ DT:TDateTime;
+
+ Procedure NotSendSpace; inline;
+ begin
+  Result:=False;
+  //GridVips.DeleteRow(ARow);
+ end;
+
+begin
+ Result:=True;
+         //'    .  .     :  :  '
+ Case GridVips.GetColumnName(ACol) of
+  'datebeg':
+   begin
+    if FValue='    .  .     :  :  ' then
+    begin
+     GridVips.FieldValue[FName,ARow]:='';
+     NotSendSpace;
+    end else
+    begin
+     FS:=DefaultFormatSettings;
+     FS.ShortDateFormat:='yyyy/mm/dd';
+     FS.DateSeparator:='.';
+     FS.ShortTimeFormat:='hh:nn:ss';
+     FS.LongTimeFormat:='hh:nn:ss';
+     FS.TimeSeparator:=':';
+     FS.ListSeparator:=' ';
+     if TryStrToDateTime2(FValue,DT,FS) then
+     begin
+
+      FDbcScript:=TDbcStatementScript.Create;
+      FDbcScript.Handle.DbcConnection:=DbcThread;
+      FDbcScript.SetSctipt(FInsertVipsScript);
+      FDbcScript.ExecuteScript;
+      FDbcScript.Params.SetAsDateTime('datetime',DT);
+      FDbcScript.Params.SetAsNull('user');
+      FDbcScript.Start;
+      FDbcScript.Release;
+
+      GridVips.ResetRowInsert;
+     end else
+     begin
+      NotSendSpace
+     end;
+    end;
+
+   end;
+  'user'   :
+  begin
+   if Trim(FValue)='' then
+   begin
+    NotSendSpace;
+   end else
+   begin
+    GridVips.FieldValue[FName,ARow]:=Trim(FValue);
+    FDbcScript:=TDbcStatementScript.Create;
+    FDbcScript.Handle.DbcConnection:=DbcThread;
+    FDbcScript.SetSctipt(FInsertVipsScript);
+    FDbcScript.ExecuteScript;
+    FDbcScript.Params.SetAsNull('datetime');
+    FDbcScript.Params.SetRawByteString('user',Trim(FValue));
+    FDbcScript.Start;
+    FDbcScript.Release;
+
+    GridVips.ResetRowInsert;
+   end;
+  end;
+ end;
+
+end;
+
+function TFrmMain.DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
+Var
+ FDbcScript:TDbcStatementScript;
+ FS:TFormatSettings;
+ DT:TDateTime;
+
+ Procedure NotSendSpace; inline;
+ begin
+  Result:=False;
+  //GridVips.DeleteRow(ARow);
+ end;
+
+begin
+ Result:=True;
+         //'    .  .     :  :  '
+ Case GridVips.GetColumnName(ACol) of
+  'datebeg':
+   begin
+    if FValue='    .  .     :  :  ' then
+    begin
+     GridVips.FieldValue[FName,ARow]:='';
+     NotSendSpace;
+    end else
+    begin
+     FS:=DefaultFormatSettings;
+     FS.ShortDateFormat:='yyyy/mm/dd';
+     FS.DateSeparator:='.';
+     FS.ShortTimeFormat:='hh:nn:ss';
+     FS.LongTimeFormat:='hh:nn:ss';
+     FS.TimeSeparator:=':';
+     FS.ListSeparator:=' ';
+     if TryStrToDateTime2(FValue,DT,FS) then
+     begin
+
+      FDbcScript:=TDbcStatementScript.Create;
+      FDbcScript.Handle.DbcConnection:=DbcThread;
+      FDbcScript.SetSctipt(FUpdateVipsScript);
+      FDbcScript.ExecuteScript;
+      FDbcScript.Params.SetRawByteString(':field','datetime');
+      FDbcScript.Params.SetAsDateTime('value',DT);
+      FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
+      FDbcScript.Start;
+      FDbcScript.Release;
+
+      GridVips.ResetRowInsert;
+     end else
+     begin
+      NotSendSpace
+     end;
+    end;
+
+   end;
+  'user'   :
+  begin
+   if Trim(FValue)='' then
+   begin
+    NotSendSpace;
+   end else
+   begin
+    GridVips.FieldValue[FName,ARow]:=Trim(FValue);
+    FDbcScript:=TDbcStatementScript.Create;
+    FDbcScript.Handle.DbcConnection:=DbcThread;
+    FDbcScript.SetSctipt(FUpdateVipsScript);
+    FDbcScript.ExecuteScript;
+    FDbcScript.Params.SetRawByteString(':field','user');
+    FDbcScript.Params.SetRawByteString('value',Trim(FValue));
+    if GridVips.FieldValue['user',ARow]='' then
+    begin
+     FDbcScript.Params.SetAsNull('user');
+    end
+    else
+    begin
+     FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
+    end;
+    FDbcScript.Start;
+    FDbcScript.Release;
+
+    GridVips.ResetRowInsert;
+   end;
+  end;
+ end;
+
 end;
 
 procedure TFrmMain.FormCreate(Sender: TObject);
@@ -1521,6 +1783,13 @@ begin
  Item_Subp.OnClick:=@OnPopupClickSubPanel;
  PopupView.Items.Add(Item_Subp);
 
+ Item_Vips:=TMenuItem.Create(PopupView);
+ Item_Vips.Caption:='Список випов';
+ Item_Vips.Checked:=False;
+ Item_Vips.Tag:=3;
+ Item_Vips.OnClick:=@OnPopupClickVipsPanel;
+ PopupView.Items.Add(Item_Vips);
+
  BtnView.OnClick:=@BtnToolPopupClick;
  BtnView.PopupMenu:=PopupView;
 
@@ -1612,7 +1881,7 @@ begin
  GridChat.Options:=GridChat.Options-[goRowSorting];
  GridChat.ScrollBars:=ssVertical;
  GridChat.AddColumn('time',' Время ');
- GridChat.AddColumn('mes',' Сообщение');
+ GridChat.AddColumn('mes' ,' Сообщение');
 
  EdtSend:=TEdit.Create(FrmMain);
  EdtSend.OnKeyDown:=@EdtSendKeyDown;
@@ -1622,8 +1891,8 @@ begin
  GridStory.Options:=GridChat.Options-[goRowSorting];
  GridStory.ScrollBars:=ssVertical;
  GridStory.AddColumn('datetime',' Дата, Время ');
- GridStory.AddColumn('user',' ЛЕВ ');
- GridStory.AddColumn('mes',' Сообщение');
+ GridStory.AddColumn('user'    ,' ЛЕВ ');
+ GridStory.AddColumn('mes'     ,' Сообщение');
 
  PanelSub:=TPanel.Create(FrmMain);
  PanelSub.Align:=alClient;
@@ -1707,6 +1976,24 @@ begin
  Btn.BorderSpacing.Right:=5;
  Btn.Parent:=PanelSub;
 
+ PanelVips:=TPanel.Create(FrmMain);
+ PanelVips.Align:=alClient;
+ PanelVips.BevelInner:=bvNone;
+ PanelVips.BevelOuter:=bvNone;
+
+ GridVips:=TDBStringGrid.Create(FrmMain);
+ GridVips.Align:=alClient;
+ GridVips.RowCount:=1;
+ GridVips.Options:=GridVips.Options-[goRowSorting,goAlwaysShowEditor]+[goEditing];
+ GridVips.ScrollBars:=ssVertical;
+ GridVips.AddColumn('datebeg',' Получено ');
+ GridVips.AddColumn('dateend',' Истекает ');
+ GridVips.AddColumn('user'   ,' Ник ');
+ GridVips.OnEditorCreate:=@VipsEditorCreate;
+ GridVips.FOnDbInsert:=@DoVipInsert;
+ GridVips.FOnDbUpdate:=@DoVipUpdate;
+ GridVips.Parent:=PanelVips;
+
  //SetShowChat    (True);
  //SetShowStory   (True);
  //SetShowSubPanel(True);
@@ -1736,8 +2023,16 @@ begin
 
  FDbcScript:=TDbcStatementScript.Create;
  FDbcScript.Handle.DbcConnection:=DbcThread;
- FDbcScript.Notify.Add(T_FIN,@OnList);
- FDbcScript.SetSctipt(FListScript);
+ FDbcScript.Notify.Add(T_FIN,@OnListStory);
+ FDbcScript.SetSctipt(FListStoryScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Start;
+ FDbcScript.Release;
+
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.Notify.Add(T_FIN,@OnListVips);
+ FDbcScript.SetSctipt(FListVipsScript);
  FDbcScript.ExecuteScript;
  FDbcScript.Start;
  FDbcScript.Release;
@@ -2251,13 +2546,13 @@ begin
    begin
     Node.Push(TLoadSQL_Func,@frmMain.FCreateScript);
    end;
-  'list':
+  'list_story':
    begin
-    Node.Push(TLoadSQL_Func,@frmMain.FListScript);
+    Node.Push(TLoadSQL_Func,@frmMain.FListStoryScript);
    end;
-  'insert':
+  'insert_story':
    begin
-    Node.Push(TLoadSQL_Func,@frmMain.FInsertScript);
+    Node.Push(TLoadSQL_Func,@frmMain.FInsertStoryScript);
    end;
   'get_param':
    begin
@@ -2266,6 +2561,18 @@ begin
   'set_param':
    begin
     Node.Push(TLoadSQL_Func,@frmMain.FSetParamScript);
+   end;
+  'list_vips':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FListVipsScript);
+   end;
+  'insert_vips':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FInsertVipsScript);
+   end;
+  'update_vips':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FUpdateVipsScript);
    end;
  end;
 end;

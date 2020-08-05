@@ -2944,7 +2944,7 @@ begin
                  begin
                   Result.TokenType:=ttSpecial;
                   Result.L:=Result.L+2;
-                  Result.P:=Result.P-1;
+                  Result.P:=Result.P-2;
                  end;
                 end;
             else
