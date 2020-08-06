@@ -1,11 +1,11 @@
 object FrmVipParam: TFrmVipParam
-  Left = 319
-  Height = 154
-  Top = 114
+  Left = 543
+  Height = 211
+  Top = 145
   Width = 410
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры VIP'
-  ClientHeight = 154
+  ClientHeight = 211
   ClientWidth = 410
   OnKeyDown = FormKeyDown
   Position = poMainFormCenter
@@ -55,7 +55,7 @@ object FrmVipParam: TFrmVipParam
   object BtnCancel: TBitBtn
     Left = 308
     Height = 30
-    Top = 118
+    Top = 175
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -131,7 +131,7 @@ object FrmVipParam: TFrmVipParam
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 118
+    Top = 175
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -212,5 +212,25 @@ object FrmVipParam: TFrmVipParam
     Anchors = [akTop, akRight]
     Caption = 'Включено'
     TabOrder = 0
+  end
+  object EdtVipDays: TLabeledEdit
+    Left = 8
+    Height = 25
+    Hint = 'Количество дней после которых автоматически истекает вип,'#13#10' с момента получения.'
+    Top = 136
+    Width = 387
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 387
+    EditLabel.Caption = 'Количество дней для Випки:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 5
+    OnKeyDown = EdtVipDaysKeyDown
   end
 end

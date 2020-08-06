@@ -33,6 +33,9 @@
   <off>Сабмод выключен</off>
  </label>
 
+ <subtime_cmd>!subtime</subtime_cmd>
+ <subtime_kd>60</subtime_kd>
+
  <room_tag>subs-only</room_tag>
 
  <cmd_on>

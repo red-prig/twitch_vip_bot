@@ -222,6 +222,8 @@ var
   _label:record
    name,_on,off:RawByteString;
   end;
+  subtime_cmd:RawByteString;
+  subtime_kd:DWORD;
   room_tag:RawByteString;
   inc_title:RawByteString;
   dec_title:RawByteString;
@@ -1536,6 +1538,7 @@ begin
   FrmVipParam.CBVipEnable.Checked:=vip_rnd.Enable;
   FrmVipParam.EdtTitle.Text      :=vip_rnd.title;
   FrmVipParam.EdtPercent.Text    :=IntToStr(vip_rnd.perc);
+  FrmVipParam.EdtVipDays.Text    :=IntToStr(vip_rnd.days);
 
  except
   on E:Exception do
@@ -1548,8 +1551,9 @@ begin
  begin
   vip_rnd.Enable:=FrmVipParam.CBVipEnable.Checked;
   vip_rnd.title :=Trim(FrmVipParam.EdtTitle.Text);
-  vip_rnd.perc  :=StrToQWORDDef(FrmVipParam.EdtPercent.Text,70);
+  vip_rnd.perc  :=StrToDWORDDef(FrmVipParam.EdtPercent.Text,70);
   if vip_rnd.perc>100 then vip_rnd.perc:=100;
+  vip_rnd.days  :=StrToDWORDDef(FrmVipParam.EdtVipDays.Text,30);
 
   try
    case vip_rnd.Enable of
@@ -1558,6 +1562,7 @@ begin
    end;
    Config.WriteString('vip' ,'title'   ,vip_rnd.title);
    Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
+   Config.WriteString('vip' ,'days'    ,IntToStr(vip_rnd.days));
   except
    on E:Exception do
    begin
@@ -2029,6 +2034,7 @@ begin
  wait_vip_update:=True;
 end;
 
+//https://docs.microsoft.com/en-us/windows/win32/fileio/volume-management-functions
 procedure TFrmMain.FormCreate(Sender: TObject);
 Var
  Btn,Tmp:TButton;
@@ -2055,8 +2061,10 @@ begin
 
    vip_rnd.Enable:=Trim(Config.ReadString('vip','enable','0'))='1';
    vip_rnd.title :=Trim(Config.ReadString('vip','title',vip_rnd.title));
-   vip_rnd.perc  :=StrToQWORDDef(Config.ReadString('vip','msg_perc',IntToStr(vip_rnd.perc)),70);
+   vip_rnd.perc  :=StrToDWORDDef(Config.ReadString('vip','msg_perc',IntToStr(vip_rnd.perc)),70);
    if vip_rnd.perc>100 then vip_rnd.perc:=100;
+
+   vip_rnd.days:=StrToDWORDDef(Config.ReadString('vip','days','30'),30);
 
    view_mask:=StrToDWORDDef(Config.ReadString('view','mask','1'),1);
 
@@ -2091,6 +2099,7 @@ begin
    Config.WriteString('vip' ,'enable'  ,'1');
    Config.WriteString('vip' ,'title'   ,vip_rnd.title);
    Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
+   Config.WriteString('vip' ,'days'    ,IntToStr(vip_rnd.days));
 
    Config.WriteString('view','autologin','0');
    Config.WriteString('view','systray'  ,'1');
@@ -3057,6 +3066,14 @@ begin
   'label':
    begin
     Node.Push(TOpenSubLabel_Func,Node.CData);
+   end;
+  'subtime_cmd':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod.subtime_cmd);
+   end;
+  'subtime_kd':
+   begin
+    Node.Push(TLoadDWORD_Func,@sub_mod.subtime_kd);
    end;
   'room_tag':
    begin

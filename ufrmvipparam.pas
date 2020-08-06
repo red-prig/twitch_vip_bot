@@ -18,10 +18,13 @@ type
     CBVipEnable: TCheckBox;
     EdtPercent: TLabeledEdit;
     EdtTitle: TLabeledEdit;
+    EdtVipDays: TLabeledEdit;
     procedure BtnCancelClick(Sender: TObject);
     procedure BtnOkClick(Sender: TObject);
     procedure EdtPercentExit(Sender: TObject);
     procedure EdtPercentKeyPress(Sender: TObject; var Key: char);
+    procedure EdtVipDaysKeyDown(Sender: TObject; var Key: Word;
+      Shift: TShiftState);
     procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
   private
     prev_perc:Byte;
@@ -48,6 +51,18 @@ begin
   else
    Key:=#0;
  end;
+end;
+
+procedure TFrmVipParam.EdtVipDaysKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+begin
+ if [ssAlt,ssCtrl]*Shift=[] then
+ Case Key of
+  8,9,37,39:;
+  ord('0')..ord('9'):;
+  else
+   Key:=0;
+ end;
+ FormKeyDown(Sender,Key,Shift);
 end;
 
 procedure TFrmVipParam.EdtPercentExit(Sender: TObject);

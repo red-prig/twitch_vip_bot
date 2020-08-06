@@ -1,11 +1,11 @@
 object FrmParam: TFrmParam
-  Left = 617
-  Height = 250
-  Top = 179
+  Left = 311
+  Height = 214
+  Top = 161
   Width = 425
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры'
-  ClientHeight = 250
+  ClientHeight = 214
   ClientWidth = 425
   OnKeyDown = FormKeyDown
   LCLVersion = '2.0.10.0'
@@ -56,7 +56,7 @@ object FrmParam: TFrmParam
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 210
+    Top = 174
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -132,7 +132,7 @@ object FrmParam: TFrmParam
   object BtnCancel: TBitBtn
     Left = 323
     Height = 30
-    Top = 210
+    Top = 174
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
