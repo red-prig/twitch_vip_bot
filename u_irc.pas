@@ -57,7 +57,7 @@ type
   procedure on_end_stream(stream_data:phttp2_stream_data); virtual;
  end;
 
-procedure reply_irc_Connect(const login,oAuth,chat,chat_id:RawByteString);
+procedure reply_irc_Connect(const login,oAuth,chat{,chat_id}:RawByteString);
 procedure reply_irc_Disconnect;
 procedure reply_irc_msg(const msg:RawByteString);
 
@@ -224,7 +224,10 @@ type
  Tws_irc=class(TWebsocketData)
   reconnect:Boolean;
   msg_timer:Ptimer;
-  login,oAuth,chat:RawByteString;
+  not_slow:Boolean;
+  login,oAuth,chat,
+  room_id,display_name:RawByteString;
+  color:DWORD;
   msg_buf:RawByteString;
   function    session_reply:integer;          override;
   function    session_reconnect(sec:SizeUInt):Boolean;override;
@@ -313,6 +316,7 @@ end;
 Destructor TWebsocketData.Destroy;
 begin
  Clear;
+ bufferevent_free(bev);
  inherited;
 end;
 
@@ -539,7 +543,11 @@ begin
   begin
    if SessionData.session_recv<0 then
    begin
-    if not SessionData.session_reconnect(2) then SessionData.Free;
+    if not SessionData.session_reconnect(2) then
+    begin
+     SessionData.Free;
+     Exit;
+    end;
    end else
     bufferevent_read(bev);
   end;
@@ -548,7 +556,11 @@ begin
   begin
    if SessionData.session_send<0 then
    begin
-    if not SessionData.session_reconnect(2) then SessionData.Free;
+    if not SessionData.session_reconnect(2) then
+    begin
+     SessionData.Free;
+     Exit;
+    end;
    end;
   end;
 
@@ -557,7 +569,11 @@ begin
    Log(irc_log,0,['BEV_EVENT_CONNECTED:',bufferevent_get_fd(bev),':',GetThreadID]);
    if SessionData.session_connect<0 then
    begin
-    if not SessionData.session_reconnect(10) then SessionData.Free;
+    if not SessionData.session_reconnect(10) then
+    begin
+     SessionData.Free;
+     Exit;
+    end;
    end;
   end;
 
@@ -568,7 +584,11 @@ begin
   Log(irc_log,0,['BEV_EVENT_ERROR_WS:',events and BEV_EVENT_EOF<>0]);
   if Assigned(SessionData) then
   begin
-   if not SessionData.session_reconnect(2) then SessionData.Free;
+   if not SessionData.session_reconnect(2) then
+   begin
+    SessionData.Free;
+    Exit;
+   end;
   end;
  end;
 
@@ -623,7 +643,7 @@ end;
 type
  Pirc_Connect=^Tirc_Connect;
  Tirc_Connect=record
-  login,oAuth,chat,chat_id:PAnsiChar;
+  login,oAuth,chat{,chat_id}:PAnsiChar;
  end;
 
 function CopyPchar(Src:PAnsiChar;Len:size_t):PAnsiChar;
@@ -642,7 +662,7 @@ begin
   FreeMem(P^.login  );
   FreeMem(P^.oAuth  );
   FreeMem(P^.chat   );
-  FreeMem(P^.chat_id);
+  //FreeMem(P^.chat_id);
   FreeMem(P);
  end;
 end;
@@ -790,13 +810,17 @@ Procedure _submit_tm(ev:Ptimer;arg:pointer);
 var
  v:Piovec;
 
+ PC:TPrivMsgCfg;
 begin
  v:=evbuffer_pop(msg_send_buf);
  if (v<>nil) then
  begin
   Log(irc_log,0,['<',GetStr(iovec_getdata(v),iovec_getlen(v))]);
 
-  main.push_chat('>'+ws_irc.login+': '+GetStr(iovec_getdata(v),iovec_getlen(v)));
+  PC:=Default(TPrivMsgCfg);
+  PC.PS:=[pm_self];
+  PC.Color:=ws_irc.color;
+  main.push_chat(PC,ws_irc.login,ws_irc.display_name,GetStr(iovec_getdata(v),iovec_getlen(v)));
 
   //Writeln(GetStr(iovec_getdata(v),iovec_getlen(v)));
   fpWebsocket_session_submit_msg_vec(ws_irc.ws_session,v,Length(ws_irc.chat));
@@ -850,12 +874,145 @@ Type
   chat,
   display_name,
   user,
+  room_id,
+  msg_id,
   msg:RawByteString;
+
   slow:QWORD;
-  _mod,_sub:Byte;
-  subs_only:Byte;
+
+  RS:TRoomStates;
+
+  PC:TPrivMsgCfg;
+
   procedure parse(var S:RawByteString);
  end;
+
+procedure parse_badges(param:RawByteString;var PC:TPrivMsgCfg);
+var
+ v,n:RawByteString;
+ i:SizeInt;
+begin
+ repeat
+  i:=System.IndexChar(PAnsiChar(param)^,Length(param),',');
+  if i<>-1 then
+  begin
+   v:=Copy(param,1,i);
+   param:=Copy(param,i+2,Length(param)-(i+1));
+  end else
+  begin
+   v:=param;
+   param:='';
+  end;
+
+  i:=System.IndexChar(PAnsiChar(v)^,Length(v),'/');
+  if i<>-1 then
+  begin
+   n:=Copy(v,1,i);
+   v:=Copy(v,i+2,Length(v)-(i+1));
+  end else
+  begin
+   n:=v;
+   v:='';
+  end;
+
+  Writeln(n,'*',v,'*');
+
+  case n of
+   'admin'      :PC.PS:=PC.PS+[pm_admin      ];
+   'broadcaster':PC.PS:=PC.PS+[pm_broadcaster];
+   'global_mod' :PC.PS:=PC.PS+[pm_global_mod ];
+   'moderator'  :PC.PS:=PC.PS+[pm_moderator  ];
+   'vip'        :PC.PS:=PC.PS+[pm_vip        ];
+   'subscriber' :PC.subscriber_s:=StrToDWordDef(v,0);
+   'sub-gifter' :PC.sub_gifter  :=StrToDWordDef(v,0);
+  end;
+
+ until (param='');
+end;
+
+procedure parse_badges_info(param:RawByteString;var PC:TPrivMsgCfg);
+var
+ v,n:RawByteString;
+ i:SizeInt;
+begin
+ repeat
+  i:=System.IndexChar(PAnsiChar(param)^,Length(param),',');
+  if i<>-1 then
+  begin
+   v:=Copy(param,1,i);
+   param:=Copy(param,i+2,Length(param)-(i+1));
+  end else
+  begin
+   v:=param;
+   param:='';
+  end;
+
+  i:=System.IndexChar(PAnsiChar(v)^,Length(v),'/');
+  if i<>-1 then
+  begin
+   n:=Copy(v,1,i);
+   v:=Copy(v,i+2,Length(v)-(i+1));
+  end else
+  begin
+   n:=v;
+   v:='';
+  end;
+
+  Writeln(n,'*',v,'*');
+
+  case n of
+   'subscriber':PC.subscriber_m:=StrToDWordDef(v,0);
+  end;
+
+ until (param='');
+end;
+
+Const
+ default_colors:array[0..14] of DWORD=(
+  $FF0000, //"Red"
+  $0000FF, //"Blue"
+  $00FF00, //"Green"
+  $B22222, //"FireBrick"
+  $FF7F50, //"Coral"
+  $9ACD32, //"YellowGreen"
+  $FF4500, //"OrangeRed"
+  $2E8B57, //"SeaGreen"
+  $DAA520, //"GoldenRod"
+  $D2691E, //"Chocolate"
+  $5F9EA0, //"CadetBlue"
+  $1E90FF, //"DodgerBlue"
+  $FF69B4, //"HotPink"
+  $8A2BE2, //"BlueViolet"
+  $00FF7F  //"SpringGreen"
+ );
+
+function get_color_for_user(const name:RawByteString):DWORD;
+var
+ n:Word;
+begin
+ Result:=0;
+ if name='' then Exit;
+ n:=ord(name[Low(name)])+ord(name[High(name)]);
+ Result:=default_colors[n mod Length(default_colors)];
+end;
+
+function convert_color(S:RawByteString;const name:RawByteString):DWORD;
+var
+ b:Byte;
+begin
+ Result:=0;
+ if S='' then
+ begin
+  Result:=get_color_for_user(name);
+  Exit;
+ end;
+ S[1]:='$';
+ Result:=StrToDWordDef(S,0);
+ b:=PByte(@Result)[0];
+ PByte(@Result)[0]:=PByte(@Result)[2];
+ PByte(@Result)[2]:=b;
+ //#DAA520
+end;
 
 procedure Tmsg_parse.parse(var S:RawByteString);
 var
@@ -903,7 +1060,7 @@ begin
   if i<>-1 then
   begin
    user:=Copy(user,1,i);
-   user:=Copy(user,i+2,Length(user)-(i+1));
+   //:=Copy(user,i+2,Length(user)-(i+1));
   end;
 
  end;
@@ -921,6 +1078,8 @@ begin
   chat:=Copy(msg,1,i);
   msg:=Copy(msg,i+3,Length(msg)-(i+2));
  end;
+
+ Writeln(cmd);
 
  repeat
   i:=System.IndexChar(PAnsiChar(param)^,Length(param),';');
@@ -947,23 +1106,41 @@ begin
 
   //Writeln('u:',user,'*');
 
-  //Writeln(n,'*',v,'*');
+  Writeln(n,'*',v,'*');
 
   Case n of
-   'subscriber'  :_sub:=StrToIntDef(v,0);
-   'mod'         :_mod:=StrToIntDef(v,0);
-   'slow'        :slow:=StrToQWordDef(v,0);
-   'display-name':display_name:=v;
-   else
-     if sub_mod.room_tag=n then
-     begin
-      subs_only:=StrToIntDef(v,0);
-     end;
+   'msg-id'      :msg_id:=v;
+
+   'emote-only'    :if v<>'0' then RS:=RS+[Rs_emote_only];
+   'followers-only':if v<>'0' then RS:=RS+[Rs_followers_only];
+   'r9k'           :if v<>'0' then RS:=RS+[Rs_r9k];
+   'rituals'       :if v<>'0' then RS:=RS+[Rs_rituals];
+   'subs-only'     :if v<>'0' then RS:=RS+[Rs_subs_only];
+   'slow'          :slow:=StrToQWordDef(v,0);
+
+   'room-id'       :room_id:=v;
+
+   'display-name'  :display_name:=v;
+
+   'badge-info'    :parse_badges_info(v,PC);
+   'badges'        :parse_badges(v,PC);
+
+   'user-id'       :PC.user_id:=StrToQWordDef(v,0);
+
+   'color'         :PC.Color:=convert_color(v,user);
+
+  end;
+
+  if sub_mod.room_tag=n then
+  begin
+   if v<>'0' then RS:=RS+[Rs_room_tag];
   end;
 
  until (param='');
 
 end;
+
+procedure replyConnect_pub(const oAuth,chat_id:RawByteString;rep:Boolean); forward;
 
 function _on_message_irc_cb(session:PfpWebsocket_session;data:Pointer;len:size_t;flags:size_t):ssize_t;
 Const
@@ -972,6 +1149,7 @@ var
  ws_irc:Tws_irc;
  msg:RawByteString;
  msg_parse:Tmsg_parse;
+
 begin
  Result:=0;
  if (flags and WS_FLAG_TXT)<>0 then
@@ -993,30 +1171,51 @@ begin
 
    if Length(msg)=0 then Exit;
 
-   //Writeln(msg);
+   Writeln(msg);
 
    repeat
     msg_parse:=Default(Tmsg_parse);
     msg_parse.parse(msg);
 
     case msg_parse.cmd of
+     'USERSTATE':begin
+                  ws_irc.color       :=msg_parse.PC.Color;
+                  ws_irc.display_name:=msg_parse.display_name;
+                  ws_irc.not_slow:=(msg_parse.PC.PS*[pm_admin,
+                                                     pm_broadcaster,
+                                                     pm_global_mod,
+                                                     pm_moderator]<>[]) or
+                                   (msg_parse.PC.subscriber_m<>0);
+                 end;
+
      'ROOMSTATE':begin
-                  if (LowerCase(ws_irc.chat)<>LowerCase(ws_irc.login))
-                     and (msg_parse._mod=0)
-                     and (msg_parse._sub=0)
-                     and (msg_parse.slow<>0) then
+                  //room-id*54742538*
+                  if (not ws_irc.not_slow) and (msg_parse.slow<>0) then
                   begin
                    ws_irc.time_kd:=msg_parse.slow*1000000;
                   end;
-                  push_subs_only(msg_parse.subs_only<>0);
+
+                  if ws_irc.room_id='' then
+                  begin
+                   ws_irc.room_id:=msg_parse.room_id;
+                   if ws_irc.room_id='' then
+                   begin
+                    main.push_notice('room-id','Ошибка подключения к событиям!');
+                   end else
+                   begin
+                    replyConnect_pub(ws_irc.oAuth,ws_irc.room_id,false);
+                   end;
+                  end;
+
+                  push_room_states(msg_parse.RS);
                  end;
 
      '001':begin
-            main.push_chat('Добро пожаловать в чат!');
+            main.push_notice('001','Добро пожаловать в чат!');
             main.push_login;
            end;
      'NOTICE':begin
-               main.push_chat(msg_parse.msg);
+               main.push_notice(msg_parse.msg_id,msg_parse.msg);
                case msg_parse.msg of
                 'Login authentication failed':
                 begin
@@ -1026,8 +1225,7 @@ begin
                end;
               end;
      'PRIVMSG':begin
-                main.push_chat(msg_parse.display_name+':'+msg_parse.msg);
-                //Log(irc_log,0,['>',msg_parse.display_name,' (',msg_parse.user,'):',msg_parse.msg]);
+                main.push_chat(msg_parse.PC,msg_parse.user,msg_parse.display_name,msg_parse.msg);
                end;
     end;
 
@@ -1148,7 +1346,7 @@ begin
      With Pirc_Connect(param2)^ do
      begin
       replyConnect_irc(GetStr(login,StrLen(login)),GetStr(oAuth,StrLen(oAuth)),GetStr(chat,StrLen(chat)),false);
-      replyConnect_pub(GetStr(oAuth,StrLen(oAuth)),GetStr(chat_id,StrLen(chat_id)),false);
+      //replyConnect_pub(GetStr(oAuth,StrLen(oAuth)),GetStr(chat_id,StrLen(chat_id)),false);
      end;
      Free_pirc_Connect(Pirc_Connect(param2));
     end;
@@ -1167,7 +1365,7 @@ begin
  end;
 end;
 
-procedure reply_irc_Connect(const login,oAuth,chat,chat_id:RawByteString);
+procedure reply_irc_Connect(const login,oAuth,chat{,chat_id}:RawByteString);
 var
  P:Pirc_Connect;
 begin
@@ -1175,7 +1373,7 @@ begin
  P^.login  :=CopyPchar(PAnsiChar(login)  ,Length(login));
  P^.oAuth  :=CopyPchar(PAnsiChar(oAuth)  ,Length(oAuth));
  P^.chat   :=CopyPchar(PAnsiChar(chat)   ,Length(chat));
- P^.chat_id:=CopyPchar(PAnsiChar(chat_id),Length(chat_id));
+ //P^.chat_id:=CopyPchar(PAnsiChar(chat_id),Length(chat_id));
  evpool_post(@pool,@_irc_Connect_post,0,P);
 end;
 
@@ -1238,7 +1436,7 @@ begin
                 msg:=msg1.Path['error'].AsStr;
                 if msg<>'' then Result:=-1;
                 if msg='' then msg:='Ожидаем события поинтов!';
-                main.push_chat(msg);
+                main.push_notice('pub',msg);
 
                 //main.push_reward('{"type":"custom-reward-updated","data":{"timestamp":"2020-07-11T12:47:47.04638314Z","updated_reward":{"id":"6a39b2f0-af31-4c40-a130-3ea08e9ec79a","channel_id":"54742538","title":"Anti Emote Mode","prompt":"ОФАЕМ 15 минут emote-МОда","cost":30001,"is_user_input_required":true,"is_sub_only":false,"image":null,"default_image":{"url_1x":"https://static-cdn.jtvnw.net/custom-reward-images/default-1.png","url_2x":"https://static-cdn.jtvnw.net/custom-reward-images/default-2.png","url_4x":"https://static-cdn.jtvnw.net/custom-reward-images/default-4.png"},"background_color":"#8205B3","is_enabled":false,"is_paused":false,"is_in_stock":false,"max_per_stream":{"is_enabled":true,"max_per_stream":10},"should_redemptions_skip_request_queue":false,"template_id":null,"updated_for_indicator_at":"2019-12-21T20:50:39.00014802Z"}}}');
 

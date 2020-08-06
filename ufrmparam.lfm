@@ -127,7 +127,7 @@ object FrmParam: TFrmParam
     }
     OnClick = BtnOkClick
     OnKeyDown = FormKeyDown
-    TabOrder = 5
+    TabOrder = 4
   end
   object BtnCancel: TBitBtn
     Left = 323
@@ -203,7 +203,7 @@ object FrmParam: TFrmParam
     }
     OnClick = BtnCancelClick
     OnKeyDown = FormKeyDown
-    TabOrder = 6
+    TabOrder = 5
   end
   object TBView: TToggleBox
     Left = 395
@@ -241,25 +241,5 @@ object FrmParam: TFrmParam
     TabOrder = 3
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
-  end
-  object EdtChatId: TLabeledEdit
-    Left = 8
-    Height = 25
-    Hint = 'Подробно смотрите на: https://dev.twitch.tv/docs/v5/reference/channels#get-channel'#13#10'Используеться для подписки на различные события. (награды за поинты, битцы и тд)'
-    Top = 176
-    Width = 387
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 387
-    EditLabel.Caption = 'Номер чат канала:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 4
-    OnKeyDown = EdtNumKeyDown
   end
 end

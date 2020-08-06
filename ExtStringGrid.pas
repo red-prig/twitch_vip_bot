@@ -352,7 +352,7 @@ begin
  inherited;
  if Button=mbRight then
  if MouseToCell(X,Y,ACol,ARow) then
- if (ARow<=FixedRows) and ColValid(ACol) then
+ if (ARow<FixedRows) and ColValid(ACol) then
  begin
   if Assigned(Columns) then
   if Columns.Count>0 then

@@ -31,7 +31,33 @@ uses
 
 type
 
-  { TFrmMain }
+  TRoomState=(
+   Rs_emote_only,
+   Rs_followers_only,
+   Rs_r9k,
+   Rs_rituals,
+   Rs_subs_only,
+   Rs_room_tag
+  );
+  TRoomStates=Set of TRoomState;
+
+  TPrivMsgState=(
+   pm_self,
+   pm_admin,
+   pm_broadcaster,
+   pm_global_mod,
+   pm_moderator,
+   pm_vip
+  );
+  TPrivMsgStates=Set of TPrivMsgState;
+  TPrivMsgCfg=record
+   user_id:QWORD;
+   sub_gifter:DWORD;
+   subscriber_m:DWORD;
+   subscriber_s:DWORD;
+   Color:DWORD;
+   PS:TPrivMsgStates;
+  end;
 
   TFrmMain = class(TForm)
     MIAbout: TMenuItem;
@@ -44,7 +70,10 @@ type
     procedure MIAboutClick(Sender: TObject);
     procedure SetLognBtn(Login:Boolean);
     procedure add_reward(const S:RawByteString);
-    procedure add_to_chat(const S:RawByteString);
+    procedure SetRoomStates(RS:TRoomStates);
+    procedure parse_vips(msg:RawByteString);
+    procedure add_to_notice(const id,msg:RawByteString);
+    procedure add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
     procedure EdtSendKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure SystemTrayClick(Sender: TObject);
     procedure _set_field_story(DT:TDateTime;const user,S:RawByteString;aRow:Integer);
@@ -80,6 +109,11 @@ type
     function  DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipDelete(aRow:Integer):Boolean;
+    Function  DoVipAddNew(DT:TDateTime;Const FUser:RawByteString):Boolean;
+    procedure OnBtnDeleteVipClick(Sender:TObject);
+    procedure OnBtnInsertVipClick(Sender:TObject);
+    procedure OnBtnUnVipClick(Sender:TObject);
+    procedure OnBtnUpdateVipClick(Sender:TObject);
     procedure FormCreate(Sender: TObject);
     procedure UpdateTextSubTime(db:Boolean);
     procedure SetDBParam(Const fname,fvalue:RawByteString);
@@ -101,6 +135,7 @@ type
    FInsertStoryScript:TSQLScript;
 
    FListVipsScript  :TSQLScript;
+   FAddVipsScript   :TSQLScript;
    FInsertVipsScript:TSQLScript;
    FUpdateVipsScript:TSQLScript;
    FDeleteVipsScript:TSQLScript;
@@ -142,6 +177,8 @@ type
    PanelVips:TPanel;
    GridVips:TDBStringGrid;
 
+   wait_vip_update:Boolean;
+
   end;
 
 var
@@ -150,9 +187,10 @@ var
 
  FrmMain: TFrmMain;
 
-procedure push_chat(const S:RawByteString);
+procedure push_notice(const id,msg:RawByteString);
+procedure push_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 procedure push_login;
-procedure push_subs_only(m:Boolean);
+procedure push_room_states(RS:TRoomStates);
 procedure push_reward(const S:RawByteString);
 
 function  _get_first_cmd(L:TStringList):RawByteString;
@@ -163,7 +201,6 @@ var
  RCT:TMTRandomContext;
 
  chat:RawByteString;
- chat_id:RawByteString;
 
  view_mask:Byte;
 
@@ -172,6 +209,9 @@ var
   title:RawByteString;
   cmd:TStringList;
   cmd2:TStringList;
+  already_vip:TStringList;
+  unvip_cmd:RawByteString;
+  vip_list_cmd:RawByteString;
   perc:Byte;
   days:DWORD;
  end;
@@ -222,39 +262,87 @@ var
  DbcThread:TDbcConnection;
 
 type
- PQNode_push=^TQNode_push;
- TQNode_push=object(UAsyncQueue.TQNode)
-  len:SizeUint;
+ PQNode_notice=^TQNode_notice;
+ TQNode_notice=object(UAsyncQueue.TQNode)
+  Fmsg:PAnsiChar;
   data:record end;
-  Procedure OnParent1;
-  Procedure OnParent2;
+  Procedure OnParent;
  end;
 
-procedure push_chat(const S:RawByteString);
+Procedure TQNode_notice.OnParent;
 var
- P:PQNode_push;
+ id,msg:RawByteString;
 begin
- P:=AllocMem(SizeOf(TQNode_push)+Length(S));
- P^.Parent:=@P^.OnParent1;
- P^.len:=Length(S);
- Move(PAnsiChar(S)^,P^.data,Length(S));
+ SetString(id ,@data,StrLen(@data));
+ SetString(msg,Fmsg ,StrLen(Fmsg));
+ FreeMem(@Self);
+ FrmMain.add_to_notice(id,msg);
+end;
+
+procedure push_notice(const id,msg:RawByteString);
+var
+ P:PQNode_notice;
+begin
+ P:=AllocMem(SizeOf(TQNode_notice)+Length(id)+Length(msg)+2);
+ P^.Parent:=@P^.OnParent;
+ P^.Fmsg:=@PAnsiChar(@P^.data)[Length(id)+1];
+ Move(PAnsiChar(id)^ ,P^.data ,Length(id)+1);
+ Move(PAnsiChar(msg)^,P^.Fmsg^,Length(msg)+1);
  SendMainQueue(P);
 end;
 
-Procedure TQNode_push.OnParent1;
+type
+ PQNode_chat=^TQNode_chat;
+ TQNode_chat=object(UAsyncQueue.TQNode)
+  PC:TPrivMsgCfg;
+  Fdnm:PAnsiChar;
+  Fmsg:PAnsiChar;
+  data:record end;
+  Procedure OnParent;
+ end;
+
+procedure push_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
- S:RawByteString;
+ P:PQNode_chat;
 begin
- SetString(S,@data,len);
- FrmMain.add_to_chat(S);
- FreeMem(@Self);
+ P:=AllocMem(SizeOf(TQNode_chat)+Length(user)+Length(display_name)+Length(msg)+3);
+ P^.Parent:=@P^.OnParent;
+ P^.PC:=PC;
+ P^.Fdnm:=@PAnsiChar(@P^.data)[Length(user)+1];
+ P^.Fmsg:=@P^.Fdnm[Length(display_name)+1];
+
+ Move(PAnsiChar(user)^        ,P^.data ,Length(user)+1);
+ Move(PAnsiChar(display_name)^,P^.Fdnm^,Length(display_name)+1);
+ Move(PAnsiChar(msg)^         ,P^.Fmsg^,Length(msg)+1);
+
+ SendMainQueue(P);
 end;
 
-Procedure TQNode_push.OnParent2;
+Procedure TQNode_chat.OnParent;
+var
+ user,display_name,msg:RawByteString;
+begin
+ SetString(user        ,@data,StrLen(@data));
+ SetString(display_name,Fdnm ,StrLen(Fdnm));
+ SetString(msg         ,Fmsg ,StrLen(Fmsg));
+ FreeMem(@Self);
+ FrmMain.add_to_chat(PC,user,display_name,msg);
+end;
+
+type
+ PQNode_reward=^TQNode_reward;
+ TQNode_reward=object(UAsyncQueue.TQNode)
+  len:SizeUint;
+  data:record end;
+  Procedure OnParent;
+ end;
+
+Procedure TQNode_reward.OnParent;
 var
  S:RawByteString;
 begin
  SetString(S,@data,len);
+ FreeMem(@Self);
 
  try
   FrmMain.add_reward(S);
@@ -264,33 +352,17 @@ begin
    DumpExceptionCallStack(E);
   end;
  end;
-
- FreeMem(@Self);
 end;
 
 type
  PQNode_login=^TQNode_login;
  TQNode_login=object(UAsyncQueue.TQNode)
   Procedure OnParent;
-  Procedure OnParent2;
-  Procedure OnParent3;
  end;
 
 Procedure TQNode_login.OnParent;
 begin
  FrmMain.SetLognBtn(True);
- FreeMem(@Self);
-end;
-
-Procedure TQNode_login.OnParent2;
-begin
- FrmMain.SetTimerSubMode(False); ////////////
- FreeMem(@Self);
-end;
-
-Procedure TQNode_login.OnParent3;
-begin
- FrmMain.SetTimerSubMode(True);
  FreeMem(@Self);
 end;
 
@@ -303,15 +375,25 @@ begin
  SendMainQueue(P);
 end;
 
-procedure push_subs_only(m:Boolean);
-var
- P:PQNode_login;
-begin
- P:=AllocMem(SizeOf(TQNode_login));
- Case m of
-  False:P^.Parent:=@P^.OnParent2;
-  True :P^.Parent:=@P^.OnParent3;
+type
+ PQNode_room=^TQNode_room;
+ TQNode_room=object(UAsyncQueue.TQNode)
+  RS:TRoomStates;
+  Procedure OnParent;
  end;
+
+Procedure TQNode_room.OnParent;
+begin
+ FrmMain.SetRoomStates(RS);
+end;
+
+procedure push_room_states(RS:TRoomStates);
+var
+ P:PQNode_room;
+begin
+ P:=AllocMem(SizeOf(TQNode_room));
+ P^.Parent:=@P^.OnParent;
+ P^.RS:=RS;
  SendMainQueue(P);
 end;
 
@@ -334,8 +416,8 @@ begin
  SetPointer(P,len);
 end;
 
-const
- permission='You don''t have permission to perform that action.';
+//const
+// permission='You don''t have permission to perform that action.';
 
 //var
 // last_cmd:RawByteString;
@@ -385,7 +467,7 @@ begin
            'ser":{"id":"84616392","login":"satan_rulezz","display_name":"Satan_R'+
            'ulezz"},"channel_id":"54742538","redeemed_at":"2020-07-08T18:38:23.01829'+
            '9023Z","reward":{"id":"9c25cd82-30e4-4e23-8dae-e3ae630b9bab","channel_id'+
-           '":"54742538","title":"Подрубай сабмод","prompt":"Может передумаю и  '+
+           '":"54742538","title":"VIP или БАН","prompt":"Может передумаю и  '+
            'отниму випку.","cost":450000,"is_user_input_required":true,"is_sub_only":'+
            'false,"image":null,"default_image":{"url_1x":"https://static-cdn.jtvnw.ne'+
            't/custom-reward-images/default-1.png","url_2x":"https://static-cdn.jtvnw.net'+
@@ -396,7 +478,8 @@ begin
            'se,"template_id":null,"updated_for_indicator_at":"2020-07-06T17:34:56.82009'+
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
-           'I5OTAyM1o="}}}');}
+           'I5OTAyM1o="}}}');
+           }
 
          {add_reward(
             '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:49:22.'+
@@ -456,10 +539,10 @@ end;
 
 procedure push_reward(const S:RawByteString);
 var
- P:PQNode_push;
+ P:PQNode_reward;
 begin
- P:=AllocMem(SizeOf(TQNode_push)+Length(S));
- P^.Parent:=@P^.OnParent2;
+ P:=AllocMem(SizeOf(TQNode_reward)+Length(S));
+ P^.Parent:=@P^.OnParent;
  P^.len:=Length(S);
  Move(PAnsiChar(S)^,P^.data,Length(S));
  SendMainQueue(P);
@@ -516,6 +599,7 @@ var
  msg2:TJson;
  msg,cmd,
  user,
+ display_name,
  rs,
  reward_title:RawByteString;
  FDbcScript:TDbcStatementScript;
@@ -540,7 +624,8 @@ begin
  if IsNullValue(DT) then DT:=Now;
 
  msg:=fetch_msg(msg2);
- user:=fetch_user_display_name(msg2);
+ display_name:=fetch_user_display_name(msg2);
+ user:=fetch_user_login(msg2);
 
  if msg2.Path['type'].AsStr='reward-redeemed' then
  begin
@@ -555,14 +640,19 @@ begin
 
    if fetch_random_no_more(RCT) then
    begin
-    push_irc_list(vip_rnd.cmd,[fetch_user_login(msg2)]);
-    //add_to_chat('>'+login+': '+cmd);
-    cmd:=Format(_get_first_cmd(vip_rnd.cmd),[fetch_user_login(msg2)]);
+    if DoVipAddNew(DT,user) then
+    begin
+     push_irc_list(vip_rnd.cmd,[user]);
+     cmd:=Format(_get_first_cmd(vip_rnd.cmd),[user]);
+    end else
+    begin
+     push_irc_list(vip_rnd.already_vip,[user]);
+     cmd:=Format(_get_first_cmd(vip_rnd.already_vip),[user]);
+    end;
    end else
    begin
-    push_irc_list(vip_rnd.cmd2,[fetch_user_login(msg2)]);
-    //add_to_chat('>'+login+': '+cmd);
-    cmd:=Format(_get_first_cmd(vip_rnd.cmd2),[fetch_user_login(msg2)]);
+    push_irc_list(vip_rnd.cmd2,[user]);
+    cmd:=Format(_get_first_cmd(vip_rnd.cmd2),[user]);
    end;
 
    //Writeln('id               :',msg2.Path['data.redemption.id'].AsStr);
@@ -580,11 +670,11 @@ begin
   begin
    if reward_title=sub_mod.inc_title then //add sub mode
    begin
-    _inc_SubModeTime(cmd,fetch_user_login(msg2));
+    _inc_SubModeTime(cmd,user);
    end else
    if reward_title=sub_mod.dec_title then //dec sub mode
    begin
-    _dec_SubModeTime(cmd,fetch_user_login(msg2));
+    _dec_SubModeTime(cmd,user);
    end;
   end;
 
@@ -600,15 +690,15 @@ begin
    FreeAndNil(ms);
   end;
 
-  add_to_story(DT,user,msg);
+  add_to_story(DT,display_name,msg);
 
   FDbcScript:=TDbcStatementScript.Create;
   FDbcScript.Handle.DbcConnection:=DbcThread;
   FDbcScript.SetSctipt(FInsertStoryScript);
   FDbcScript.ExecuteScript;
-  FDbcScript.Params.SetAsDateTime('datetime',DT);
-  FDbcScript.Params.SetRawByteString('user',user);
-  FDbcScript.Params.SetRawByteString('mes',rs);
+  FDbcScript.Params.SetAsDateTime   ('datetime',DT);
+  FDbcScript.Params.SetRawByteString('user'    ,display_name);
+  FDbcScript.Params.SetRawByteString('mes'     ,rs);
   FDbcScript.Start;
   FDbcScript.Release;
 
@@ -618,16 +708,50 @@ begin
 
 end;
 
-procedure TFrmMain.add_to_chat(const S:RawByteString);
-var
- Hr:Word;
- Mn:Word;
- Sc:Word;
- Ms:Word;
- aRow:Integer;
- //t:RawByteString;
+procedure TFrmMain.SetRoomStates(RS:TRoomStates);
 begin
+ SetTimerSubMode(Rs_room_tag in RS);
+end;
 
+procedure TFrmMain.parse_vips(msg:RawByteString);
+var
+ v:RawByteString;
+ i,s:SizeInt;
+begin
+ i:=Pos(':',msg);
+ if i<>0 then
+ begin
+  i:=i+1;
+  s:=Length(msg)-i+1;
+  msg:=Trim(Copy(msg,i,s));
+  if msg[Length(msg)]='.' then
+  begin
+   SetLength(msg,Length(msg)-1);
+  end;
+ end;
+
+ repeat
+  i:=System.IndexChar(PAnsiChar(msg)^,Length(msg),',');
+  if i<>-1 then
+  begin
+   v:=Trim(Copy(msg,1,i));
+   msg:=Copy(msg,i+2,Length(msg)-(i+1));
+  end else
+  begin
+   v:=Trim(msg);
+   msg:='';
+  end;
+
+  Writeln(v);
+
+ until (msg='');
+
+end;
+
+procedure TFrmMain.add_to_notice(const id,msg:RawByteString);
+Var
+ PC:TPrivMsgCfg;
+begin
  {
  if Trim(s)=permission then
  begin
@@ -644,6 +768,105 @@ begin
 
  end;}
 
+ Case msg of
+  'Login authentication failed':
+   begin
+    BtnEnter.Enabled:=True;
+    PC:=Default(TPrivMsgCfg);
+    PC.Color:=$404040;  //Gray
+    add_to_chat(PC,'','','Ошибка аутентификации');
+    Exit;
+   end;
+ end;
+
+ Case id of
+  'vips_success':if wait_vip_update then
+                 begin
+                  parse_vips(msg);
+                  Exit;
+                 end;
+ end;
+
+ PC:=Default(TPrivMsgCfg);
+ PC.Color:=$404040;  //Gray
+ add_to_chat(PC,'','',msg);
+end;
+
+type
+ TMsgGridCell=class(TKGridTextCell)
+  var
+   display_name:RawByteString;
+   name_Color:DWORD;
+   msg_Color:DWORD;
+  procedure ApplyDrawProperties; override;
+  procedure DrawCell(ACol,ARow:Integer;const ARect:TRect;State:TKGridDrawState); override;
+ end;
+
+procedure TMsgGridCell.ApplyDrawProperties;
+begin
+ /////
+end;
+
+procedure TMsgGridCell.DrawCell(ACol,ARow:Integer;const ARect:TRect;State:TKGridDrawState);
+var
+ Canvas:TKGridCellPainter;
+ BaseRect,Bounds,Interior:TRect;
+ Tmp:DWORD;
+ TBold:Boolean;
+begin
+ Canvas:=Grid.CellPainter;
+ Canvas.Col:=ACol;
+ Canvas.Row:=ARow;
+ Canvas.State:=State;
+ Canvas.DrawDefaultCellBackground;
+
+ Tmp:=Canvas.BackColor;
+
+ Interior:=Default(TRect);
+ if display_name<>'' then
+ begin
+  if name_Color=Canvas.BackColor then
+  begin
+   name_Color:=not name_Color;
+  end;
+  Canvas.Text:=display_name;
+  TBold:=Canvas.Canvas.Font.Bold;
+  Canvas.Canvas.Font.Bold:=True;
+  Canvas.Canvas.Font.Color:=name_Color;
+  BaseRect:=ARect;
+  Canvas.CellTextRect(BaseRect,Bounds,Interior);
+  Canvas.DrawCellText(ARect);
+  Canvas.Canvas.Font.Bold:=TBold;
+ end;
+
+ BaseRect:=ARect;
+ BaseRect.Left:=BaseRect.Left+Interior.Width;
+
+ if display_name<>'' then
+ begin
+  Canvas.Text:=': '+Text;
+  Canvas.Canvas.Font.Color:=msg_Color;
+ end else
+ begin
+  Canvas.Text:=Text;
+  Canvas.Canvas.Font.Color:=name_Color;
+ end;
+
+ Canvas.DrawCellText(BaseRect);
+
+ Canvas.BackColor:=Tmp;
+end;
+
+procedure TFrmMain.add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
+var
+ Hr:Word;
+ Mn:Word;
+ Sc:Word;
+ Ms:Word;
+ aRow,aCol:Integer;
+ New:TMsgGridCell;
+begin
+
  if (GridChat.RowCount=2) and (GridChat.FieldValue['mes',1]='') then
  begin
   aRow:=1;
@@ -652,8 +875,21 @@ begin
   aRow:=GridChat.InsertRow(GridChat.RowCount).Index;
  end;
  DecodeTime(Now,Hr,Mn,Sc,Ms);
+
+ GridChat.CellClass:=TKGridTextCell;
  GridChat.FieldValue['time',aRow]:=' '+AddChar('0',IntToStr(Hr),2)+':'+AddChar('0',IntToStr(Mn),2);
- GridChat.FieldValue['mes' ,aRow]:=S;
+
+ aCol:=GridChat.FindColumn('mes');
+
+ if (aCol<>-1) then
+ begin
+  GridChat.CellClass:=TMsgGridCell;
+  GridChat.Cells[aCol,aRow]:=msg;
+  New:=TMsgGridCell(GridChat.Cell[aCol,aRow]);
+  New.display_name:=display_name;
+  New.name_Color:=PC.Color;
+  New.msg_Color :=clBlack;
+ end;
 
  if GridChat.RowCount>300 then
  begin
@@ -907,7 +1143,7 @@ begin
    reply_irc_Connect(
      login,
      Trim(Config.ReadString('base','oAuth','')),
-     chat,chat_id
+     chat{,chat_id}
    );
   except
    on E:Exception do
@@ -975,7 +1211,7 @@ begin
          GridChat.AnchorSide[akRight].Control:=Page;
          Page.EnableAlign;
 
-         if GridChat.HandleAllocated then
+         //if GridChat.HandleAllocated then
          begin
           GridChat.AutoSizeCol(0,true);
           GridChat.Columns[0].MinExtent:=GridChat.Columns[0].Extent;
@@ -1019,7 +1255,7 @@ begin
          GridStory.Parent:=Page;
          GridStory.AnchorAsAlign(alClient,1);
 
-         if GridStory.HandleAllocated then
+         //if GridStory.HandleAllocated then
          begin
           cx:=Canvas.TextExtent(' 0000.00.00 00:00:00M').cx;
           GridStory.Columns[0].Extent:=cx;
@@ -1083,7 +1319,7 @@ begin
          Page.Show;
          PanelVips.Parent:=Page;
 
-         if GridVips.HandleAllocated then
+         //if GridVips.HandleAllocated then
          begin
           cx:=Canvas.TextExtent(' 0000.00.00 00:00:00M').cx;
           GridVips.Columns[0].Extent:=cx;
@@ -1245,7 +1481,6 @@ begin
   FrmParam.EdtLogin.Text   :=Config.ReadString('base','login','');
   FrmParam.EdtPassword.Text:=Config.ReadString('base','oAuth','');
   FrmParam.EdtChat.Text    :=chat;
-  FrmParam.EdtChatID.Text  :=chat_id;
  except
   on E:Exception do
   begin
@@ -1256,13 +1491,11 @@ begin
  if FrmParam.ShowModal=1 then
  begin
   chat   :=FrmParam.EdtChat.Text;
-  chat_id:=FrmParam.EdtChatID.Text;
 
   try
    Config.WriteString('base','login'   ,FrmParam.EdtLogin.Text);
    Config.WriteString('base','oAuth'   ,FrmParam.EdtPassword.Text);
    Config.WriteString('base','chat'    ,chat);
-   Config.WriteString('base','chat_id' ,chat_id);
   except
    on E:Exception do
    begin
@@ -1317,8 +1550,8 @@ begin
    reply_irc_Connect(
      login,
      frmLogin.EdtPassword.Text,
-     chat,
-     chat_id
+     chat
+     {,chat_id}
    );
 
   frmLogin.EdtPassword.Text:='';
@@ -1331,6 +1564,7 @@ begin
   end;
 
   BtnEnter.Enabled:=False;
+  wait_vip_update:=False;
 
  end;
 end;
@@ -1506,12 +1740,6 @@ Var
  DT:TDateTime;
  T:RawByteString;
 
- Procedure NotSendSpace; inline;
- begin
-  Result:=False;
-  //GridVips.DeleteRow(ARow);
- end;
-
 begin
  Result:=True;
  Case FName of
@@ -1555,7 +1783,7 @@ begin
       GridVips.ResetRowInsert;
      end else
      begin
-      NotSendSpace
+      Result:=False;
      end;
     end;
 
@@ -1565,7 +1793,7 @@ begin
    T:=Trim(FValue);
    if (T='') or (FindVipUser(T)<>-1) then
    begin
-    NotSendSpace;
+    Result:=False;
    end else
    begin
     FDbcScript:=TDbcStatementScript.Create;
@@ -1590,7 +1818,13 @@ function TFrmMain.DoVipDelete(aRow:Integer):Boolean;
 Var
  FDbcScript:TDbcStatementScript;
 begin
- Result:=True;
+ Result:=QuestionDlg('Удаление из таблицы',
+                     Format('Удалить из таблицы %s ?',[GridVips.FieldValue['user',ARow]]),
+                    mtInformation,
+                    [mrYes,'Да',mrNo,'Нет'],
+                    'Удаление из таблицы')=mrYes;
+
+ if not Result then Exit;
 
  FDbcScript:=TDbcStatementScript.Create;
  FDbcScript.Handle.DbcConnection:=DbcThread;
@@ -1601,9 +1835,73 @@ begin
  FDbcScript.Release;
 end;
 
+Function TFrmMain.DoVipAddNew(DT:TDateTime;Const FUser:RawByteString):Boolean;
+Var
+ ARow:Integer;
+ FDbcScript:TDbcStatementScript;
+begin
+ Result:=(FUser<>'') and (FindVipUser(FUser)=-1);
+ if not Result then Exit;
+
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.SetSctipt(FAddVipsScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetAsDateTime   ('datetime',DT);
+ FDbcScript.Params.SetRawByteString('user'    ,FUser);
+ FDbcScript.Start;
+ FDbcScript.Release;
+
+ ARow:=GridVips.RowCount;
+ GridVips.InsertRow(ARow);
+ GridVips.FieldValue['datebeg',ARow]:=GetDateTimeStr(DT);
+ GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
+ GridVips.FieldValue['user'   ,ARow]:=FUser;
+
+ GridVips.Columns[0].Extent:=GridVips.Columns[0].MinExtent;
+end;
+
+procedure TFrmMain.OnBtnDeleteVipClick(Sender:TObject);
+begin
+ GridVips.DoDelete;
+end;
+
+procedure TFrmMain.OnBtnInsertVipClick(Sender:TObject);
+begin
+ GridVips.DoInsert;
+end;
+
+procedure TFrmMain.OnBtnUnVipClick(Sender:TObject);
+var
+ user:RawByteString;
+ aRow:Integer;
+begin
+ aRow:=GridVips.Row;
+ if (aRow>=GridVips.FixedRows) and GridVips.RowValid(aRow) then
+ begin
+
+  user:=GridVips.FieldValue['user',ARow];
+  if QuestionDlg('Удалить випку на твиче?',
+                 Format('Удалить випку у %s ?',[user]),
+                 mtInformation,
+                 [mrYes,'Да',mrNo,'Нет'],
+                 'Удаление випки на твиче')=mrYes then
+  begin
+   push_irc_msg(Format(vip_rnd.unvip_cmd,[user]));
+   GridVips.DoDelete;
+  end;
+ end;
+end;
+
+procedure TFrmMain.OnBtnUpdateVipClick(Sender:TObject);
+begin
+ push_irc_msg(vip_rnd.vip_list_cmd);
+ wait_vip_update:=True;
+end;
+
 procedure TFrmMain.FormCreate(Sender: TObject);
 Var
- Btn:TButton;
+ Btn,Tmp:TButton;
  Item:TMenuItem;
  D:RawByteString;
  FDbcScript:TDbcStatementScript;
@@ -1624,7 +1922,6 @@ begin
    //read
 
    chat   :=Trim(Config.ReadString('base','chat'   ,chat));
-   chat_id:=Trim(Config.ReadString('base','chat_id',chat_id));
 
    vip_rnd.Enable:=Trim(Config.ReadString('vip','enable','0'))='1';
    vip_rnd.title :=Trim(Config.ReadString('vip','title',vip_rnd.title));
@@ -1660,7 +1957,6 @@ begin
    Config.WriteString('base','login'  ,'');
    Config.WriteString('base','oAuth'  ,'');
    Config.WriteString('base','chat'   ,chat);
-   Config.WriteString('base','chat_id',chat_id);
 
    Config.WriteString('vip' ,'enable'  ,'1');
    Config.WriteString('vip' ,'title'   ,vip_rnd.title);
@@ -1964,7 +2260,7 @@ begin
 
  GridStory:=TExtStringGrid.Create(FrmMain);
  GridStory.RowCount:=1;
- GridStory.Options:=GridChat.Options-[goRowSorting];
+ GridStory.Options:=GridStory.Options-[goRowSorting];
  GridStory.ScrollBars:=ssVertical;
  GridStory.AddColumn('datetime',' Дата, Время ');
  GridStory.AddColumn('user'    ,' ЛЕВ ');
@@ -2057,8 +2353,64 @@ begin
  PanelVips.BevelInner:=bvNone;
  PanelVips.BevelOuter:=bvNone;
 
+ Btn:=TButton.Create(PanelVips);
+ Btn.OnClick:=@OnBtnInsertVipClick;
+ Btn.AutoSize:=True;
+ Btn.Caption:='Добавить';
+ Btn.Left:=5;
+ Btn.Top :=5;
+ Btn.Parent:=PanelVips;
+
+ Pointer(Item):=Btn;
+
+ Btn:=TButton.Create(PanelVips);
+ Btn.OnClick:=@OnBtnDeleteVipClick;
+ Btn.AutoSize:=True;
+ Btn.Caption:='Удалить';
+ Btn.AnchorSide[akLeft].Side:=asrRight;
+ Btn.AnchorSide[akLeft].Control:=TControl(Item);
+ Btn.Top :=5;
+ Btn.BorderSpacing.Left:=10;
+ Btn.Parent:=PanelVips;
+
+ Tmp:=Btn;
+
+ Btn:=TButton.Create(PanelVips);
+ Btn.OnClick:=@OnBtnUnVipClick;
+ Btn.AutoSize:=True;
+ Btn.Caption:='Unvip';
+ Btn.AnchorSide[akLeft].Side:=asrRight;
+ Btn.AnchorSide[akLeft].Control:=Tmp;
+ Btn.Top :=5;
+ Btn.BorderSpacing.Left:=10;
+ Btn.Parent:=PanelVips;
+
+ Btn:=TButton.Create(PanelVips);
+ Btn.OnClick:=@OnBtnUpdateVipClick;
+ Btn.AutoSize:=True;
+ Btn.Caption:='Обновить с твича';
+ Btn.Anchors:=[akTop,akRight];
+ Btn.AnchorSide[akRight].Side:=asrRight;
+ Btn.AnchorSide[akRight].Control:=PanelVips;
+ Btn.Top :=5;
+ Btn.BorderSpacing.Right:=5;
+ Btn.Parent:=PanelVips;
+
  GridVips:=TDBStringGrid.Create(FrmMain);
- GridVips.Align:=alClient;
+
+ GridVips.Anchors:=[akTop,akLeft,akRight,akBottom];
+
+ GridVips.AnchorSide[akTop]   .Side:=asrBottom;
+ GridVips.AnchorSide[akTop]   .Control:=TControl(Item);
+ GridVips.AnchorSide[akLeft]  .Side:=asrLeft;
+ GridVips.AnchorSide[akLeft]  .Control:=PanelVips;
+ GridVips.AnchorSide[akRight] .Side:=asrRight;
+ GridVips.AnchorSide[akRight] .Control:=PanelVips;
+ GridVips.AnchorSide[akBottom].Side:=asrBottom;
+ GridVips.AnchorSide[akBottom].Control:=PanelVips;
+
+ GridVips.BorderSpacing.Top:=5;
+
  GridVips.RowCount:=1;
  GridVips.Options:=GridVips.Options-[goRowSorting,goAlwaysShowEditor]+[goEditing];
  GridVips.ScrollBars:=ssVertical;
@@ -2439,10 +2791,6 @@ begin
   begin
    Node.Push(TLoadStr_Func,@chat);
   end;
-  'chat_id':
-  begin
-   Node.Push(TLoadStr_Func,@chat_id);
-  end;
  end;
 end;
 
@@ -2541,6 +2889,18 @@ begin
   'msg_cmd2':
    begin
     Node.Push(TLoadList_Func,@vip_rnd.cmd2);
+   end;
+  'already_vip':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.already_vip);
+   end;
+  'unvip_cmd':
+   begin
+    Node.Push(TLoadStr_Func,@vip_rnd.unvip_cmd);
+   end;
+  'vip_list_cmd':
+   begin
+    Node.Push(TLoadStr_Func,@vip_rnd.vip_list_cmd);
    end;
   'perc':
    begin
@@ -2647,6 +3007,10 @@ begin
   'list_vips':
    begin
     Node.Push(TLoadSQL_Func,@frmMain.FListVipsScript);
+   end;
+  'add_vips':
+   begin
+    Node.Push(TLoadSQL_Func,@frmMain.FAddVipsScript);
    end;
   'insert_vips':
    begin

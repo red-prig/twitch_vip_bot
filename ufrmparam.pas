@@ -15,7 +15,6 @@ type
   TFrmParam = class(TForm)
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
-    EdtChatId: TLabeledEdit;
     EdtLogin: TLabeledEdit;
     EdtChat: TLabeledEdit;
     EdtPassword: TLabeledEdit;

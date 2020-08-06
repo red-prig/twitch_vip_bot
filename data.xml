@@ -1,7 +1,6 @@
 <?xml version="1.1" encoding="UTF-8"?>
 
 <chat>karmikkoala</chat>
-<chat_id>54742538</chat_id>
 
 <vip_rnd>
  <title>VIP или БАН</title>
@@ -13,6 +12,13 @@
   /timeout %s 86400
   Лев %s идёт отдыхать в баню на 24ч!
  </msg_cmd2>
+ <already_vip>
+  %s зачем брать випку, если уже вип? минус поинты кста.
+ </already_vip>
+
+ <unvip_cmd>/unvip %s</unvip_cmd>
+ <vip_list_cmd>/vips</vip_list_cmd>
+
  <perc>70</perc>
  <days>30</days>
 </vip_rnd>
@@ -90,6 +96,10 @@
  <list_vips>
   SELECT * FROM vips;
  </list_vips>
+
+ <add_vips>
+  INSERT INTO vips ( datetime,user  ) VALUES(@datetime,@user);
+ </add_vips>
 
  <insert_vips>
   INSERT INTO vips ( @+field  ) VALUES(@value);
