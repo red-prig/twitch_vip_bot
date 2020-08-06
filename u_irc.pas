@@ -57,7 +57,7 @@ type
   procedure on_end_stream(stream_data:phttp2_stream_data); virtual;
  end;
 
-procedure reply_irc_Connect(const login,oAuth,chat{,chat_id}:RawByteString);
+procedure reply_irc_Connect(const login,oAuth,chat:RawByteString);
 procedure reply_irc_Disconnect;
 procedure reply_irc_msg(const msg:RawByteString);
 
@@ -643,7 +643,7 @@ end;
 type
  Pirc_Connect=^Tirc_Connect;
  Tirc_Connect=record
-  login,oAuth,chat{,chat_id}:PAnsiChar;
+  login,oAuth,chat:PAnsiChar;
  end;
 
 function CopyPchar(Src:PAnsiChar;Len:size_t):PAnsiChar;
@@ -662,7 +662,6 @@ begin
   FreeMem(P^.login  );
   FreeMem(P^.oAuth  );
   FreeMem(P^.chat   );
-  //FreeMem(P^.chat_id);
   FreeMem(P);
  end;
 end;
@@ -1011,7 +1010,6 @@ begin
  b:=PByte(@Result)[0];
  PByte(@Result)[0]:=PByte(@Result)[2];
  PByte(@Result)[2]:=b;
- //#DAA520
 end;
 
 procedure Tmsg_parse.parse(var S:RawByteString);
@@ -1346,7 +1344,6 @@ begin
      With Pirc_Connect(param2)^ do
      begin
       replyConnect_irc(GetStr(login,StrLen(login)),GetStr(oAuth,StrLen(oAuth)),GetStr(chat,StrLen(chat)),false);
-      //replyConnect_pub(GetStr(oAuth,StrLen(oAuth)),GetStr(chat_id,StrLen(chat_id)),false);
      end;
      Free_pirc_Connect(Pirc_Connect(param2));
     end;
@@ -1365,7 +1362,7 @@ begin
  end;
 end;
 
-procedure reply_irc_Connect(const login,oAuth,chat{,chat_id}:RawByteString);
+procedure reply_irc_Connect(const login,oAuth,chat:RawByteString);
 var
  P:Pirc_Connect;
 begin
@@ -1373,7 +1370,6 @@ begin
  P^.login  :=CopyPchar(PAnsiChar(login)  ,Length(login));
  P^.oAuth  :=CopyPchar(PAnsiChar(oAuth)  ,Length(oAuth));
  P^.chat   :=CopyPchar(PAnsiChar(chat)   ,Length(chat));
- //P^.chat_id:=CopyPchar(PAnsiChar(chat_id),Length(chat_id));
  evpool_post(@pool,@_irc_Connect_post,0,P);
 end;
 

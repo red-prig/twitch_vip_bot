@@ -109,6 +109,7 @@ type
     function  DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipDelete(aRow:Integer):Boolean;
+    procedure DeleteVip(aRow:Integer);
     Function  DoVipAddNew(DT:TDateTime;Const FUser:RawByteString):Boolean;
     procedure OnBtnDeleteVipClick(Sender:TObject);
     procedure OnBtnInsertVipClick(Sender:TObject);
@@ -714,9 +715,12 @@ begin
 end;
 
 procedure TFrmMain.parse_vips(msg:RawByteString);
+Const
+ NAN=0/0;
 var
  v:RawByteString;
- i,s:SizeInt;
+ i,s,u:SizeInt;
+ L:TStringList;
 begin
  i:=Pos(':',msg);
  if i<>0 then
@@ -728,6 +732,17 @@ begin
   begin
    SetLength(msg,Length(msg)-1);
   end;
+ end;
+
+ L:=TStringList.Create;
+ L.Sorted:=True;
+ s:=GridVips.RowCount;
+ if s>1 then
+ begin
+  u:=GridVips.FindColumn('user');
+  if u<>-1 then
+   For i:=1 to s-1 do
+    L.AddObject(GridVips.Cells[u,i],GridVips.Rows[i]);
  end;
 
  repeat
@@ -742,10 +757,27 @@ begin
    msg:='';
   end;
 
+  i:=L.IndexOf(v);
+  if i=-1 then
+  begin
+   DoVipAddNew(NAN,v);
+  end else
+  begin
+   L.Delete(i);
+  end;
+
   Writeln(v);
 
  until (msg='');
 
+ s:=L.Count;
+ if s<>0 then
+ begin
+  For i:=0 to s-1 do
+   DeleteVip(TKGridRow(L.Objects[i]).Index);
+ end;
+
+ FreeAndNil(L);
 end;
 
 procedure TFrmMain.add_to_notice(const id,msg:RawByteString);
@@ -773,7 +805,7 @@ begin
    begin
     BtnEnter.Enabled:=True;
     PC:=Default(TPrivMsgCfg);
-    PC.Color:=$404040;  //Gray
+    PC.Color:=$383838;  //Gray
     add_to_chat(PC,'','','Ошибка аутентификации');
     Exit;
    end;
@@ -788,7 +820,7 @@ begin
  end;
 
  PC:=Default(TPrivMsgCfg);
- PC.Color:=$404040;  //Gray
+ PC.Color:=$383838;  //Gray
  add_to_chat(PC,'','',msg);
 end;
 
@@ -799,13 +831,50 @@ type
    name_Color:DWORD;
    msg_Color:DWORD;
   procedure ApplyDrawProperties; override;
+  procedure Assign(Source: TKGridCell); override;
   procedure DrawCell(ACol,ARow:Integer;const ARect:TRect;State:TKGridDrawState); override;
  end;
 
 procedure TMsgGridCell.ApplyDrawProperties;
 begin
- /////
+ //
 end;
+
+procedure TMsgGridCell.Assign(Source:TKGridCell);
+begin
+ inherited;
+ if Source is TMsgGridCell then
+ begin
+  display_name:=TMsgGridCell(Source).display_name;
+  name_Color  :=TMsgGridCell(Source).name_Color;
+  msg_Color   :=TMsgGridCell(Source).msg_Color;
+ end;
+end;
+
+Function SimilarColor(c1,c2:DWORD):Boolean;
+var
+ d:Single;
+
+ function pow2i(i:integer):Integer; inline;
+ begin
+  Result:=i*i;
+ end;
+
+begin
+ d:=Sqrt(pow2i(PByte(@c1)[0]-PByte(@c2)[0])+
+         pow2i(PByte(@c1)[1]-PByte(@c2)[1])+
+         pow2i(PByte(@c1)[2]-PByte(@c2)[2]));
+ Result:=(d<=15);
+end;
+
+Function NegColor(c:DWORD):DWORD; inline;
+begin
+ Result:=not c;
+ PByte(@Result)[3]:=0;
+end;
+
+Const
+ ME_ACTION=#1'ACTION ';
 
 procedure TMsgGridCell.DrawCell(ACol,ARow:Integer;const ARect:TRect;State:TKGridDrawState);
 var
@@ -813,21 +882,29 @@ var
  BaseRect,Bounds,Interior:TRect;
  Tmp:DWORD;
  TBold:Boolean;
+ T:RawByteString;
 begin
+
  Canvas:=Grid.CellPainter;
+
  Canvas.Col:=ACol;
  Canvas.Row:=ARow;
  Canvas.State:=State;
- Canvas.DrawDefaultCellBackground;
+ Canvas.BlockRect:=ARect;
 
- Tmp:=Canvas.BackColor;
+ if gdSelected in State then
+   Canvas.DrawSelectedCellBackground(ARect)
+ else
+   Canvas.DrawNormalCellBackground(ARect);
+
+ Tmp:=Canvas.Canvas.Font.Color;
 
  Interior:=Default(TRect);
  if display_name<>'' then
  begin
-  if name_Color=Canvas.BackColor then
+  if SimilarColor(name_Color,Canvas.BackColor) then
   begin
-   name_Color:=not name_Color;
+   name_Color:=NegColor(name_Color);
   end;
   Canvas.Text:=display_name;
   TBold:=Canvas.Canvas.Font.Bold;
@@ -844,8 +921,18 @@ begin
 
  if display_name<>'' then
  begin
-  Canvas.Text:=': '+Text;
-  Canvas.Canvas.Font.Color:=msg_Color;
+  T:=Text;
+
+  if Copy(T,1,Length(ME_ACTION))=ME_ACTION then
+  begin
+   T:=Copy(T,Length(ME_ACTION)+1,Length(T)-Length(ME_ACTION));
+   Canvas.Canvas.Font.Color:=name_Color;
+   Canvas.Text:=' '+T;
+  end else
+  begin
+   Canvas.Canvas.Font.Color:=msg_Color;
+   Canvas.Text:=': '+T;
+  end;
  end else
  begin
   Canvas.Text:=Text;
@@ -854,7 +941,11 @@ begin
 
  Canvas.DrawCellText(BaseRect);
 
- Canvas.BackColor:=Tmp;
+ Canvas.Canvas.Font.Color:=Tmp;
+
+ if gdSelected in State then
+   Canvas.DrawCellFocus(ARect);
+
 end;
 
 procedure TFrmMain.add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
@@ -889,6 +980,7 @@ begin
   New.display_name:=display_name;
   New.name_Color:=PC.Color;
   New.msg_Color :=clBlack;
+  GridChat.CellClass:=TKGridTextCell;
  end;
 
  if GridChat.RowCount>300 then
@@ -1143,7 +1235,7 @@ begin
    reply_irc_Connect(
      login,
      Trim(Config.ReadString('base','oAuth','')),
-     chat{,chat_id}
+     chat
    );
   except
    on E:Exception do
@@ -1551,7 +1643,6 @@ begin
      login,
      frmLogin.EdtPassword.Text,
      chat
-     {,chat_id}
    );
 
   frmLogin.EdtPassword.Text:='';
@@ -1835,6 +1926,23 @@ begin
  FDbcScript.Release;
 end;
 
+procedure TFrmMain.DeleteVip(aRow:Integer);
+Var
+ FDbcScript:TDbcStatementScript;
+begin
+ if (aRow>=GridVips.FixedRows) and GridVips.RowValid(aRow) then
+ begin
+  FDbcScript:=TDbcStatementScript.Create;
+  FDbcScript.Handle.DbcConnection:=DbcThread;
+  FDbcScript.SetSctipt(FDeleteVipsScript);
+  FDbcScript.ExecuteScript;
+  FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
+  FDbcScript.Start;
+  FDbcScript.Release;
+  GridVips.DeleteRow(aRow);
+ end;
+end;
+
 Function TFrmMain.DoVipAddNew(DT:TDateTime;Const FUser:RawByteString):Boolean;
 Var
  ARow:Integer;
@@ -1847,18 +1955,40 @@ begin
  FDbcScript.Handle.DbcConnection:=DbcThread;
  FDbcScript.SetSctipt(FAddVipsScript);
  FDbcScript.ExecuteScript;
- FDbcScript.Params.SetAsDateTime   ('datetime',DT);
+
+ if IsNullValue(DT) then
+ begin
+  FDbcScript.Params.SetAsNull      ('datetime');
+ end else
+ begin
+  FDbcScript.Params.SetAsDateTime  ('datetime',DT);
+ end;
+
  FDbcScript.Params.SetRawByteString('user'    ,FUser);
  FDbcScript.Start;
  FDbcScript.Release;
 
  ARow:=GridVips.RowCount;
  GridVips.InsertRow(ARow);
- GridVips.FieldValue['datebeg',ARow]:=GetDateTimeStr(DT);
- GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
+
+ if IsNullValue(DT) then
+ begin
+  GridVips.FieldValue['datebeg',ARow]:='';
+  GridVips.FieldValue['dateend',ARow]:='';
+ end else
+ begin
+  GridVips.FieldValue['datebeg',ARow]:=GetDateTimeStr(DT);
+  GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
+ end;
+
  GridVips.FieldValue['user'   ,ARow]:=FUser;
 
- GridVips.Columns[0].Extent:=GridVips.Columns[0].MinExtent;
+ if GridVips.HandleAllocated then
+ begin
+  GridVips.ScrollModeVert:=smCell;
+  GridVips.ScrollModeVert:=smSmooth;
+  GridVips.Columns[0].Extent:=GridVips.Columns[0].MinExtent;
+ end;
 end;
 
 procedure TFrmMain.OnBtnDeleteVipClick(Sender:TObject);
@@ -1888,7 +2018,7 @@ begin
                  'Удаление випки на твиче')=mrYes then
   begin
    push_irc_msg(Format(vip_rnd.unvip_cmd,[user]));
-   GridVips.DoDelete;
+   DeleteVip(aRow);
   end;
  end;
 end;
@@ -2814,7 +2944,7 @@ begin
  Case Name of
   '':
   begin
-   PRawByteString(Node.CData)^:=Value;
+   PRawByteString(Node.CData)^:=Trim(Value);
   end;
  end;
 end;

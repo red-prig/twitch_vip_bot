@@ -4459,7 +4459,7 @@ begin
         for J := 0 to Min(FGrid.RowCount, Source.Count) - 1 do
         begin
           Cell := FGrid.ArrayOfCells[J, I];
-          if Cell is TKGridTextCell then
+          if Cell.InheritsFrom(TKGridTextCell) then
             TKGridTextCell(Cell).Text := Source[J];
         end;
       finally
@@ -4492,7 +4492,7 @@ begin
         for J := 0 to Min(FGrid.RowCount, Source.Count) - 1 do
         begin
           Cell := FGrid.ArrayOfCells[J, I];
-          if Cell is TKGridTextCell then
+          if Cell.InheritsFrom(TKGridTextCell) then
             TKGridTextCell(Cell).Text := Source[J];
         end;
       finally
@@ -4552,7 +4552,7 @@ begin
     if I >= 0 then
     begin
       Cell := FGrid.ArrayOfCells[Index, I];
-      if Cell is TKGridTextCell then
+      if Cell.InheritsFrom(TKGridTextCell) then
         Result := TKGridTextCell(Cell).Text;
     end;
   end;
@@ -4645,7 +4645,7 @@ begin
     if I >= 0 then
     begin
       Cell := FGrid.ArrayOfCells[Index, I];
-      if Cell is TKGridTextCell then
+      if Cell.InheritsFrom(TKGridTextCell) then
         TKGridObjectCell(Cell).Text := Value;
     end;
   end;
@@ -4723,7 +4723,7 @@ begin
         for J := 0 to Min(FGrid.ColCount, Source.Count) - 1 do
         begin
           Cell := FGrid.ArrayOfCells[I, J];
-          if Cell is TKGridTextCell then
+          if Cell.InheritsFrom(TKGridTextCell) then
             TKGridTextCell(Cell).Text := Source[J];
         end;
       finally
@@ -4749,7 +4749,7 @@ begin
         for J := 0 to Min(FGrid.ColCount, Source.Count) - 1 do
         begin
           Cell := FGrid.ArrayOfCells[I, J];
-          if Cell is TKGridTextCell then
+          if Cell.InheritsFrom(TKGridTextCell) then
             TKGridTextCell(Cell).Text := Source[J];
         end;
       finally
@@ -4802,7 +4802,7 @@ begin
     if I >= 0 then
     begin
       Cell := FGrid.ArrayOfCells[I, Index];
-      if Cell is TKGridTextCell then
+      if Cell.InheritsFrom(TKGridTextCell) then
         Result := TKGridTextCell(Cell).Text;
     end;
   end;
@@ -4895,7 +4895,7 @@ begin
     if I >= 0 then
     begin
       Cell := FGrid.ArrayOfCells[I, Index];
-      if Cell is TKGridTextCell then
+      if Cell.InheritsFrom(TKGridTextCell) then
         TKGridTextCell(Cell).Text := Value;
     end;
   end;
@@ -5179,7 +5179,7 @@ end;
 procedure TKGridTextCell.Assign(Source: TKGridCell);
 begin
   inherited;
-  if Source is TKGridTextCell then
+  if Source.InheritsFrom(TKGridTextCell) then
     SetText(TKGridTextCell(Source).TextPtr);
 end;
 
@@ -7407,12 +7407,12 @@ var
 {$ENDIF}
 begin
 {$IFDEF STRING_IS_UNICODE}
-  if ACell1 is TKGridTextCell then S1 := TKGridTextCell(ACell1).Text else S1 := '';
-  if ACell2 is TKGridTextCell then S2 := TKGridTextCell(ACell2).Text else S2 := '';
+  if ACell1.InheritsFrom(TKGridTextCell) then S1 := TKGridTextCell(ACell1).Text else S1 := '';
+  if ACell2.InheritsFrom(TKGridTextCell) then S2 := TKGridTextCell(ACell2).Text else S2 := '';
   Result := CompareStrings(S1, S2);
 {$ELSE}
-  if ACell1 is TKGridTextCell then W1 := TKGridTextCell(ACell1).TextPtr else W1 := '';
-  if ACell2 is TKGridTextCell then W2 := TKGridTextCell(ACell2).TextPtr else W2 := '';
+  if ACell1.InheritsFrom(TKGridTextCell) then W1 := TKGridTextCell(ACell1).TextPtr else W1 := '';
+  if ACell2.InheritsFrom(TKGridTextCell) then W2 := TKGridTextCell(ACell2).TextPtr else W2 := '';
   Result := CompareWideChars(W1, W2);
 {$ENDIF}
 end;
@@ -8248,7 +8248,7 @@ begin
   if Assigned(FCells) and ColValid(ACol) and RowValid(ARow) then
   begin
     Data := InternalGetCell(ACol, ARow);
-    if Data is TKGridTextCell then
+    if Data.InheritsFrom(TKGridTextCell) then
       Result := TKGridTextCell(Data).Text;
   end;
 end;
