@@ -69,6 +69,7 @@ type
     procedure FormWindowStateChange(Sender: TObject);
     procedure MIAboutClick(Sender: TObject);
     procedure SetLognBtn(Login:Boolean);
+    function  try_theif_vip(Var Context:TMTRandomContext;const dst_user:RawByteString;var cmd:RawByteString):Boolean;
     procedure add_reward(const S:RawByteString);
     procedure SetRoomStates(RS:TRoomStates);
     procedure parse_vips(msg:RawByteString);
@@ -109,6 +110,8 @@ type
     function  FindVipUser(Const FValue:RawByteString):Integer;
     function  DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
+    procedure DbUpdateVip_user(const src_user,dst_user:RawByteString);
+    procedure DbDeleteVip(const user:RawByteString);
     function  DoVipDelete(aRow:Integer):Boolean;
     procedure DeleteVip(aRow:Integer);
     Function  DoVipAddNew(DT:TDateTime;Const FUser:RawByteString):Boolean;
@@ -213,17 +216,22 @@ var
  vip_rnd:record
   Enable:Boolean;
   Auto_expired:Boolean;
+  Enable_vor:Boolean;
   title:RawByteString;
+  title_vor:RawByteString;
+  unvip_cmd:RawByteString;
+  vip_list_cmd:RawByteString;
   cmd:TStringList;
   cmd2:TStringList;
   already_vip:TStringList;
   is_max_vip:TStringList;
-  unvip_cmd:RawByteString;
-  vip_list_cmd:RawByteString;
-  perc:Byte;
+  vor_sucs:TStringList;
+  vor_jail:TStringList;
   days:DWORD;
   max_vips:DWORD;
   Timer:TTimer;
+  perc:Byte;
+  perc_vor:Byte;
  end;
 
  sub_mod:record
@@ -615,6 +623,49 @@ begin
   end;
 end;
 
+function fetch_random_vor(Var Context:TMTRandomContext):Boolean;
+begin
+ Result:=Random(Context,100)<vip_rnd.perc_vor;
+end;
+
+function TFrmMain.try_theif_vip(Var Context:TMTRandomContext;const dst_user:RawByteString;var cmd:RawByteString):Boolean;
+var
+ src_user:RawByteString;
+ i,s,u,aRow:SizeInt;
+ L:TStringList;
+begin
+ Result:=False;
+
+ L:=TStringList.Create;
+ L.Sorted:=True;
+ s:=GridVips.RowCount;
+ if s>1 then
+ begin
+  u:=GridVips.FindColumn('user');
+  if u<>-1 then
+   For i:=1 to s-1 do
+    L.AddObject(GridVips.Cells[u,i],GridVips.Rows[i]);
+ end;
+
+ s:=L.Count;
+ if s<>0 then
+ begin
+  Result:=True;
+  i:=Random(Context,s);
+  aRow:=TKGridRow(L.Objects[i]).Index;
+  src_user:=GridVips.FieldValue['user',ARow];
+
+  push_irc_list(vip_rnd.vor_sucs,[dst_user,src_user]);
+  cmd:=Format(_get_first_cmd(vip_rnd.vor_sucs),[dst_user,src_user]);
+
+  DbUpdateVip_user(src_user,dst_user);
+  GridVips.FieldValue['user',ARow]:=dst_user;
+
+ end;
+
+ FreeAndNil(L);
+end;
+
 procedure TFrmMain.add_reward(const S:RawByteString);
 var
  DT:TDateTime;
@@ -660,7 +711,6 @@ begin
 
   if (vip_rnd.Enable) and (reward_title=vip_rnd.title) then //vip/ban
   begin
-
    if fetch_random_no_more(RCT) then
    begin
     if (FindVipUser(user)<>-1) then
@@ -683,18 +733,24 @@ begin
     push_irc_list(vip_rnd.cmd2,[user]);
     cmd:=Format(_get_first_cmd(vip_rnd.cmd2),[user]);
    end;
-
-   //Writeln('id               :',msg2.Path['data.redemption.id'].AsStr);
-   //Writeln('user.id          :',msg2.Path['data.redemption.user.id'].AsStr);
-   //Writeln('user.login       :',msg2.Path['data.redemption.user.login'].AsStr);
-   //Writeln('user.display_name:',msg2.Path['data.redemption.user.display_name'].AsStr);
-   //Writeln('redeemed_at      :',msg2.Path['data.redemption.redeemed_at'].AsStr);
-   //Writeln('reward.id        :',msg2.Path['data.redemption.reward.id'].AsStr);
-   //Writeln('reward.title     :',msg2.Path['data.redemption.reward.title'].AsStr);
-   //Writeln('reward.prompt    :',msg2.Path['data.redemption.reward.prompt'].AsStr);
-   //Writeln('user_input       :',msg2.Path['data.redemption.user_input'].AsStr);
-   //Writeln('status           :',msg2.Path['data.redemption.status'].AsStr);
   end else
+
+  if (vip_rnd.Enable_vor) and (reward_title=vip_rnd.title_vor) then //vor
+  begin
+   if fetch_random_vor(RCT) then
+   begin
+    if not try_theif_vip(RCT,user,cmd) then
+    begin
+     push_irc_list(vip_rnd.vor_jail,[user]);
+     cmd:=Format(_get_first_cmd(vip_rnd.vor_jail),[user]);
+    end;
+   end else
+   begin
+    push_irc_list(vip_rnd.vor_jail,[user]);
+    cmd:=Format(_get_first_cmd(vip_rnd.vor_jail),[user]);
+   end;
+  end else
+
   if sub_mod.Enable then
   begin
    if reward_title=sub_mod.inc_title then //add sub mode
@@ -1583,20 +1639,12 @@ end;
 
 procedure TFrmMain.OnPopupClickSubParam(Sender:TObject);
 begin
- try
   FrmSubParam.CBSubEnable.Checked:=sub_mod.Enable;
   FrmSubParam.EdtTitleSubInc.Text:=sub_mod.inc_title;
   FrmSubParam.EdtTitleSubDec.Text:=sub_mod.dec_title;
   FrmSubParam.EdtSubInc.Text     :=IntToStr(sub_mod.inc_min);
   FrmSubParam.EdtSub_max_inc.Text:=IntToStr(sub_mod.max_inc);
   FrmSubParam.EdtSub_max_dec.Text:=IntToStr(sub_mod.max_dec);
-
- except
-  on E:Exception do
-  begin
-   DumpExceptionCallStack(E);
-  end;
- end;
 
  if FrmSubParam.ShowModal=1 then
  begin
@@ -1630,7 +1678,6 @@ end;
 
 procedure TFrmMain.OnPopupClickVipParam(Sender:TObject);
 begin
- try
   FrmVipParam.CBVipEnable.Checked :=vip_rnd.Enable;
   FrmVipParam.EdtTitle.Text       :=vip_rnd.title;
   FrmVipParam.EdtPercent.Text     :=IntToStr(vip_rnd.perc);
@@ -1638,12 +1685,9 @@ begin
   FrmVipParam.EdtVipDays.Text     :=IntToStr(vip_rnd.days);
   FrmVipParam.EdtMaxVips.Text     :=IntToStr(vip_rnd.max_vips);
 
- except
-  on E:Exception do
-  begin
-   DumpExceptionCallStack(E);
-  end;
- end;
+  FrmVipParam.EdtVorTitle.Text    :=vip_rnd.title_vor;
+  FrmVipParam.EdtVorPercent.Text  :=IntToStr(vip_rnd.perc_vor);
+  FrmVipParam.CBVorEnable.Checked :=vip_rnd.Enable_vor;
 
  if FrmVipParam.ShowModal=1 then
  begin
@@ -1656,6 +1700,11 @@ begin
 
   vip_rnd.Auto_expired:=FrmVipParam.CBVipExpired.Checked;
   SetTimerVipExpired(vip_rnd.Auto_expired);
+
+  vip_rnd.title_vor :=FrmVipParam.EdtVorTitle.Text;
+  vip_rnd.perc_vor  :=StrToDWORDDef(FrmVipParam.EdtVorPercent.Text,1);
+  if vip_rnd.perc_vor>100 then vip_rnd.perc_vor:=100;
+  vip_rnd.Enable_vor:=FrmVipParam.CBVorEnable.Checked;
 
   try
 
@@ -1672,6 +1721,14 @@ begin
    case vip_rnd.Auto_expired of
     True :Config.WriteString('vip' ,'auto_expired','1');
     False:Config.WriteString('vip' ,'auto_expired','0');
+   end;
+
+   Config.WriteString('vip' ,'title_vor',vip_rnd.title_vor);
+   Config.WriteString('vip' ,'perc_vor',IntToStr(vip_rnd.perc_vor));
+
+   case vip_rnd.Enable_vor of
+    True :Config.WriteString('vip' ,'enable_vor','1');
+    False:Config.WriteString('vip' ,'enable_vor','0');
    end;
 
   except
@@ -2009,15 +2066,8 @@ begin
     Result:=False;
    end else
    begin
-    FDbcScript:=TDbcStatementScript.Create;
-    FDbcScript.Handle.DbcConnection:=DbcThread;
-    FDbcScript.SetSctipt(FUpdateVipsScript);
-    FDbcScript.ExecuteScript;
-    FDbcScript.Params.SetRawByteString(':field','user');
-    FDbcScript.Params.SetRawByteString('value',T);
-    FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
-    FDbcScript.Start;
-    FDbcScript.Release;
+
+    DbUpdateVip_user(GridVips.FieldValue['user',ARow],T);
 
     GridVips.FieldValue[FName,ARow]:=T;
     GridVips.ResetRowInsert;
@@ -2027,9 +2077,35 @@ begin
 
 end;
 
-function TFrmMain.DoVipDelete(aRow:Integer):Boolean;
+procedure TFrmMain.DbUpdateVip_user(const src_user,dst_user:RawByteString);
 Var
  FDbcScript:TDbcStatementScript;
+begin
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.SetSctipt(FUpdateVipsScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetRawByteString(':field','user');
+ FDbcScript.Params.SetRawByteString('value',dst_user);
+ FDbcScript.Params.SetRawByteString('user' ,src_user);
+ FDbcScript.Start;
+ FDbcScript.Release;
+end;
+
+procedure TFrmMain.DbDeleteVip(const user:RawByteString);
+Var
+ FDbcScript:TDbcStatementScript;
+begin
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.SetSctipt(FDeleteVipsScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetRawByteString('user',user);
+ FDbcScript.Start;
+ FDbcScript.Release;
+end;
+
+function TFrmMain.DoVipDelete(aRow:Integer):Boolean;
 begin
  Result:=QuestionDlg('Удаление из таблицы',
                      Format('Удалить из таблицы %s ?',[GridVips.FieldValue['user',ARow]]),
@@ -2039,28 +2115,14 @@ begin
 
  if not Result then Exit;
 
- FDbcScript:=TDbcStatementScript.Create;
- FDbcScript.Handle.DbcConnection:=DbcThread;
- FDbcScript.SetSctipt(FDeleteVipsScript);
- FDbcScript.ExecuteScript;
- FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
- FDbcScript.Start;
- FDbcScript.Release;
+ DbDeleteVip(GridVips.FieldValue['user',ARow]);
 end;
 
 procedure TFrmMain.DeleteVip(aRow:Integer);
-Var
- FDbcScript:TDbcStatementScript;
 begin
  if (aRow>=GridVips.FixedRows) and GridVips.RowValid(aRow) then
  begin
-  FDbcScript:=TDbcStatementScript.Create;
-  FDbcScript.Handle.DbcConnection:=DbcThread;
-  FDbcScript.SetSctipt(FDeleteVipsScript);
-  FDbcScript.ExecuteScript;
-  FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
-  FDbcScript.Start;
-  FDbcScript.Release;
+  DbDeleteVip(GridVips.FieldValue['user',ARow]);
   GridVips.DeleteRow(aRow);
  end;
 end;
@@ -2280,6 +2342,11 @@ begin
 
    vip_rnd.Auto_expired:=Config.ReadString('vip','auto_expired','1')='1';
 
+   vip_rnd.Enable_vor:=Trim(Config.ReadString('vip','enable_vor','0'))='1';
+   vip_rnd.title_vor :=Trim(Config.ReadString('vip','title_vor',vip_rnd.title_vor));
+   vip_rnd.perc_vor  :=StrToDWORDDef(Config.ReadString('vip','perc_vor',IntToStr(vip_rnd.perc_vor)),1);
+   if vip_rnd.perc_vor>100 then vip_rnd.perc_vor:=100;
+
    view_mask:=StrToDWORDDef(Config.ReadString('view','mask','1'),1);
 
    sub_mod.Enable   :=Trim(Config.ReadString('sub_mod','enable','0'))='1';
@@ -2319,13 +2386,17 @@ begin
 
    Config.WriteString('vip' ,'auto_expired','0');
 
+   Config.WriteString('vip' ,'title_vor',vip_rnd.title_vor);
+   Config.WriteString('vip' ,'perc_vor',IntToStr(vip_rnd.perc_vor));
+
+   case vip_rnd.Enable_vor of
+    True :Config.WriteString('vip' ,'enable_vor','1');
+    False:Config.WriteString('vip' ,'enable_vor','0');
+   end;
+
    Config.WriteString('view','autologin','0');
    Config.WriteString('view','systray'  ,'1');
    Config.WriteString('view','mask'     ,IntToStr(view_mask));
-
-   vip_rnd.title:=Trim(Config.ReadString('vip' ,'title',vip_rnd.title));
-   vip_rnd.perc :=StrToQWORDDef(Config.ReadString('vip' ,'msg_perc',''),70);
-   if vip_rnd.perc>100 then vip_rnd.perc:=100;
 
    Config.WriteString('sub_mod','enable','0');
    Config.WriteString('sub_mod','inc_title',sub_mod.inc_title);
@@ -3231,8 +3302,8 @@ begin
  Case Name of
   '':
   begin
-   vip_rnd.perc :=StrToQWORDDef(Value,70);
-   if vip_rnd.perc>100 then vip_rnd.perc:=100;
+   PByte(Node.CData)^:=StrToQWORDDef(Value,1);
+   if PByte(Node.CData)^>100 then PByte(Node.CData)^:=100;
   end;
  end;
 end;
@@ -3254,6 +3325,10 @@ begin
    begin
     Node.Push(TLoadStr_Func ,@vip_rnd.title);
    end;
+  'title_vor':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.title_vor);
+   end;
   'msg_cmd':
    begin
     Node.Push(TLoadList_Func,@vip_rnd.cmd);
@@ -3270,6 +3345,14 @@ begin
    begin
     Node.Push(TLoadList_Func,@vip_rnd.is_max_vip);
    end;
+  'vor_sucs':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.vor_sucs);
+   end;
+  'vor_jail':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.vor_jail);
+   end;
   'max_vips':
    begin
     Node.Push(TLoadDWORD_Func,@vip_rnd.max_vips);
@@ -3284,7 +3367,11 @@ begin
    end;
   'perc':
    begin
-    Node.Push(TLoadPerc_Func,nil);
+    Node.Push(TLoadPerc_Func,@vip_rnd.perc);
+   end;
+  'perc_vor':
+   begin
+    Node.Push(TLoadPerc_Func,@vip_rnd.perc_vor);
    end;
   'days':
    begin

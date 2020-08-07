@@ -16,11 +16,17 @@ type
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
     CBVipEnable: TCheckBox;
+    CBVorEnable: TCheckBox;
     CBVipExpired: TCheckBox;
+    EdtMaxVips: TLabeledEdit;
     EdtPercent: TLabeledEdit;
     EdtTitle: TLabeledEdit;
     EdtVipDays: TLabeledEdit;
-    EdtMaxVips: TLabeledEdit;
+    EdtVorPercent: TLabeledEdit;
+    EdtVorTitle: TLabeledEdit;
+    GBVip: TGroupBox;
+    GBVor: TGroupBox;
+    GBList: TGroupBox;
     procedure BtnCancelClick(Sender:TObject);
     procedure BtnOkClick(Sender:TObject);
     procedure EdtPercentExit(Sender:TObject);
