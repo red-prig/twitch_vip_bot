@@ -174,7 +174,7 @@
   VACUUM
  </create>
  <insert_story>
-  INSERT INTO story ( datetime,user,mes  ) VALUES(@datetime,@user,@mes);
+  INSERT INTO story ( datetime,user,mes,cmd  ) VALUES(@datetime,@user,@mes,@cmd);
  </insert_story>
  <list_story>
   //все записи

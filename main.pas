@@ -486,14 +486,14 @@ begin
          BtnClose.Visible:=True;
          BtnInfo.Left:=0;
 
-         {
+        {
          add_reward(
            '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:38:23.'+
            '141491302Z","redemption":{"id":"62d7f76e-7a16-432d-94ce-541897f02fa3","u'+
            'ser":{"id":"84616392","login":"satan_rulezz1","display_name":"Satan_R'+
            'ulezz"},"channel_id":"54742538","redeemed_at":"2020-07-08T18:38:23.01829'+
            '9023Z","reward":{"id":"9c25cd82-30e4-4e23-8dae-e3ae630b9bab","channel_id'+
-           '":"54742538","title":"ВОР","prompt":"Может передумаю и  '+
+           '":"54742538","title":"Подрубай сабмод","prompt":"Может передумаю и  '+
            'отниму випку.","cost":450000,"is_user_input_required":true,"is_sub_only":'+
            'false,"image":null,"default_image":{"url_1x":"https://static-cdn.jtvnw.ne'+
            't/custom-reward-images/default-1.png","url_2x":"https://static-cdn.jtvnw.net'+
@@ -505,8 +505,7 @@ begin
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
            'I5OTAyM1o="}}}');
-          }
-
+         }
 
          {add_reward(
             '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:49:22.'+
