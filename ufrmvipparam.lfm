@@ -1,7 +1,7 @@
 object FrmVipParam: TFrmVipParam
-  Left = 432
+  Left = 635
   Height = 422
-  Top = 133
+  Top = 136
   Width = 421
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры VIP'
@@ -312,7 +312,9 @@ object FrmVipParam: TFrmVipParam
       ParentShowHint = False
       ShowHint = True
       TabOrder = 0
-      OnKeyDown = EdtVipDaysKeyDown
+      OnExit = EdtVipDaysExit
+      OnKeyDown = FormKeyDown
+      OnKeyPress = EdtVipDaysKeyPress
     end
     object EdtMaxVips: TLabeledEdit
       Left = 8
@@ -332,7 +334,9 @@ object FrmVipParam: TFrmVipParam
       ParentShowHint = False
       ShowHint = True
       TabOrder = 1
-      OnKeyDown = EdtVipDaysKeyDown
+      OnExit = EdtVipDaysExit
+      OnKeyDown = FormKeyDown
+      OnKeyPress = EdtVipDaysKeyPress
     end
     object CBVipExpired: TCheckBox
       Left = 245

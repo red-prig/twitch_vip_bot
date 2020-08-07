@@ -42,7 +42,7 @@
  <vip_list_cmd>/vips</vip_list_cmd>
 
  <perc>70</perc>
- <days>30</days>
+ <days>90</days>
  <max_vips>90</max_vips>
 
 </vip_rnd>

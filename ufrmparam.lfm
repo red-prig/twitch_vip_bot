@@ -1,7 +1,7 @@
 object FrmParam: TFrmParam
-  Left = 379
+  Left = 453
   Height = 207
-  Top = 296
+  Top = 162
   Width = 425
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры'

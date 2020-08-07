@@ -31,10 +31,12 @@ type
     procedure BtnOkClick(Sender:TObject);
     procedure EdtPercentExit(Sender:TObject);
     procedure EdtPercentKeyPress(Sender:TObject;var Key:char);
-    procedure EdtVipDaysKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
+    procedure EdtVipDaysExit(Sender: TObject);
+    procedure EdtVipDaysKeyPress(Sender:TObject;var Key:char);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
   private
     prev_perc:Byte;
+    prev_dw:DWORD;
   public
 
   end;
@@ -60,16 +62,30 @@ begin
  end;
 end;
 
-procedure TFrmVipParam.EdtVipDaysKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
+procedure TFrmVipParam.EdtVipDaysExit(Sender: TObject);
+var
+ S,L:Integer;
+ d:DWORD;
 begin
- if [ssAlt,ssCtrl]*Shift=[] then
- Case Key of
-  8,9,37,39:;
-  ord('0')..ord('9'):;
-  else
-   Key:=0;
+ if not TryStrToDWord(TLabeledEdit(Sender).Text,d) then
+ begin
+  S:=TLabeledEdit(Sender).SelStart ;
+  L:=TLabeledEdit(Sender).SelLength;
+  TLabeledEdit(Sender).Text:=IntToStr(prev_dw);
+  TLabeledEdit(Sender).SelStart :=S;
+  TLabeledEdit(Sender).SelLength:=L;
  end;
- FormKeyDown(Sender,Key,Shift);
+end;
+
+procedure TFrmVipParam.EdtVipDaysKeyPress(Sender:TObject;var Key:char);
+begin
+ prev_dw:=StrToDWORDDef(TLabeledEdit(Sender).Text,1);
+ Case Key of
+  #8,#9,#37,#39:;
+  '0'..'9':;
+  else
+   Key:=#0;
+ end;
 end;
 
 procedure TFrmVipParam.EdtPercentExit(Sender:TObject);
