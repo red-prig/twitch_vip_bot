@@ -490,10 +490,10 @@ begin
          add_reward(
            '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:38:23.'+
            '141491302Z","redemption":{"id":"62d7f76e-7a16-432d-94ce-541897f02fa3","u'+
-           'ser":{"id":"84616392","login":"satan_rulezz","display_name":"Satan_R'+
+           'ser":{"id":"84616392","login":"satan_rulezz1","display_name":"Satan_R'+
            'ulezz"},"channel_id":"54742538","redeemed_at":"2020-07-08T18:38:23.01829'+
            '9023Z","reward":{"id":"9c25cd82-30e4-4e23-8dae-e3ae630b9bab","channel_id'+
-           '":"54742538","title":"Подрубай сабмод","prompt":"Может передумаю и  '+
+           '":"54742538","title":"ВОР","prompt":"Может передумаю и  '+
            'отниму випку.","cost":450000,"is_user_input_required":true,"is_sub_only":'+
            'false,"image":null,"default_image":{"url_1x":"https://static-cdn.jtvnw.ne'+
            't/custom-reward-images/default-1.png","url_2x":"https://static-cdn.jtvnw.net'+
@@ -504,8 +504,8 @@ begin
            'se,"template_id":null,"updated_for_indicator_at":"2020-07-06T17:34:56.82009'+
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
-           'I5OTAyM1o="}}}');}
-
+           'I5OTAyM1o="}}}');
+          }
 
 
          {add_reward(
@@ -631,7 +631,7 @@ end;
 function TFrmMain.try_theif_vip(Var Context:TMTRandomContext;const dst_user:RawByteString;var cmd:RawByteString):Boolean;
 var
  src_user:RawByteString;
- i,s,u,aRow:SizeInt;
+ i,s,u,e,aRow:SizeInt;
  L:TStringList;
 begin
  Result:=False;
@@ -642,9 +642,11 @@ begin
  if s>1 then
  begin
   u:=GridVips.FindColumn('user');
-  if u<>-1 then
+  e:=GridVips.FindColumn('dateend');
+  if (u<>-1) and (e<>-1) then
    For i:=1 to s-1 do
-    L.AddObject(GridVips.Cells[u,i],GridVips.Rows[i]);
+    if (GridVips.Cells[e,i]<>'') then
+     L.AddObject(GridVips.Cells[u,i],GridVips.Rows[i]);
  end;
 
  s:=L.Count;
@@ -661,6 +663,9 @@ begin
   DbUpdateVip_user(src_user,dst_user);
   GridVips.FieldValue['user',ARow]:=dst_user;
 
+ end else
+ begin
+  Result:=False;
  end;
 
  FreeAndNil(L);
@@ -739,6 +744,11 @@ begin
   begin
    if fetch_random_vor(RCT) then
    begin
+    if (FindVipUser(user)<>-1) then
+    begin
+     push_irc_list(vip_rnd.already_vip,[user]);
+     cmd:=Format(_get_first_cmd(vip_rnd.already_vip),[user]);
+    end else
     if not try_theif_vip(RCT,user,cmd) then
     begin
      push_irc_list(vip_rnd.vor_jail,[user]);
