@@ -44,7 +44,7 @@ implementation
 
 procedure TFrmVipParam.EdtPercentKeyPress(Sender:TObject;var Key:char);
 begin
- prev_perc:=StrToQWORDDef(EdtPercent.Text,70);
+ prev_perc:=StrToQWORDDef(TLabeledEdit(Sender).Text,70);
  if prev_perc>100 then prev_perc:=100;
  Case Key of
   #8,#9,#37,#39:;
@@ -70,15 +70,15 @@ procedure TFrmVipParam.EdtPercentExit(Sender:TObject);
 var
  S,L:Integer;
 begin
- case StrToDWordDef(EdtPercent.Text,0) of
+ case StrToDWordDef(TLabeledEdit(Sender).Text,0) of
   1..100:;
   else
   begin
-   S:=EdtPercent.SelStart ;
-   L:=EdtPercent.SelLength;
-   EdtPercent.Text:=IntToStr(prev_perc);
-   EdtPercent.SelStart :=S;
-   EdtPercent.SelLength:=L;
+   S:=TLabeledEdit(Sender).SelStart ;
+   L:=TLabeledEdit(Sender).SelLength;
+   TLabeledEdit(Sender).Text:=IntToStr(prev_perc);
+   TLabeledEdit(Sender).SelStart :=S;
+   TLabeledEdit(Sender).SelLength:=L;
   end;
  end;
 end;

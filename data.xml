@@ -84,7 +84,8 @@
   CREATE INDEX IF NOT EXISTS vips_datetime ON vips (datetime ASC);
   CREATE UNIQUE INDEX IF NOT EXISTS vips_user ON vips (user ASC);
 
-  if (SELECT COUNT(*) AS CNTREC FROM pragma_table_info('story') WHERE name='cmd')=0
+  if ((SELECT COUNT(*) AS CNTREC FROM pragma_table_info('story') WHERE name='cmd')=0)
+     AND ((SELECT value FROM params WHERE (name='rev')) IS NULL)
   begin
    BEGIN TRANSACTION;
 
@@ -99,26 +100,26 @@
    PRAGMA foreign_keys = 1;
 
    CREATE TABLE temp_table AS 
-    SELECT ID,
-           SUBSTR(FS,1,INSTR(FS,'"')-1) AS FS,
-           datetime,user
-     FROM (
-      SELECT ROWID AS ID,
-           (CASE WHEN INSTR(mes,'"msg_cmd":"/vip ')=0
-            THEN NULL
-            ELSE SUBSTR(mes,INSTR(mes,'"msg_cmd":"/vip ')+11)
-           END) AS FS,
-           datetime,user
-      FROM story WHERE FS IS NOT NULL
-   );
-
-   INSERT INTO temp_table (ID,FS,datetime,user) 
     SELECT ROWID AS ID,
                  ('/vip ' || user) AS FS,
                  datetime,user
     FROM story
     WHERE INSTR(mes,'"msg_cmd":"/vip ')=0
       AND INSTR(mes,'"VIP на хз сколько"')&lt;&gt;0;
+
+   INSERT INTO temp_table (ID,FS,datetime,user) 
+    SELECT ID,
+           SUBSTR(FS,1,INSTR(FS,'"')-1) AS FS,
+           datetime,user
+     FROM (
+      SELECT ROWID AS ID,
+           (CASE WHEN INSTR(mes,'"msg_cmd":"')=0
+            THEN NULL
+            ELSE SUBSTR(mes,INSTR(mes,'"msg_cmd":"')+11)
+           END) AS FS,
+           datetime,user
+      FROM story WHERE FS IS NOT NULL
+   );
 
    UPDATE story
     SET cmd = (SELECT FS FROM temp_table WHERE temp_table.ID = story.ROWID )
@@ -130,12 +131,13 @@
        );
 
    INSERT OR REPLACE INTO vips ( datetime,user  )
-    SELECT datetime as datetime,user as user
-    FROM temp_table;
+    SELECT datetime,user
+    FROM temp_table
+    WHERE SUBSTR(FS,1,4)='/vip';
 
    DROP TABLE temp_table;
 
-   INSERT OR IGNORE INTO params ( name,value  ) VALUES('rev','1');
+   INSERT OR REPLACE INTO params ( name,value  ) VALUES('rev','2');
 
    COMMIT TRANSACTION;
   

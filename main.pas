@@ -77,8 +77,8 @@ type
     procedure add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
     procedure EdtSendKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure SystemTrayClick(Sender: TObject);
-    procedure _set_field_story(DT:TDateTime;const user,S,cmd:RawByteString;aRow:Integer);
-    procedure add_to_story(DT:TDateTime;const user,S,cmd:RawByteString);
+    procedure _set_field_story(DT:TDateTime;const user,rew,msg,cmd:RawByteString;aRow:Integer);
+    procedure add_to_story(DT:TDateTime;const user,rew,msg,cmd:RawByteString);
     procedure FormActivate(Sender: TObject);
     procedure BtnToolPopupClick(Sender:TObject);
     procedure FormDestroy(Sender: TObject);
@@ -485,7 +485,7 @@ begin
            'ser":{"id":"84616392","login":"satan_rulezz","display_name":"Satan_R'+
            'ulezz"},"channel_id":"54742538","redeemed_at":"2020-07-08T18:38:23.01829'+
            '9023Z","reward":{"id":"9c25cd82-30e4-4e23-8dae-e3ae630b9bab","channel_id'+
-           '":"54742538","title":"VIP или БАН","prompt":"Может передумаю и  '+
+           '":"54742538","title":"Подрубай сабмод","prompt":"Может передумаю и  '+
            'отниму випку.","cost":450000,"is_user_input_required":true,"is_sub_only":'+
            'false,"image":null,"default_image":{"url_1x":"https://static-cdn.jtvnw.ne'+
            't/custom-reward-images/default-1.png","url_2x":"https://static-cdn.jtvnw.net'+
@@ -496,8 +496,8 @@ begin
            'se,"template_id":null,"updated_for_indicator_at":"2020-07-06T17:34:56.82009'+
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
-           'I5OTAyM1o="}}}');
-          }
+           'I5OTAyM1o="}}}');}
+
 
 
          {add_reward(
@@ -584,8 +584,12 @@ end;
 
 function fetch_msg(msg2:TJson):RawByteString; inline;
 begin
- Result:=msg2.Path['data.redemption.reward.title'].AsStr+': '+
-         msg2.Path['data.redemption.user_input'].AsStr;
+ Result:=msg2.Path['data.redemption.user_input'].AsStr;
+end;
+
+function fetch_reward(msg2:TJson):RawByteString; inline;
+begin
+ Result:=msg2.Path['data.redemption.reward.title'].AsStr;
 end;
 
 function fetch_random_no_more(Var Context:TMTRandomContext):Boolean;
@@ -651,7 +655,7 @@ begin
 
   rs:=s;
 
-  reward_title:=Trim(msg2.Path['data.redemption.reward.title'].AsStr);
+  reward_title:=Trim(fetch_reward(msg2));
   cmd:='';
 
   if (vip_rnd.Enable) and (reward_title=vip_rnd.title) then //vip/ban
@@ -715,7 +719,7 @@ begin
    FreeAndNil(ms);
   end;}
 
-  add_to_story(DT,display_name,msg,cmd);
+  add_to_story(DT,display_name,reward_title,msg,cmd);
 
   FDbcScript:=TDbcStatementScript.Create;
   FDbcScript.Handle.DbcConnection:=DbcThread;
@@ -724,6 +728,7 @@ begin
   FDbcScript.Params.SetAsDateTime   ('datetime',DT);
   FDbcScript.Params.SetRawByteString('user'    ,display_name);
   FDbcScript.Params.SetRawByteString('mes'     ,rs);
+  FDbcScript.Params.SetRawByteString('cmd'     ,cmd);
   FDbcScript.Start;
   FDbcScript.Release;
 
@@ -1129,16 +1134,17 @@ begin
  Result:=DateTimeToStr(Value,FS,True);
 end;
 
-procedure TFrmMain._set_field_story(DT:TDateTime;const user,S,cmd:RawByteString;aRow:Integer);
+procedure TFrmMain._set_field_story(DT:TDateTime;const user,rew,msg,cmd:RawByteString;aRow:Integer);
 
 begin
  GridStory.FieldValue['datetime',aRow]:=' '+GetDateTimeStr(DT);
  GridStory.FieldValue['user'    ,aRow]:=user;
- GridStory.FieldValue['mes'     ,aRow]:=S;
+ GridStory.FieldValue['rew'     ,aRow]:=rew;
+ GridStory.FieldValue['mes'     ,aRow]:=msg;
  GridStory.FieldValue['cmd'     ,aRow]:=cmd;
 end;
 
-procedure TFrmMain.add_to_story(DT:TDateTime;const user,S,cmd:RawByteString);
+procedure TFrmMain.add_to_story(DT:TDateTime;const user,rew,msg,cmd:RawByteString);
 Var
  aRow:Integer;
 begin
@@ -1150,7 +1156,7 @@ begin
   aRow:=GridStory.InsertRow(GridStory.RowCount).Index;
  end;
 
- _set_field_story(DT,user,S,cmd,aRow);
+ _set_field_story(DT,user,rew,msg,cmd,aRow);
 
  if GridStory.RowCount>300 then
  begin
@@ -1174,7 +1180,7 @@ Var
  ResultSet:TZResultSet;
  ms:TPCharStream;
  msg2:TJson;
- msg,cmd:RawByteString;
+ msg,cmd,rew:RawByteString;
 begin
  ResultSet:=TDbcStatementScript(Sender).ResultSet;
 
@@ -1214,12 +1220,11 @@ begin
 
    msg:=fetch_msg(msg2);
 
-   cmd:=ResultSet.GetRawByteString(cmd_f);
-   //cmd:=String(msg2.Values['msg_cmd']);
-   //if cmd<>'' then
-   // msg:=msg+' ('+cmd+')';
+   rew:=Trim(fetch_reward(msg2));
 
-   _set_field_story(ResultSet.GetDouble(datetime_f),ResultSet.GetRawByteString(user_f),msg,cmd,i);
+   cmd:=ResultSet.GetRawByteString(cmd_f);
+
+   _set_field_story(ResultSet.GetDouble(datetime_f),ResultSet.GetRawByteString(user_f),rew,msg,cmd,i);
 
    msg2.Free;
   end;
@@ -1438,9 +1443,14 @@ begin
           cx:=Canvas.TextExtent(' YAEBALETOT').cx;
           GridStory.Columns[1].Extent:=cx;
           GridStory.Columns[1].MinExtent:=cx;
-          cx:=Canvas.TextExtent(' СообщениеM').cx;
+
+          cx:=Canvas.TextExtent(' НаградаM').cx;
           GridStory.Columns[2].Extent:=cx;
           GridStory.Columns[2].MinExtent:=cx;
+
+          cx:=Canvas.TextExtent(' СообщениеM').cx;
+          GridStory.Columns[3].Extent:=cx;
+          GridStory.Columns[3].MinExtent:=cx;
          end;
 
         end;
@@ -2613,6 +2623,7 @@ begin
  GridStory.ScrollBars:=ssVertical;
  GridStory.AddColumn('datetime',' Дата, Время ');
  GridStory.AddColumn('user'    ,' ЛЕВ ');
+ GridStory.AddColumn('rew'     ,' Награда');
  GridStory.AddColumn('mes'     ,' Сообщение');
  GridStory.AddColumn('cmd'     ,' Команда');
 
