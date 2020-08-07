@@ -914,7 +914,7 @@ begin
    v:='';
   end;
 
-  Writeln(n,'*',v,'*');
+  //Writeln(n,'*',v,'*');
 
   case n of
    'admin'      :PC.PS:=PC.PS+[pm_admin      ];
@@ -957,7 +957,7 @@ begin
    v:='';
   end;
 
-  Writeln(n,'*',v,'*');
+  //Writeln(n,'*',v,'*');
 
   case n of
    'subscriber':PC.subscriber_m:=StrToDWordDef(v,0);
@@ -1077,7 +1077,7 @@ begin
   msg:=Copy(msg,i+3,Length(msg)-(i+2));
  end;
 
- Writeln(cmd);
+ //Writeln(cmd);
 
  repeat
   i:=System.IndexChar(PAnsiChar(param)^,Length(param),';');
@@ -1104,7 +1104,7 @@ begin
 
   //Writeln('u:',user,'*');
 
-  Writeln(n,'*',v,'*');
+  //Writeln(n,'*',v,'*');
 
   Case n of
    'msg-id'      :msg_id:=v;
@@ -1169,7 +1169,7 @@ begin
 
    if Length(msg)=0 then Exit;
 
-   Writeln(msg);
+   //Writeln(msg);
 
    repeat
     msg_parse:=Default(Tmsg_parse);

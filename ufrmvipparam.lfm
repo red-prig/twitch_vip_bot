@@ -1,11 +1,11 @@
 object FrmVipParam: TFrmVipParam
-  Left = 543
-  Height = 211
-  Top = 145
+  Left = 433
+  Height = 262
+  Top = 174
   Width = 410
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры VIP'
-  ClientHeight = 211
+  ClientHeight = 262
   ClientWidth = 410
   OnKeyDown = FormKeyDown
   Position = poMainFormCenter
@@ -39,7 +39,7 @@ object FrmVipParam: TFrmVipParam
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
     EditLabel.Width = 391
-    EditLabel.Caption = 'Вероятность %0-%100:'
+    EditLabel.Caption = 'Вероятность VIP %0-%100:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
     EditLabel.Font.Height = -16
@@ -55,7 +55,7 @@ object FrmVipParam: TFrmVipParam
   object BtnCancel: TBitBtn
     Left = 308
     Height = 30
-    Top = 175
+    Top = 226
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -131,7 +131,7 @@ object FrmVipParam: TFrmVipParam
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 175
+    Top = 226
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -231,6 +231,38 @@ object FrmVipParam: TFrmVipParam
     ParentShowHint = False
     ShowHint = True
     TabOrder = 5
+    OnKeyDown = EdtVipDaysKeyDown
+  end
+  object CBVipExpired: TCheckBox
+    Left = 238
+    Height = 19
+    Hint = 'Автоматически проверять на истёкшие вип в списке.'
+    Top = 112
+    Width = 161
+    Anchors = [akTop, akRight]
+    Caption = 'Авто проверка истечения'
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 6
+  end
+  object EdtMaxVips: TLabeledEdit
+    Left = 8
+    Height = 25
+    Hint = 'Максимальное количество Випов в локальном списке.'
+    Top = 184
+    Width = 387
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 387
+    EditLabel.Caption = 'Максимум Випов:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 7
     OnKeyDown = EdtVipDaysKeyDown
   end
 end

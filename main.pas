@@ -73,11 +73,12 @@ type
     procedure SetRoomStates(RS:TRoomStates);
     procedure parse_vips(msg:RawByteString);
     procedure add_to_notice(const id,msg:RawByteString);
+    procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
     procedure add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
     procedure EdtSendKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure SystemTrayClick(Sender: TObject);
-    procedure _set_field_story(DT:TDateTime;const user,S:RawByteString;aRow:Integer);
-    procedure add_to_story(DT:TDateTime;const user,S:RawByteString);
+    procedure _set_field_story(DT:TDateTime;const user,S,cmd:RawByteString;aRow:Integer);
+    procedure add_to_story(DT:TDateTime;const user,S,cmd:RawByteString);
     procedure FormActivate(Sender: TObject);
     procedure BtnToolPopupClick(Sender:TObject);
     procedure FormDestroy(Sender: TObject);
@@ -111,13 +112,17 @@ type
     function  DoVipDelete(aRow:Integer):Boolean;
     procedure DeleteVip(aRow:Integer);
     Function  DoVipAddNew(DT:TDateTime;Const FUser:RawByteString):Boolean;
+    procedure SetTimerVipExpired(m:Boolean);
+    procedure OnBtnCheckVipClick(Sender:TObject);
     procedure OnBtnDeleteVipClick(Sender:TObject);
     procedure OnBtnInsertVipClick(Sender:TObject);
+    procedure DeleteAndUnVip(aRow:Integer);
     procedure OnBtnUnVipClick(Sender:TObject);
     procedure OnBtnUpdateVipClick(Sender:TObject);
     procedure FormCreate(Sender: TObject);
     procedure UpdateTextSubTime(db:Boolean);
     procedure SetDBParam(Const fname,fvalue:RawByteString);
+    procedure GetDBParam(Const fname:RawByteString;N:TNotifyTask);
     procedure BtnClickSubModeOn(Sender:TObject);
     procedure BtnClickSubModeOff(Sender:TObject);
     function  CanSetTimerSubMode(m:Boolean):Boolean;
@@ -207,14 +212,18 @@ var
 
  vip_rnd:record
   Enable:Boolean;
+  Auto_expired:Boolean;
   title:RawByteString;
   cmd:TStringList;
   cmd2:TStringList;
   already_vip:TStringList;
+  is_max_vip:TStringList;
   unvip_cmd:RawByteString;
   vip_list_cmd:RawByteString;
   perc:Byte;
   days:DWORD;
+  max_vips:DWORD;
+  Timer:TTimer;
  end;
 
  sub_mod:record
@@ -222,8 +231,11 @@ var
   _label:record
    name,_on,off:RawByteString;
   end;
-  subtime_cmd:RawByteString;
+
+  subtime_get_cmd:RawByteString;
   subtime_kd:DWORD;
+  subtime_get_info:TStringList;
+
   room_tag:RawByteString;
   inc_title:RawByteString;
   dec_title:RawByteString;
@@ -234,12 +246,14 @@ var
   inc_min:DWORD;
   max_inc:DWORD;
   max_dec:DWORD;
+  T:record
+   Timer:TTimer;
+   TickRv:Int64;
+   TickKd:Int64;
+   TimeRv:Int64;
+   TimeDb:Int64;
+  end;
  end;
-
- SubModeTimer:TTimer;
- SubModeTick:Int64;
- SubModeTime:Int64;
- dbSubModeTime:Int64;
 
 function fetch_random_no_more(Var Context:TMTRandomContext):Boolean;
 
@@ -330,6 +344,7 @@ begin
  SetString(msg         ,Fmsg ,StrLen(Fmsg));
  FreeMem(@Self);
  FrmMain.add_to_chat(PC,user,display_name,msg);
+ FrmMain.add_to_chat_cmd(PC,user,display_name,msg);
 end;
 
 type
@@ -482,7 +497,8 @@ begin
            '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
            'I5OTAyM1o="}}}');
-           }
+          }
+
 
          {add_reward(
             '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:49:22.'+
@@ -643,14 +659,20 @@ begin
 
    if fetch_random_no_more(RCT) then
    begin
+    if (FindVipUser(user)<>-1) then
+    begin
+     push_irc_list(vip_rnd.already_vip,[user]);
+     cmd:=Format(_get_first_cmd(vip_rnd.already_vip),[user]);
+    end else
+    if (vip_rnd.max_vips<>0) and (GridVips.RowCount-1>=vip_rnd.max_vips) then
+    begin
+     push_irc_list(vip_rnd.is_max_vip,[user]);
+     cmd:=Format(_get_first_cmd(vip_rnd.is_max_vip),[user]);
+    end else
     if DoVipAddNew(DT,user) then
     begin
      push_irc_list(vip_rnd.cmd,[user]);
      cmd:=Format(_get_first_cmd(vip_rnd.cmd),[user]);
-    end else
-    begin
-     push_irc_list(vip_rnd.already_vip,[user]);
-     cmd:=Format(_get_first_cmd(vip_rnd.already_vip),[user]);
     end;
    end else
    begin
@@ -681,7 +703,7 @@ begin
    end;
   end;
 
-  if cmd<>'' then
+  {if cmd<>'' then
   begin
    msg:=msg+' ('+cmd+')';
    msg2.Values['msg_cmd']:=cmd;
@@ -691,9 +713,9 @@ begin
    ms.Position:=0;
    ms.Read(PAnsiChar(rs)^,Length(rs));
    FreeAndNil(ms);
-  end;
+  end;}
 
-  add_to_story(DT,display_name,msg);
+  add_to_story(DT,display_name,msg,cmd);
 
   FDbcScript:=TDbcStatementScript.Create;
   FDbcScript.Handle.DbcConnection:=DbcThread;
@@ -814,6 +836,7 @@ begin
  end;
 
  Case id of
+  'no_vips'     :wait_vip_update:=False;
   'vips_success':if wait_vip_update then
                  begin
                   parse_vips(msg);
@@ -950,12 +973,67 @@ begin
 
 end;
 
+function unixTime2String(T:Int64):RawByteString;
+var
+ Hr:Int64;
+ Mn,Sc:Byte;
+begin
+ Sc:=(abs(T) mod 60);
+ Mn:=(abs(T) div 60) mod 60;
+ Hr:=(abs(T) div (60*60)) mod 24;
+
+ if T>=0 then
+ begin
+  Result:='+'+AddChar('0',IntToStr(Abs(Hr)),2)
+         +':'+AddChar('0',IntToStr(Mn),2)
+         +':'+AddChar('0',IntToStr(Sc),2);
+ end else
+ begin
+  Result:='-'+AddChar('0',IntToStr(Abs(Hr)),2)
+         +':'+AddChar('0',IntToStr(Mn),2)
+         +':'+AddChar('0',IntToStr(Sc),2);
+ end;
+end;
+
+Function GetShortTimeStr(Time:TDateTime):RawByteString;
+var
+ Hr,Mn,Sc,Ms:Word;
+begin
+ DecodeTime(Time,Hr,Mn,Sc,Ms);
+ Result:=AddChar('0',IntToStr(Hr),2)+':'+AddChar('0',IntToStr(Mn),2);
+end;
+
+procedure TFrmMain.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
+var
+ cmd:RawByteString;
+ MI,MD:Int64;
+begin
+
+ cmd:=Trim(msg);
+
+ if (sub_mod.Enable) and
+    (cmd=sub_mod.subtime_get_cmd) and
+    (GetTickCount64>=sub_mod.T.TickKd+sub_mod.subtime_kd*1000) then
+ begin
+  MI:= sub_mod.max_inc*60*60;
+  MD:=-sub_mod.max_dec*60*60;
+  if MI=0 then
+  begin
+   push_irc_list(sub_mod.subtime_get_info,[unixTime2String(sub_mod.T.TimeRv),
+                                           unixTime2String(MD),'∞']);
+  end else
+  begin
+   push_irc_list(sub_mod.subtime_get_info,[unixTime2String(sub_mod.T.TimeRv),
+                                           unixTime2String(MD),
+                                           unixTime2String(MI)]);
+  end;
+  sub_mod.T.TickKd:=GetTickCount64;
+ end;
+
+end;
+
 procedure TFrmMain.add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
- Hr:Word;
- Mn:Word;
- Sc:Word;
- Ms:Word;
  aRow,aCol:Integer;
  New:TMsgGridCell;
 begin
@@ -967,10 +1045,9 @@ begin
  begin
   aRow:=GridChat.InsertRow(GridChat.RowCount).Index;
  end;
- DecodeTime(Now,Hr,Mn,Sc,Ms);
 
  GridChat.CellClass:=TKGridTextCell;
- GridChat.FieldValue['time',aRow]:=' '+AddChar('0',IntToStr(Hr),2)+':'+AddChar('0',IntToStr(Mn),2);
+ GridChat.FieldValue['time',aRow]:=' '+GetShortTimeStr(Now);
 
  aCol:=GridChat.FindColumn('mes');
 
@@ -1052,15 +1129,16 @@ begin
  Result:=DateTimeToStr(Value,FS,True);
 end;
 
-procedure TFrmMain._set_field_story(DT:TDateTime;const user,S:RawByteString;aRow:Integer);
+procedure TFrmMain._set_field_story(DT:TDateTime;const user,S,cmd:RawByteString;aRow:Integer);
 
 begin
  GridStory.FieldValue['datetime',aRow]:=' '+GetDateTimeStr(DT);
  GridStory.FieldValue['user'    ,aRow]:=user;
  GridStory.FieldValue['mes'     ,aRow]:=S;
+ GridStory.FieldValue['cmd'     ,aRow]:=cmd;
 end;
 
-procedure TFrmMain.add_to_story(DT:TDateTime;const user,S:RawByteString);
+procedure TFrmMain.add_to_story(DT:TDateTime;const user,S,cmd:RawByteString);
 Var
  aRow:Integer;
 begin
@@ -1072,7 +1150,7 @@ begin
   aRow:=GridStory.InsertRow(GridStory.RowCount).Index;
  end;
 
- _set_field_story(DT,user,S,aRow);
+ _set_field_story(DT,user,S,cmd,aRow);
 
  if GridStory.RowCount>300 then
  begin
@@ -1091,7 +1169,7 @@ end;
 
 Procedure TFrmMain.OnListStory(Sender:TBaseTask);
 Var
- datetime_f,user_f,mes_f:SizeInt;
+ datetime_f,user_f,mes_f,cmd_f:SizeInt;
  i,c:SizeInt;
  ResultSet:TZResultSet;
  ms:TPCharStream;
@@ -1115,6 +1193,7 @@ begin
   datetime_f:=ResultSet.FindColumn('datetime');
   user_f    :=ResultSet.FindColumn('user');
   mes_f     :=ResultSet.FindColumn('mes');
+  cmd_f     :=ResultSet.FindColumn('cmd');
   For i:=1 to c do
   begin
    ResultSet.MoveAbsolute(i);
@@ -1134,11 +1213,13 @@ begin
    end;
 
    msg:=fetch_msg(msg2);
-   cmd:=String(msg2.Values['msg_cmd']);
-   if cmd<>'' then
-    msg:=msg+' ('+cmd+')';
 
-   _set_field_story(ResultSet.GetDouble(datetime_f),ResultSet.GetRawByteString(user_f),msg,i);
+   cmd:=ResultSet.GetRawByteString(cmd_f);
+   //cmd:=String(msg2.Values['msg_cmd']);
+   //if cmd<>'' then
+   // msg:=msg+' ('+cmd+')';
+
+   _set_field_story(ResultSet.GetDouble(datetime_f),ResultSet.GetRawByteString(user_f),msg,cmd,i);
 
    msg2.Free;
   end;
@@ -1213,8 +1294,8 @@ begin
 
  if ResultSet.First then
  begin
-  SubModeTime:=ResultSet.GetInt(1);
-  dbSubModeTime:=SubModeTime;
+  sub_mod.T.TimeRv:=ResultSet.GetInt(1);
+  sub_mod.T.TimeDB:=sub_mod.T.TimeRv;
   UpdateTextSubTime(False);
  end;
 
@@ -1357,6 +1438,9 @@ begin
           cx:=Canvas.TextExtent(' YAEBALETOT').cx;
           GridStory.Columns[1].Extent:=cx;
           GridStory.Columns[1].MinExtent:=cx;
+          cx:=Canvas.TextExtent(' СообщениеM').cx;
+          GridStory.Columns[2].Extent:=cx;
+          GridStory.Columns[2].MinExtent:=cx;
          end;
 
         end;
@@ -1529,16 +1613,20 @@ begin
     DumpExceptionCallStack(E);
    end;
   end;
+
+  sub_mod.T.TickKd:=0;
  end;
 end;
 
 procedure TFrmMain.OnPopupClickVipParam(Sender:TObject);
 begin
  try
-  FrmVipParam.CBVipEnable.Checked:=vip_rnd.Enable;
-  FrmVipParam.EdtTitle.Text      :=vip_rnd.title;
-  FrmVipParam.EdtPercent.Text    :=IntToStr(vip_rnd.perc);
-  FrmVipParam.EdtVipDays.Text    :=IntToStr(vip_rnd.days);
+  FrmVipParam.CBVipEnable.Checked :=vip_rnd.Enable;
+  FrmVipParam.EdtTitle.Text       :=vip_rnd.title;
+  FrmVipParam.EdtPercent.Text     :=IntToStr(vip_rnd.perc);
+  FrmVipParam.CBVipExpired.Checked:=vip_rnd.Auto_expired;
+  FrmVipParam.EdtVipDays.Text     :=IntToStr(vip_rnd.days);
+  FrmVipParam.EdtMaxVips.Text     :=IntToStr(vip_rnd.max_vips);
 
  except
   on E:Exception do
@@ -1554,15 +1642,28 @@ begin
   vip_rnd.perc  :=StrToDWORDDef(FrmVipParam.EdtPercent.Text,70);
   if vip_rnd.perc>100 then vip_rnd.perc:=100;
   vip_rnd.days  :=StrToDWORDDef(FrmVipParam.EdtVipDays.Text,30);
+  vip_rnd.max_vips:=StrToDWORDDef(FrmVipParam.EdtMaxVips.Text,0);
+
+  vip_rnd.Auto_expired:=FrmVipParam.CBVipExpired.Checked;
+  SetTimerVipExpired(vip_rnd.Auto_expired);
 
   try
+
    case vip_rnd.Enable of
     True :Config.WriteString('vip' ,'enable','1');
     False:Config.WriteString('vip' ,'enable','0');
    end;
+
    Config.WriteString('vip' ,'title'   ,vip_rnd.title);
    Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
    Config.WriteString('vip' ,'days'    ,IntToStr(vip_rnd.days));
+   Config.WriteString('vip' ,'max_vips',IntToStr(vip_rnd.max_vips));
+
+   case vip_rnd.Auto_expired of
+    True :Config.WriteString('vip' ,'auto_expired','1');
+    False:Config.WriteString('vip' ,'auto_expired','0');
+   end;
+
   except
    on E:Exception do
    begin
@@ -1721,12 +1822,18 @@ type
 
 procedure TUserMaskEdit.ValidateEdit;
 begin
- if Text='    .  .     :  :  ' then
+ if (Text='    .  .     :  :  ') then
  begin
   Clear;
+  Text:='';
  end else
  begin
-  inherited;
+  try
+   inherited;
+  except
+   Clear;
+   Text:='';
+  end;
  end;
 end;
 
@@ -1776,7 +1883,7 @@ begin
  Case FName of
   'datebeg':
    begin
-    if FValue='    .  .     :  :  ' then
+    if (FValue='    .  .     :  :  ') or (FValue='') then
     begin
      GridVips.FieldValue[FName    ,ARow]:='';
      GridVips.FieldValue['dateend',ARow]:='';
@@ -1841,7 +1948,7 @@ begin
  Case FName of
   'datebeg':
    begin
-    if FValue='    .  .     :  :  ' then
+    if (FValue='    .  .     :  :  ') or (FValue='') then
     begin
 
      FDbcScript:=TDbcStatementScript.Create;
@@ -1996,6 +2103,74 @@ begin
  end;
 end;
 
+procedure TFrmMain.SetTimerVipExpired(m:Boolean);
+begin
+ Case m of
+  True :
+  begin
+   if (vip_rnd.Timer=nil) then
+   begin
+    vip_rnd.Timer:=TTimer.Create(Self);
+    vip_rnd.Timer.Interval:={30*}60*1000; //30min
+    vip_rnd.Timer.OnTimer:=@OnBtnCheckVipClick;
+   end;
+   vip_rnd.Timer.Enabled:=m;
+  end;
+  False:
+  begin
+   if (vip_rnd.Timer<>nil) then
+   begin
+    vip_rnd.Timer.Enabled:=m;
+   end;
+  end;
+ end;
+end;
+
+procedure TFrmMain.OnBtnCheckVipClick(Sender:TObject);
+var
+ ND,DT:TDateTime;
+ T:RawByteString;
+ i,s,u:SizeInt;
+ L:array of Integer;
+begin
+ if not BtnInfo.Visible then
+ begin
+  if Sender is TButton then
+  begin
+   ShowMessage('Для выполнения операции залогинтесь!');
+  end;
+  Exit;
+ end;
+
+ SetLength(L,0);
+ s:=GridVips.RowCount;
+ if s>1 then
+ begin
+  u:=GridVips.FindColumn('dateend');
+  ND:=Now;
+  if (u<>-1) then
+   For i:=1 to s-1 do
+   begin
+    T:=GridVips.Cells[u,i];
+    if (T<>'') and TryGetDateTime(T,DT) then
+    begin
+     if ND>DT then
+     begin
+      SetLength(L,Length(L)+1);
+      L[Length(L)-1]:=i;
+     end;
+    end;
+   end;
+ end;
+
+ if Length(L)<>0 then
+ For i:=0 to Length(L)-1 do
+ begin
+  DeleteAndUnVip(L[i]);
+ end;
+
+end;
+
 procedure TFrmMain.OnBtnDeleteVipClick(Sender:TObject);
 begin
  GridVips.DoDelete;
@@ -2006,11 +2181,29 @@ begin
  GridVips.DoInsert;
 end;
 
+procedure TFrmMain.DeleteAndUnVip(aRow:Integer);
+var
+ user:RawByteString;
+begin
+ user:=GridVips.FieldValue['user',ARow];
+ push_irc_msg(Format(vip_rnd.unvip_cmd,[user]));
+ DeleteVip(aRow);
+end;
+
 procedure TFrmMain.OnBtnUnVipClick(Sender:TObject);
 var
  user:RawByteString;
  aRow:Integer;
 begin
+ if not BtnInfo.Visible then
+ begin
+  if Sender is TButton then
+  begin
+   ShowMessage('Для выполнения операции залогинтесь!');
+  end;
+  Exit;
+ end;
+
  aRow:=GridVips.Row;
  if (aRow>=GridVips.FixedRows) and GridVips.RowValid(aRow) then
  begin
@@ -2022,14 +2215,22 @@ begin
                  [mrYes,'Да',mrNo,'Нет'],
                  'Удаление випки на твиче')=mrYes then
   begin
-   push_irc_msg(Format(vip_rnd.unvip_cmd,[user]));
-   DeleteVip(aRow);
+   DeleteAndUnVip(aRow);
   end;
  end;
 end;
 
 procedure TFrmMain.OnBtnUpdateVipClick(Sender:TObject);
 begin
+ if not BtnInfo.Visible then
+ begin
+  if Sender is TButton then
+  begin
+   ShowMessage('Для выполнения операции залогинтесь!');
+  end;
+  Exit;
+ end;
+
  push_irc_msg(vip_rnd.vip_list_cmd);
  wait_vip_update:=True;
 end;
@@ -2064,7 +2265,10 @@ begin
    vip_rnd.perc  :=StrToDWORDDef(Config.ReadString('vip','msg_perc',IntToStr(vip_rnd.perc)),70);
    if vip_rnd.perc>100 then vip_rnd.perc:=100;
 
-   vip_rnd.days:=StrToDWORDDef(Config.ReadString('vip','days','30'),30);
+   vip_rnd.days:=StrToDWORDDef(Config.ReadString('vip','days',IntToStr(vip_rnd.days)),vip_rnd.days);
+   vip_rnd.max_vips:=StrToDWORDDef(Config.ReadString('vip','max_vips',IntToStr(vip_rnd.max_vips)),vip_rnd.max_vips);
+
+   vip_rnd.Auto_expired:=Config.ReadString('vip','auto_expired','1')='1';
 
    view_mask:=StrToDWORDDef(Config.ReadString('view','mask','1'),1);
 
@@ -2086,6 +2290,7 @@ begin
   try
    //write
 
+   vip_rnd.Auto_expired:=False;
    vip_rnd.Enable:=True;
    sub_mod.Enable:=False;
    view_mask:=1;
@@ -2100,6 +2305,9 @@ begin
    Config.WriteString('vip' ,'title'   ,vip_rnd.title);
    Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
    Config.WriteString('vip' ,'days'    ,IntToStr(vip_rnd.days));
+   Config.WriteString('vip' ,'max_vips',IntToStr(vip_rnd.max_vips));
+
+   Config.WriteString('vip' ,'auto_expired','0');
 
    Config.WriteString('view','autologin','0');
    Config.WriteString('view','systray'  ,'1');
@@ -2123,6 +2331,8 @@ begin
    end;
   end;
  end;
+
+ SetTimerVipExpired(vip_rnd.Auto_expired);
 
  SystemTray.Icon:=Application.Icon;
 
@@ -2404,6 +2614,7 @@ begin
  GridStory.AddColumn('datetime',' Дата, Время ');
  GridStory.AddColumn('user'    ,' ЛЕВ ');
  GridStory.AddColumn('mes'     ,' Сообщение');
+ GridStory.AddColumn('cmd'     ,' Команда');
 
  PanelSub:=TPanel.Create(FrmMain);
  PanelSub.Align:=alClient;
@@ -2535,6 +2746,19 @@ begin
  Btn.BorderSpacing.Right:=5;
  Btn.Parent:=PanelVips;
 
+ Tmp:=Btn;
+
+ Btn:=TButton.Create(PanelVips);
+ Btn.OnClick:=@OnBtnCheckVipClick;
+ Btn.AutoSize:=True;
+ Btn.Caption:='Проверить на истечение';
+ Btn.Anchors:=[akTop,akRight];
+ Btn.AnchorSide[akRight].Side:=asrLeft;
+ Btn.AnchorSide[akRight].Control:=Tmp;
+ Btn.Top :=5;
+ Btn.BorderSpacing.Right:=10;
+ Btn.Parent:=PanelVips;
+
  GridVips:=TDBStringGrid.Create(FrmMain);
 
  GridVips.Anchors:=[akTop,akLeft,akRight,akBottom];
@@ -2605,37 +2829,8 @@ begin
  FDbcScript.Start;
  FDbcScript.Release;
 
- FDbcScript:=TDbcStatementScript.Create;
- FDbcScript.Handle.DbcConnection:=DbcThread;
- FDbcScript.Notify.Add(T_FIN,@OnGetSubTime);
- FDbcScript.SetSctipt(FGetParamScript);
- FDbcScript.ExecuteScript;
- FDbcScript.Params.SetRawByteString('name','SubTime');
- FDbcScript.Start;
- FDbcScript.Release;
+ GetDBParam('SubTime',@OnGetSubTime);
 
-end;
-
-function unixTime2String(T:Int64):RawByteString;
-var
- Hr:Int64;
- Mn,Sc:Byte;
-begin
- Sc:=(abs(T) mod 60);
- Mn:=(abs(T) div 60) mod 60;
- Hr:=(abs(T) div (60*60)) mod 24;
-
- if T>=0 then
- begin
-  Result:='+'+AddChar('0',IntToStr(Abs(Hr)),2)
-         +':'+AddChar('0',IntToStr(Mn),2)
-         +':'+AddChar('0',IntToStr(Sc),2);
- end else
- begin
-  Result:='-'+AddChar('0',IntToStr(Abs(Hr)),2)
-         +':'+AddChar('0',IntToStr(Mn),2)
-         +':'+AddChar('0',IntToStr(Sc),2);
- end;
 end;
 
 procedure TFrmMain.UpdateTextSubTime(db:Boolean);
@@ -2644,11 +2839,11 @@ var
 begin
  if db then
  begin
-  SetDBParam('SubTime',IntToStr(SubModeTime));
-  dbSubModeTime:=SubModeTime;
+  SetDBParam('SubTime',IntToStr(sub_mod.T.TimeRv));
+  sub_mod.T.TimeDB:=sub_mod.T.TimeRv;
  end;
 
- TextSubTime.Text:=unixTime2String(SubModeTime);
+ TextSubTime.Text:=unixTime2String(sub_mod.T.TimeRv);
 
  TextSubTime.SelStart :=S;
  TextSubTime.SelLength:=L;
@@ -2668,28 +2863,42 @@ begin
  FDbcScript.Release;
 end;
 
+procedure TFrmMain.GetDBParam(Const fname:RawByteString;N:TNotifyTask);
+Var
+ FDbcScript:TDbcStatementScript;
+begin
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.Notify.Add(T_FIN,@OnGetSubTime);
+ FDbcScript.SetSctipt(FGetParamScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetRawByteString('name',fname);
+ FDbcScript.Start;
+ FDbcScript.Release;
+end;
+
 function TFrmMain.CanSetTimerSubMode(m:Boolean):Boolean;
 begin
  if not BtnInfo.Visible then Exit;
  Case m of
   True :
   begin
-   if (SubModeTimer=nil) then
+   if (sub_mod.T.Timer=nil) then
    begin
     Result:=True;
    end else
    begin
-    Result:=not SubModeTimer.Enabled;
+    Result:=not sub_mod.T.Timer.Enabled;
    end;
   end;
   False:
   begin
-   if (SubModeTimer=nil) then
+   if (sub_mod.T.Timer=nil) then
    begin
     Result:=False;
    end else
    begin
-    Result:=SubModeTimer.Enabled;
+    Result:=sub_mod.T.Timer.Enabled;
    end;
   end;
  end;
@@ -2700,22 +2909,22 @@ begin
  Case m of
   True :
   begin
-   if (SubModeTimer=nil) then
+   if (sub_mod.T.Timer=nil) then
    begin
-    SubModeTimer:=TTimer.Create(Self);
-    SubModeTimer.Interval:=400;
-    SubModeTimer.OnTimer:=@SubModeTimerUpdate;
+    sub_mod.T.Timer:=TTimer.Create(Self);
+    sub_mod.T.Timer.Interval:=400;
+    sub_mod.T.Timer.OnTimer:=@SubModeTimerUpdate;
    end;
    LabelSubMode.Font.Color:=$FF00;
    LabelSubMode.Caption:=sub_mod._label._on;
-   SubModeTick:=GetTickCount64;
-   SubModeTimer.Enabled:=m;
+   sub_mod.T.TickRv:=GetTickCount64;
+   sub_mod.T.Timer.Enabled:=m;
   end;
   False:
   begin
-   if (SubModeTimer<>nil) then
+   if (sub_mod.T.Timer<>nil) then
    begin
-    SubModeTimer.Enabled:=m;
+    sub_mod.T.Timer.Enabled:=m;
    end;
    LabelSubMode.Font.Color:=0;
    LabelSubMode.Caption:=sub_mod._label.off;
@@ -2726,56 +2935,61 @@ end;
 
 procedure TFrmMain.BtnClickSubModeOn(Sender:TObject);
 begin
+ if BtnInfo.Visible then
  if CanSetTimerSubMode(true) then
  begin
   //submode send on
-  push_irc_list(sub_mod.cmd_on,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  push_irc_list(sub_mod.cmd_on ,[login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
  end else
  begin
   //submode send inc
-  push_irc_list(sub_mod.cmd_inc,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  push_irc_list(sub_mod.cmd_inc,[login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
  end;
+ sub_mod.T.TickKd:=GetTickCount64;
 end;
 
 procedure TFrmMain.BtnClickSubModeOff(Sender:TObject);
 begin
+ if BtnInfo.Visible then
  if CanSetTimerSubMode(false) then
  begin
   //submode send off
-  push_irc_list(sub_mod.cmd_off,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  push_irc_list(sub_mod.cmd_off,[login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
  end else
  begin
   //submode send dec
-  push_irc_list(sub_mod.cmd_dec,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  push_irc_list(sub_mod.cmd_dec,[login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
  end;
+ sub_mod.T.TickKd:=GetTickCount64;
 end;
 
 procedure TFrmMain.SubModeTimerUpdate(Sender:TObject);
 var
  s:Int64;
 begin
- s:=(GetTickCount64-SubModeTick) div 1000;
- SubModeTick:=SubModeTick+s*1000;
+ s:=(GetTickCount64-sub_mod.T.TickRv) div 1000;
+ sub_mod.T.TickRv:=sub_mod.T.TickRv+s*1000;
  if not sub_mod.Enable then Exit;
- if SubModeTime=0 then
+ if sub_mod.T.TimeRv=0 then
  begin
   //wtf? submode without timer
  end else
  if (s<>0) then
  begin
-  if (SubModeTime>0) then
+  if (sub_mod.T.TimeRv>0) then
   begin
-   SubModeTime:=SubModeTime-s;
-   if SubModeTime<=0 then
+   sub_mod.T.TimeRv:=sub_mod.T.TimeRv-s;
+   if sub_mod.T.TimeRv<=0 then
    begin
-    SubModeTime:=0;
+    sub_mod.T.TimeRv:=0;
     //submode send off
     if CanSetTimerSubMode(false) then
     begin
-     push_irc_list(sub_mod.cmd_off,[login,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+     push_irc_list(sub_mod.cmd_off,[login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+     sub_mod.T.TickKd:=GetTickCount64;
     end;
    end;
-   UpdateTextSubTime(abs(dbSubModeTime-SubModeTime)>=10);
+   UpdateTextSubTime(abs(sub_mod.T.TimeDB-sub_mod.T.TimeRv)>=10);
   end else
   begin
    //reverse submode time
@@ -2785,59 +2999,67 @@ end;
 
 procedure TFrmMain._inc_SubModeTime(var cmd:RawByteString;Const user:RawByteString);
 begin
- SubModeTime:=SubModeTime+sub_mod.inc_min*60;
- dbSubModeTime:=SubModeTime;
- if SubModeTime>0 then
+ sub_mod.T.TimeRv:=sub_mod.T.TimeRv+sub_mod.inc_min*60;
+ sub_mod.T.TimeDB:=sub_mod.T.TimeRv;
+ if sub_mod.T.TimeRv>0 then
  begin
-  if (sub_mod.max_inc<>0) and (SubModeTime>sub_mod.max_inc*60*60) then
+  if (sub_mod.max_inc<>0) and (sub_mod.T.TimeRv>sub_mod.max_inc*60*60) then
   begin
-   SubModeTime:=sub_mod.max_inc*60*60;
+   sub_mod.T.TimeRv:=sub_mod.max_inc*60*60;
   end;
   if CanSetTimerSubMode(True) then
   begin
-   push_irc_list(sub_mod.cmd_on,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
-   cmd:=Format(_get_first_cmd(sub_mod.cmd_on),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+   if BtnInfo.Visible then
+    push_irc_list(sub_mod.cmd_on,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_on),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
   end else
   begin
-   push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
-   cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+   if BtnInfo.Visible then
+    push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
   end;
  end else
  begin
-  push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
-  cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  if BtnInfo.Visible then
+   push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+  cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
  end;
+ sub_mod.T.TickKd:=GetTickCount64;
  UpdateTextSubTime(True);
 end;
 
 procedure TFrmMain._dec_SubModeTime(var cmd:RawByteString;Const user:RawByteString);
 begin
- SubModeTime:=SubModeTime-sub_mod.inc_min*60;
- dbSubModeTime:=SubModeTime;
- if SubModeTime<=0 then
+ sub_mod.T.TimeRv:=sub_mod.T.TimeRv-sub_mod.inc_min*60;
+ sub_mod.T.TimeDB:=sub_mod.T.TimeRv;
+ if sub_mod.T.TimeRv<=0 then
  begin
   if (sub_mod.max_dec=0) then
   begin
-   SubModeTime:=0;
+   sub_mod.T.TimeRv:=0;
   end else
-  if (abs(SubModeTime)>sub_mod.max_dec*60*60) then
+  if (abs(sub_mod.T.TimeRv)>sub_mod.max_dec*60*60) then
   begin
-   SubModeTime:=-sub_mod.max_dec*60*60;
+   sub_mod.T.TimeRv:=-sub_mod.max_dec*60*60;
   end;
   if CanSetTimerSubMode(False) then
   begin
-   push_irc_list(sub_mod.cmd_off,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
-   cmd:=Format(_get_first_cmd(sub_mod.cmd_off),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+   if BtnInfo.Visible then
+    push_irc_list(sub_mod.cmd_off,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_off),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
   end else
   begin
-   push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
-   cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+   if BtnInfo.Visible then
+    push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
   end;
  end else
  begin
-  push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
-  cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(SubModeTime)]);
+  if BtnInfo.Visible then
+   push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+  cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
  end;
+ sub_mod.T.TickKd:=GetTickCount64;
  UpdateTextSubTime(True);
 end;
 
@@ -3033,6 +3255,14 @@ begin
    begin
     Node.Push(TLoadList_Func,@vip_rnd.already_vip);
    end;
+  'is_max_vip':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.is_max_vip);
+   end;
+  'max_vips':
+   begin
+    Node.Push(TLoadDWORD_Func,@vip_rnd.max_vips);
+   end;
   'unvip_cmd':
    begin
     Node.Push(TLoadStr_Func,@vip_rnd.unvip_cmd);
@@ -3067,13 +3297,17 @@ begin
    begin
     Node.Push(TOpenSubLabel_Func,Node.CData);
    end;
-  'subtime_cmd':
+  'subtime_get_cmd':
    begin
-    Node.Push(TLoadStr_Func  ,@sub_mod.subtime_cmd);
+    Node.Push(TLoadStr_Func  ,@sub_mod.subtime_get_cmd);
    end;
   'subtime_kd':
    begin
     Node.Push(TLoadDWORD_Func,@sub_mod.subtime_kd);
+   end;
+  'subtime_get_info':
+   begin
+    Node.Push(TLoadList_Func ,@sub_mod.subtime_get_info);
    end;
   'room_tag':
    begin

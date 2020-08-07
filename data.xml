@@ -16,11 +16,16 @@
   %s зачем брать випку, если уже вип? минус поинты кста.
  </already_vip>
 
+ <is_max_vip>
+  Извини %s випки кончились, минус поинты кста.
+ </is_max_vip>
+
  <unvip_cmd>/unvip %s</unvip_cmd>
  <vip_list_cmd>/vips</vip_list_cmd>
 
  <perc>70</perc>
  <days>30</days>
+ <max_vips>90</max_vips>
 </vip_rnd>
 
 <sub_mod>
@@ -33,8 +38,12 @@
   <off>Сабмод выключен</off>
  </label>
 
- <subtime_cmd>!subtime</subtime_cmd>
+ <subtime_get_cmd>!subtime</subtime_get_cmd>
  <subtime_kd>60</subtime_kd>
+
+ <subtime_get_info>
+  Время сабмода: %s, в пределах [%s &lt;--&gt; %s]
+ </subtime_get_info>
 
  <room_tag>subs-only</room_tag>
 
@@ -74,6 +83,67 @@
   CREATE TABLE IF NOT EXISTS vips  (datetime DATETIME,user TEXT NOT NULL ON CONFLICT ROLLBACK DEFAULT '');
   CREATE INDEX IF NOT EXISTS vips_datetime ON vips (datetime ASC);
   CREATE UNIQUE INDEX IF NOT EXISTS vips_user ON vips (user ASC);
+
+  if (SELECT COUNT(*) AS CNTREC FROM pragma_table_info('story') WHERE name='cmd')=0
+  begin
+   BEGIN TRANSACTION;
+
+   PRAGMA foreign_keys = 0;
+   CREATE TABLE temp_table AS SELECT * FROM story;
+   DROP TABLE story;
+   CREATE TABLE story (datetime DATETIME,user TEXT,mes TEXT,cmd TEXT);
+   INSERT INTO story (datetime,user,mes) SELECT datetime,user,mes FROM temp_table;
+   DROP TABLE temp_table;
+   CREATE INDEX story_datetime ON story (datetime ASC);
+   CREATE INDEX story_user ON story (user ASC);
+   PRAGMA foreign_keys = 1;
+
+   CREATE TABLE temp_table AS 
+    SELECT ID,
+           SUBSTR(FS,1,INSTR(FS,'"')-1) AS FS,
+           datetime,user
+     FROM (
+      SELECT ROWID AS ID,
+           (CASE WHEN INSTR(mes,'"msg_cmd":"/vip ')=0
+            THEN NULL
+            ELSE SUBSTR(mes,INSTR(mes,'"msg_cmd":"/vip ')+11)
+           END) AS FS,
+           datetime,user
+      FROM story WHERE FS IS NOT NULL
+   );
+
+   INSERT INTO temp_table (ID,FS,datetime,user) 
+    SELECT ROWID AS ID,
+                 ('/vip ' || user) AS FS,
+                 datetime,user
+    FROM story
+    WHERE INSTR(mes,'"msg_cmd":"/vip ')=0
+      AND INSTR(mes,'"VIP на хз сколько"')&lt;&gt;0;
+
+   UPDATE story
+    SET cmd = (SELECT FS FROM temp_table WHERE temp_table.ID = story.ROWID )
+   WHERE
+       EXISTS (
+           SELECT ID
+           FROM temp_table
+           WHERE temp_table.ID = story.ROWID
+       );
+
+   INSERT OR REPLACE INTO vips ( datetime,user  )
+    SELECT datetime as datetime,user as user
+    FROM temp_table;
+
+   DROP TABLE temp_table;
+
+   INSERT OR IGNORE INTO params ( name,value  ) VALUES('rev','1');
+
+   COMMIT TRANSACTION;
+  
+  end
+  else
+  begin
+   INSERT OR IGNORE INTO params ( name,value  ) VALUES('rev','2');
+  end
 
   VACUUM
  </create>

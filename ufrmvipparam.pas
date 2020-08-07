@@ -16,16 +16,17 @@ type
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
     CBVipEnable: TCheckBox;
+    CBVipExpired: TCheckBox;
     EdtPercent: TLabeledEdit;
     EdtTitle: TLabeledEdit;
     EdtVipDays: TLabeledEdit;
-    procedure BtnCancelClick(Sender: TObject);
-    procedure BtnOkClick(Sender: TObject);
-    procedure EdtPercentExit(Sender: TObject);
-    procedure EdtPercentKeyPress(Sender: TObject; var Key: char);
-    procedure EdtVipDaysKeyDown(Sender: TObject; var Key: Word;
-      Shift: TShiftState);
-    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    EdtMaxVips: TLabeledEdit;
+    procedure BtnCancelClick(Sender:TObject);
+    procedure BtnOkClick(Sender:TObject);
+    procedure EdtPercentExit(Sender:TObject);
+    procedure EdtPercentKeyPress(Sender:TObject;var Key:char);
+    procedure EdtVipDaysKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
+    procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
   private
     prev_perc:Byte;
   public
@@ -41,7 +42,7 @@ implementation
 
 { TFrmVipParam }
 
-procedure TFrmVipParam.EdtPercentKeyPress(Sender: TObject; var Key: char);
+procedure TFrmVipParam.EdtPercentKeyPress(Sender:TObject;var Key:char);
 begin
  prev_perc:=StrToQWORDDef(EdtPercent.Text,70);
  if prev_perc>100 then prev_perc:=100;
@@ -53,7 +54,7 @@ begin
  end;
 end;
 
-procedure TFrmVipParam.EdtVipDaysKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+procedure TFrmVipParam.EdtVipDaysKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
 begin
  if [ssAlt,ssCtrl]*Shift=[] then
  Case Key of
@@ -65,7 +66,7 @@ begin
  FormKeyDown(Sender,Key,Shift);
 end;
 
-procedure TFrmVipParam.EdtPercentExit(Sender: TObject);
+procedure TFrmVipParam.EdtPercentExit(Sender:TObject);
 var
  S,L:Integer;
 begin
@@ -82,19 +83,19 @@ begin
  end;
 end;
 
-procedure TFrmVipParam.BtnOkClick(Sender: TObject);
+procedure TFrmVipParam.BtnOkClick(Sender:TObject);
 begin
  ModalResult:=mrOk;
  Hide;
 end;
 
-procedure TFrmVipParam.BtnCancelClick(Sender: TObject);
+procedure TFrmVipParam.BtnCancelClick(Sender:TObject);
 begin
  ModalResult:=mrCancel;
  Close;
 end;
 
-procedure TFrmVipParam.FormKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+procedure TFrmVipParam.FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
 begin
  Case Key of
   13:BtnOkClick(Sender);

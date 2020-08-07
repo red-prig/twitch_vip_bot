@@ -608,6 +608,7 @@ type
   Data:RawByteString;
   DataLen:SizeUint;
   FParams,FValues:TParams;
+  Fbrackets:SizeUint;
   Procedure AddChar(Ch:AnsiChar);
   Procedure AddToken(Const _Token:TZToken);
   Procedure AddParam(Const _Name:RawByteString);
@@ -852,6 +853,7 @@ begin
  DataLen:=0;
  SetLength(FParams,0);
  SetLength(FValues,0);
+ Fbrackets:=0;
 end;
 
 procedure TQueryState.Finish;
@@ -862,6 +864,14 @@ end;
 procedure TQueryState.Parse(Const FToken:TZToken);
 begin
  Case FToken.TokenType of
+  ttSymbol:
+  begin
+   AddToken(FToken);
+   Case FToken.P^ of
+    '(':Inc(Fbrackets);
+    ')':Dec(Fbrackets);
+   end;
+  end;
   ttWhitespace:if (DataLen<>0) then
                 AddToken(FToken);
   ttSpecial:if GetVariableType(FToken.P,FToken.L)=3 then
@@ -1109,6 +1119,7 @@ begin
                     FQueryState.Parse(FToken);
                   end;
                  end else
+                 if FQueryState.Fbrackets=0 then
                  begin
                   id:=_get_cmd_keyword(FToken.P,FToken.L);
                   Case id of
@@ -1125,6 +1136,9 @@ begin
                    else
                     FQueryState.Parse(FToken);
                   end;
+                 end else
+                 begin
+                  FQueryState.Parse(FToken);
                  end;
                 end;
       else
@@ -1822,6 +1836,11 @@ begin
            PopBlock;
            Reset;
            key:=FBlockStack.Top;
+           if key=nil then
+           begin
+            //error
+            Exit;
+           end;
            Case key^._type of
             btIf1  :begin; //IF BEGIN END
                      //set if id
