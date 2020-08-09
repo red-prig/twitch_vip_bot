@@ -6,6 +6,6 @@
 *.o
 *.ini
 *.db
-log_*.txt
+*.txt
 lib/
 backup/
