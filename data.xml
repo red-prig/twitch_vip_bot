@@ -91,6 +91,11 @@
 
 </sub_mod>
 
+<vol_cmd>
+ <prefix>!vol</prefix>
+ <device>all</device>
+</vol_cmd>
+
 <sql>
  <create>
   CREATE TABLE IF NOT EXISTS story (datetime DATETIME,user TEXT,mes TEXT);

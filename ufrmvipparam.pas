@@ -28,6 +28,8 @@ type
     GBVor: TGroupBox;
     GBList: TGroupBox;
     procedure BtnCancelClick(Sender:TObject);
+    procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;
+      Shift: TShiftState);
     procedure BtnOkClick(Sender:TObject);
     procedure EdtPercentExit(Sender:TObject);
     procedure EdtPercentKeyPress(Sender:TObject;var Key:char);
@@ -115,6 +117,13 @@ procedure TFrmVipParam.BtnCancelClick(Sender:TObject);
 begin
  ModalResult:=mrCancel;
  Close;
+end;
+
+procedure TFrmVipParam.BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+begin
+ Case Key of
+  13:BtnCancelClick(Sender);
+ end;
 end;
 
 procedure TFrmVipParam.FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);

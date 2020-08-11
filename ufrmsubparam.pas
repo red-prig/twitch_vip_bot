@@ -21,6 +21,8 @@ type
     EdtSub_max_dec: TLabeledEdit;
     EdtTitleSubDec: TLabeledEdit;
     EdtTitleSubInc: TLabeledEdit;
+    procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;
+      Shift: TShiftState);
     procedure EdtSubExit(Sender: TObject);
     procedure EdtSubKeyPress(Sender: TObject; var Key: char);
     procedure BtnCancelClick(Sender: TObject);
@@ -72,6 +74,13 @@ begin
   TLabeledEdit(Sender).Text:=IntToStr(prev_dw);
   TLabeledEdit(Sender).SelStart :=S;
   TLabeledEdit(Sender).SelLength:=L;
+ end;
+end;
+
+procedure TFrmSubParam.BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+begin
+ Case Key of
+  13:BtnCancelClick(Sender);
  end;
 end;
 

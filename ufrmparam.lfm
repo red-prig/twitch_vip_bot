@@ -1,7 +1,7 @@
 object FrmParam: TFrmParam
-  Left = 453
+  Left = 515
   Height = 207
-  Top = 162
+  Top = 110
   Width = 425
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры'
@@ -203,7 +203,7 @@ object FrmParam: TFrmParam
       FF00FFFFFF00FFFFFF00
     }
     OnClick = BtnCancelClick
-    OnKeyDown = FormKeyDown
+    OnKeyDown = BtnCancelKeyDown
     TabOrder = 5
   end
   object TBView: TToggleBox

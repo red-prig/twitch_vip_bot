@@ -19,6 +19,8 @@ type
     EdtChat: TLabeledEdit;
     EdtPassword: TLabeledEdit;
     TBView: TToggleBox;
+    procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;
+      Shift: TShiftState);
     procedure EdtKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure EdtUTF8KeyPress(Sender:TObject;var UTF8Key:TUTF8Char);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
@@ -62,6 +64,13 @@ begin
   end;
  end;
  FormKeyDown(Sender,Key,Shift);
+end;
+
+procedure TFrmParam.BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+begin
+ Case Key of
+  13:BtnCancelClick(Sender);
+ end;
 end;
 
 procedure TFrmParam.EdtUTF8KeyPress(Sender:TObject;var UTF8Key:TUTF8Char);

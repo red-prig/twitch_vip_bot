@@ -74,6 +74,8 @@ type
     procedure SetRoomStates(RS:TRoomStates);
     procedure parse_vips(msg:RawByteString);
     procedure add_to_notice(const id,msg:RawByteString);
+    procedure add_sub_mod_cmd(const cmd:RawByteString);
+    procedure add_vol_cmd(const user,cmd:RawByteString);
     procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
     procedure add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
     procedure EdtSendKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
@@ -93,6 +95,7 @@ type
     procedure OnPopupClickStory(Sender:TObject);
     procedure OnPopupClickAutoEnter(Sender:TObject);
     procedure OnPopupClickUseTray(Sender:TObject);
+    procedure OnPopupClickVolParam(Sender:TObject);
     procedure OnPopupClickSubParam(Sender:TObject);
     procedure OnPopupClickVipParam(Sender:TObject);
     procedure OnPopupClickParam(Sender:TObject);
@@ -122,6 +125,8 @@ type
     procedure DeleteAndUnVip(aRow:Integer);
     procedure OnBtnUnVipClick(Sender:TObject);
     procedure OnBtnUpdateVipClick(Sender:TObject);
+    Procedure SetVolExclude(Const F:RawByteString);
+    function  GetVolExclude:RawByteString;
     procedure FormCreate(Sender: TObject);
     procedure UpdateTextSubTime(db:Boolean);
     procedure SetDBParam(Const fname,fvalue:RawByteString);
@@ -263,11 +268,21 @@ var
   end;
  end;
 
+ Vol_cmd:record
+  Enable:Boolean;
+  System:Boolean;
+  prefix:RawByteString;
+  Device:RawByteString;
+  Exclude:TStringList;
+ end;
+
 function fetch_random_no_more(Var Context:TMTRandomContext):Boolean;
 
 implementation
 
 uses
+ WinAudioSession,
+ ufrmvol,
  ufrmpred,
  UFrmAbout,
  UFrmParam,
@@ -346,13 +361,15 @@ end;
 Procedure TQNode_chat.OnParent;
 var
  user,display_name,msg:RawByteString;
+ FPC:TPrivMsgCfg;
 begin
  SetString(user        ,@data,StrLen(@data));
  SetString(display_name,Fdnm ,StrLen(Fdnm));
  SetString(msg         ,Fmsg ,StrLen(Fmsg));
+ FPC:=PC;
  FreeMem(@Self);
- FrmMain.add_to_chat(PC,user,display_name,msg);
- FrmMain.add_to_chat_cmd(PC,user,display_name,msg);
+ FrmMain.add_to_chat(FPC,user,display_name,msg);
+ FrmMain.add_to_chat_cmd(FPC,user,display_name,msg);
 end;
 
 type
@@ -860,8 +877,6 @@ begin
    L.Delete(i);
   end;
 
-  Writeln(v);
-
  until (msg='');
 
  s:=L.Count;
@@ -1073,16 +1088,11 @@ begin
  Result:=AddChar('0',IntToStr(Hr),2)+':'+AddChar('0',IntToStr(Mn),2);
 end;
 
-procedure TFrmMain.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
+procedure TFrmMain.add_sub_mod_cmd(const cmd:RawByteString);
 var
- cmd:RawByteString;
  MI,MD:Int64;
 begin
-
- cmd:=Trim(msg);
-
- if (sub_mod.Enable) and
-    (cmd=sub_mod.subtime_get_cmd) and
+ if (LowerCase(cmd)=sub_mod.subtime_get_cmd) and
     (GetTickCount64>=sub_mod.T.TickKd+sub_mod.subtime_kd*1000) then
  begin
   MI:= sub_mod.max_inc*60*60;
@@ -1099,6 +1109,203 @@ begin
   end;
   sub_mod.T.TickKd:=GetTickCount64;
  end;
+end;
+
+type
+ TSessionList=object
+   L:TStringList;
+   function OnSessions(Const name:RawByteString;Volume:ISimpleAudioVolume):Boolean;
+ end;
+
+ TSessionFind=object
+  S:RawByteString;
+  R:ISimpleAudioVolume;
+  function OnSessions(Const name:RawByteString;Volume:ISimpleAudioVolume):Boolean;
+ end;
+
+
+Function GetVolumeInfo(Const name:RawByteString;Volume:ISimpleAudioVolume):RawByteString;
+begin
+ if GetMute(Volume) then
+  Result:=name+':M'
+ else
+  Result:=name+':'+IntToStr(GetVolume(Volume));
+end;
+
+function TSessionList.OnSessions(Const name:RawByteString;Volume:ISimpleAudioVolume):Boolean;
+Var
+ F:RawByteString;
+begin
+ Result:=True;
+ F:=LowerCase(name);
+ if vol_cmd.Exclude.IndexOf(F)=-1 then
+  if L.IndexOfName(F)=-1 then
+  begin
+   L.Add(GetVolumeInfo(name,Volume))
+  end;
+end;
+
+Function GetSessionsStr:RawByteString;
+var
+ SL:TSessionList;
+begin
+ SL.L:=TStringList.Create;
+ SL.L.LineBreak:=', ';
+ SL.L.NameValueSeparator:=':';
+
+ case vol_cmd.Device of
+  'all'    :EnumSessionsVolume(True ,vol_cmd.System,@SL.OnSessions);
+  'default':EnumSessionsVolume(False,vol_cmd.System,@SL.OnSessions);
+  else
+            EnumSessionsVolume(vol_cmd.Device,vol_cmd.System,@SL.OnSessions);
+ end;
+
+ Result:=SL.L.Text;
+ FreeAndNil(SL.L);
+end;
+
+function TSessionFind.OnSessions(Const name:RawByteString;Volume:ISimpleAudioVolume):Boolean;
+begin
+ if R<>nil then Exit(false);
+ Result:=True;
+ if name=S then
+ begin
+  R:=Volume;
+  Result:=False;
+ end;
+end;
+
+Function FindSessionsStr(const name:RawByteString):ISimpleAudioVolume;
+Var
+ F:TSessionFind;
+begin
+ Result:=nil;
+ if vol_cmd.Exclude.IndexOf(name)=-1 then
+ begin
+  F:=Default(TSessionFind);
+  F.S:=name;
+
+  case vol_cmd.Device of
+   'all'    :EnumSessionsVolume(True ,vol_cmd.System,@F.OnSessions);
+   'default':EnumSessionsVolume(False,vol_cmd.System,@F.OnSessions);
+   else
+             EnumSessionsVolume(vol_cmd.Device,vol_cmd.System,@F.OnSessions);
+  end;
+
+  Result:=F.R;
+ end;
+end;
+
+procedure TFrmMain.add_vol_cmd(const user,cmd:RawByteString);
+var
+ F,v:RawByteString;
+ i:Integer;
+ Volume:ISimpleAudioVolume;
+begin
+ F:=LowerCase(Trim(cmd));
+
+ i:=Pos(' ',F);
+ if i<>0 then
+ begin
+  v:=Trim(Copy(F,1,i));
+  F:=Trim(Copy(F,i+1));
+  if v=vol_cmd.prefix then
+  begin
+
+   i:=Pos(' ',F);
+   if i<>0 then
+   begin
+    v:=Trim(Copy(F,1,i));
+    F:=Trim(Copy(F,i+1));
+
+    //set volume app
+    Volume:=FindSessionsStr(v);
+    if Volume=nil then
+    begin
+     F:='nop';
+    end else
+    begin
+     i:=0;
+     case F of
+      'm',
+      'mute':
+      begin
+       SetMute(Volume,True);
+       F:=GetVolumeInfo(v,Volume);
+      end;
+      'u',
+      'unmute':
+      begin
+       SetMute(Volume,False);
+       F:=GetVolumeInfo(v,Volume);
+      end;
+      else
+      begin
+       if TryStrToInt(F,i) then
+       begin
+        case F[1] of
+         '-',
+         '+':begin
+              i:=GetVolume(Volume)+i;
+              if i<0 then   i:=0;
+              if i>100 then i:=100;
+              SetVolume(Volume,i);
+             end;
+         else
+             begin //absolute
+              if i>100 then i:=100;
+              SetVolume(Volume,i);
+             end;
+        end;
+        F:=GetVolumeInfo(v,Volume);
+       end else
+       begin
+        F:='nop';
+       end;
+      end;
+     end;
+    end;
+
+    push_irc_msg(user+' '+F);
+   end else
+   begin
+    //get info app
+    Volume:=FindSessionsStr(F);
+    if Volume=nil then
+    begin
+     F:='nop';
+    end else
+    begin
+     F:=GetVolumeInfo(F,Volume);
+    end;
+    push_irc_msg(user+' '+F);
+   end;
+  end;
+ end else
+ if F=vol_cmd.prefix then
+ begin
+  //list app
+  F:=GetSessionsStr;
+
+  F:=Copy(F,1,Length(F)-1);
+  if F='' then F:='nop';
+  push_irc_msg(user+' '+F);
+
+ end;
+end;
+
+procedure TFrmMain.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
+var
+ cmd:RawByteString;
+begin
+
+ cmd:=Trim(msg);
+
+ if (sub_mod.Enable) then
+  add_sub_mod_cmd(cmd);
+
+ if vol_cmd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+  add_vol_cmd(user,cmd);
 
 end;
 
@@ -1644,6 +1851,53 @@ begin
    DumpExceptionCallStack(E);
   end;
  end;
+end;
+
+procedure TFrmMain.OnPopupClickVolParam(Sender:TObject);
+begin
+
+ FrmVolParam.CBVolEnable.Checked  :=Vol_cmd.Enable;
+ FrmVolParam.CBSystemSound.Checked:=Vol_cmd.System;
+ FrmVolParam.FDeviceID            :=Vol_cmd.Device;
+
+ if FrmVolParam.FExclude=nil then
+ begin
+  FrmVolParam.FExclude:=TStringList.Create;
+  FrmVolParam.FExclude.Sorted:=True;
+ end;
+ FrmVolParam.FExclude.Assign(Vol_cmd.Exclude);
+
+ if FrmVolParam.ShowModal=1 then
+ begin
+
+  Vol_cmd.Enable :=FrmVolParam.CBVolEnable.Checked;
+  Vol_cmd.System :=FrmVolParam.CBSystemSound.Checked;
+  Vol_cmd.Device :=FrmVolParam.FDeviceID;
+  Vol_cmd.Exclude.Assign(FrmVolParam.FExclude);
+  FreeAndNil(FrmVolParam.FExclude);
+
+  try
+   case Vol_cmd.Enable of
+    True :Config.WriteString('vol' ,'enable','1');
+    False:Config.WriteString('vol' ,'enable','0');
+   end;
+
+   case Vol_cmd.System of
+    True :Config.WriteString('vol' ,'system','1');
+    False:Config.WriteString('vol' ,'system','0');
+   end;
+
+   Config.WriteString('vol','device' ,Vol_cmd.Device);
+   Config.WriteString('vol','exclude',GetVolExclude);
+  except
+   on E:Exception do
+   begin
+    DumpExceptionCallStack(E);
+   end;
+  end;
+
+ end;
+
 end;
 
 procedure TFrmMain.OnPopupClickSubParam(Sender:TObject);
@@ -2316,6 +2570,52 @@ begin
  wait_vip_update:=True;
 end;
 
+Procedure TFrmMain.SetVolExclude(Const F:RawByteString);
+var
+ i:SizeInt;
+ param,v:RawByteString;
+begin
+ if Vol_cmd.Exclude=nil then
+ begin
+  Vol_cmd.Exclude:=TStringList.Create;
+  Vol_cmd.Exclude.LineBreak:=',';
+  Vol_cmd.Exclude.Sorted:=True;
+ end;
+ Vol_cmd.Exclude.Clear;
+
+ param:=F;
+ repeat
+  i:=System.IndexChar(PAnsiChar(param)^,Length(param),',');
+  if i<>-1 then
+  begin
+   v:=Copy(param,1,i);
+   param:=Copy(param,i+2,Length(param)-(i+1));
+  end else
+  begin
+   v:=param;
+   param:='';
+  end;
+  v:=Trim(v);
+  if v<>'' then
+  begin
+   v:=LowerCase(v);
+   if Vol_cmd.Exclude.IndexOf(v)=-1 then
+   begin
+    Vol_cmd.Exclude.Add(v);
+   end;
+  end;
+ until (param='');
+end;
+
+function TFrmMain.GetVolExclude:RawByteString;
+begin
+ Result:='';
+ if Vol_cmd.Exclude<>nil then
+ begin
+  Result:=Vol_cmd.Exclude.Text;
+ end;
+end;
+
 //https://docs.microsoft.com/en-us/windows/win32/fileio/volume-management-functions
 procedure TFrmMain.FormCreate(Sender: TObject);
 Var
@@ -2365,6 +2665,12 @@ begin
    sub_mod.max_inc  :=StrToDWORDDef(Config.ReadString('sub_mod','max_inc',IntToStr(sub_mod.max_inc)),0);
    sub_mod.max_dec  :=StrToDWORDDef(Config.ReadString('sub_mod','max_dec',IntToStr(sub_mod.max_dec)),0);
 
+   Vol_cmd.Enable :=Trim(Config.ReadString('vol','enable','0'))='1';
+   Vol_cmd.System :=Trim(Config.ReadString('vol','system','0'))='1';
+   Vol_cmd.Device :=LowerCase(Trim(Config.ReadString('vol','device' ,Vol_cmd.Device)));
+
+   SetVolExclude((Config.ReadString('vol','exclude',GetVolExclude)));
+
   except
    on E:Exception do
    begin
@@ -2413,6 +2719,19 @@ begin
    Config.WriteString('sub_mod','inc_min'  ,IntToStr(sub_mod.inc_min));
    Config.WriteString('sub_mod','max_inc'  ,IntToStr(sub_mod.max_inc));
    Config.WriteString('sub_mod','max_dec'  ,IntToStr(sub_mod.max_dec));
+
+   case Vol_cmd.Enable of
+    True :Config.WriteString('vol' ,'enable','1');
+    False:Config.WriteString('vol' ,'enable','0');
+   end;
+
+   case Vol_cmd.System of
+    True :Config.WriteString('vol' ,'system','1');
+    False:Config.WriteString('vol' ,'system','0');
+   end;
+
+   Config.WriteString('vol','device' ,Vol_cmd.Device);
+   Config.WriteString('vol','exclude',GetVolExclude);
 
   except
    on E:Exception do
@@ -2486,6 +2805,12 @@ begin
  Item:=TMenuItem.Create(PopupCfg);
  Item.Caption:='Саб мод';
  Item.OnClick:=@OnPopupClickSubParam;
+ PopupCfg.Items.Add(Item);
+
+ //sound volume
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='Регулятор звука';
+ Item.OnClick:=@OnPopupClickVolParam;
  PopupCfg.Items.Add(Item);
 
  //------
@@ -3216,6 +3541,10 @@ type
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
+ TOpenVol_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
  TOpenSubLabel_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
@@ -3238,6 +3567,10 @@ begin
   'sub_mod':
   begin
    Node.Push(TOpenSub_Func,Node.CData);
+  end;
+  'vol_cmd':
+  begin
+   Node.Push(TOpenVol_Func,@chat);
   end;
   'chat':
   begin
@@ -3511,6 +3844,21 @@ begin
   'delete_vips':
    begin
     Node.Push(TLoadSQL_Func,@frmMain.FDeleteVipsScript);
+   end;
+ end;
+end;
+
+class procedure TOpenVol_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'prefix':
+   begin
+    Node.Push(TLoadStr_Func  ,@Vol_cmd.prefix);
+   end;
+  'device':
+   begin
+    Node.Push(TLoadStr_Func  ,@Vol_cmd.Device);
+    Vol_cmd.Device:=LowerCase(Vol_cmd.Device);
    end;
  end;
 end;
