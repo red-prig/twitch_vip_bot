@@ -1127,9 +1127,9 @@ type
 Function GetVolumeInfo(Const name:RawByteString;Volume:ISimpleAudioVolume):RawByteString;
 begin
  if GetMute(Volume) then
-  Result:=name+':M'
+  Result:=LowerCase(name)+':M'
  else
-  Result:=name+':'+IntToStr(GetVolume(Volume));
+  Result:=LowerCase(name)+':'+IntToStr(GetVolume(Volume));
 end;
 
 function TSessionList.OnSessions(Const name:RawByteString;Volume:ISimpleAudioVolume):Boolean;
@@ -1168,7 +1168,7 @@ function TSessionFind.OnSessions(Const name:RawByteString;Volume:ISimpleAudioVol
 begin
  if R<>nil then Exit(false);
  Result:=True;
- if name=S then
+ if LowerCase(name)=S then
  begin
   R:=Volume;
   Result:=False;
@@ -1183,7 +1183,7 @@ begin
  if vol_cmd.Exclude.IndexOf(name)=-1 then
  begin
   F:=Default(TSessionFind);
-  F.S:=name;
+  F.S:=LowerCase(name);
 
   case vol_cmd.Device of
    'all'    :EnumSessionsVolume(True ,vol_cmd.System,@F.OnSessions);
