@@ -34,8 +34,8 @@
  </vor_sucs>
 
  <vor_jail>
-  Вор %s был пойман с поличным и отправляется в камеру на 12ч! karmikT
-  /timeout %s 43200
+  Вор %s был пойман с поличным и отправляется в камеру на час пятнадцать! karmikT
+  /timeout %s 4500
  </vor_jail>
 
  <unvip_cmd>/unvip %s</unvip_cmd>

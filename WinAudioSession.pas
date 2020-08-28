@@ -388,7 +388,7 @@ begin
   For si:=0 to SesCount-1 do
   begin
    SessionEnum.GetSession(si,Session);
-   if (Session.IsSystemSoundsSession<>0) or SystemSession then
+   if (Session<>nil) and (Session.IsSystemSoundsSession<>0) or SystemSession then
     if not cb(GetSessionAppName(Session),Session as ISimpleAudioVolume) then
     begin
      Result:=False;

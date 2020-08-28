@@ -69,7 +69,7 @@ type
     procedure FormWindowStateChange(Sender: TObject);
     procedure MIAboutClick(Sender: TObject);
     procedure SetLognBtn(Login:Boolean);
-    function  try_theif_vip(Var Context:TMTRandomContext;const dst_user:RawByteString;var cmd:RawByteString):Boolean;
+    function  try_theif_vip(Var Context:TMTRandomContext;const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
     procedure add_reward(const S:RawByteString);
     procedure SetRoomStates(RS:TRoomStates);
     procedure parse_vips(msg:RawByteString);
@@ -503,14 +503,14 @@ begin
          BtnClose.Visible:=True;
          BtnInfo.Left:=0;
 
-        {
+         {
          add_reward(
            '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:38:23.'+
            '141491302Z","redemption":{"id":"62d7f76e-7a16-432d-94ce-541897f02fa3","u'+
-           'ser":{"id":"84616392","login":"satan_rulezz1","display_name":"Satan_R'+
+           'ser":{"id":"84616392","login":"satan_rulezz","display_name":"Satan_R'+
            'ulezz"},"channel_id":"54742538","redeemed_at":"2020-07-08T18:38:23.01829'+
            '9023Z","reward":{"id":"9c25cd82-30e4-4e23-8dae-e3ae630b9bab","channel_id'+
-           '":"54742538","title":"Подрубай сабмод","prompt":"Может передумаю и  '+
+           '":"54742538","title":"ВОР","prompt":"Может передумаю и  '+
            'отниму випку.","cost":450000,"is_user_input_required":true,"is_sub_only":'+
            'false,"image":null,"default_image":{"url_1x":"https://static-cdn.jtvnw.ne'+
            't/custom-reward-images/default-1.png","url_2x":"https://static-cdn.jtvnw.net'+
@@ -519,7 +519,7 @@ begin
            'led":true,"is_paused":false,"is_in_stock":true,"max_per_stream":{"is_ena'+
            'bled":false,"max_per_stream":0},"should_redemptions_skip_request_queue":fal'+
            'se,"template_id":null,"updated_for_indicator_at":"2020-07-06T17:34:56.82009'+
-           '8059Z"},"user_input":"Опа -450к","status":"UNFULFILLED","cursor":"Nj'+
+           '8059Z"},"user_input":"2cvo79kr","status":"UNFULFILLED","cursor":"Nj'+
            'JkN2Y3NmUtN2ExNi00MzJkLTk0Y2UtNTQxODk3ZjAyZmEzX18yMDIwLTA3LTA4VDE4OjM4OjIzLjAxOD'+
            'I5OTAyM1o="}}}');
          }
@@ -644,10 +644,11 @@ begin
  Result:=Random(Context,100)<vip_rnd.perc_vor;
 end;
 
-function TFrmMain.try_theif_vip(Var Context:TMTRandomContext;const dst_user:RawByteString;var cmd:RawByteString):Boolean;
+function TFrmMain.try_theif_vip(Var Context:TMTRandomContext;const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
 var
  src_user:RawByteString;
- i,s,u,e,aRow:SizeInt;
+ i:Integer;
+ s,u,e,aRow:SizeInt;
  L:TStringList;
 begin
  Result:=False;
@@ -662,14 +663,20 @@ begin
   if (u<>-1) and (e<>-1) then
    For i:=1 to s-1 do
     if (GridVips.Cells[e,i]<>'') then
-     L.AddObject(GridVips.Cells[u,i],GridVips.Rows[i]);
+     L.AddObject(LowerCase(GridVips.Cells[u,i]),GridVips.Rows[i]);
  end;
 
  s:=L.Count;
  if s<>0 then
  begin
   Result:=True;
-  i:=Random(Context,s);
+
+  i:=-1;
+  if not L.Find(LowerCase(Trim(msg)),i) then
+  begin
+   i:=Random(Context,s);
+  end;
+
   aRow:=TKGridRow(L.Objects[i]).Index;
   src_user:=GridVips.FieldValue['user',ARow];
 
@@ -765,7 +772,7 @@ begin
      push_irc_list(vip_rnd.already_vip,[user]);
      cmd:=Format(_get_first_cmd(vip_rnd.already_vip),[user]);
     end else
-    if not try_theif_vip(RCT,user,cmd) then
+    if not try_theif_vip(RCT,user,msg,cmd) then
     begin
      push_irc_list(vip_rnd.vor_jail,[user]);
      cmd:=Format(_get_first_cmd(vip_rnd.vor_jail),[user]);
