@@ -7,6 +7,7 @@ object FrmVipParam: TFrmVipParam
   Caption = 'Параметры VIP'
   ClientHeight = 422
   ClientWidth = 421
+  OnCreate = FormCreate
   OnKeyDown = FormKeyDown
   Position = poMainFormCenter
   LCLVersion = '2.0.10.0'

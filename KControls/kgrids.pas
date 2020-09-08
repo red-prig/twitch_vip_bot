@@ -13197,7 +13197,7 @@ begin
     end;
   end;
 
-  UpdateScrollRange({Horz}false, {Vert}false, False);
+  UpdateScrollRange(Horz, Vert, False);
   UpdateEditor(Flag(cGF_EditorModeActive));
   if Horz then
   begin

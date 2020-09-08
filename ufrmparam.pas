@@ -32,6 +32,9 @@ type
     DigLastChar:Char;
     prev_dw:DWORD;
   public
+    Procedure InitCfg;
+    Procedure LoadCfg;
+    Procedure Open;
   end;
 
 var
@@ -39,7 +42,57 @@ var
 
 implementation
 
+Uses
+  ULog,Main;
+
 {$R *.lfm}
+
+Procedure TFrmParam.InitCfg;
+begin
+ Config.WriteString('base','zurl'   ,DefZURL);
+ Config.WriteString('base','login'  ,'');
+ Config.WriteString('base','oAuth'  ,'');
+ Config.WriteString('base','chat'   ,base.chat);
+end;
+
+Procedure TFrmParam.LoadCfg;
+begin
+ base.chat   :=Trim(Config.ReadString('base','chat'   ,base.chat));
+ base.login  :=Trim(Config.ReadString('base','login'  ,base.login));
+end;
+
+Procedure TFrmParam.Open;
+begin
+ try
+  EdtLogin.Text   :=base.login;
+  EdtPassword.Text:=Config.ReadString('base','oAuth','');
+  EdtChat.Text    :=base.chat;
+ except
+  on E:Exception do
+  begin
+   DumpExceptionCallStack(E);
+  end;
+ end;
+
+ if ShowModal=1 then
+ begin
+  base.chat   :=EdtChat.Text;
+  base.login  :=EdtLogin.Text;
+
+  try
+   Config.WriteString('base','login'   ,base.login);
+   Config.WriteString('base','oAuth'   ,EdtPassword.Text);
+   Config.WriteString('base','chat'    ,base.chat);
+  except
+   on E:Exception do
+   begin
+    DumpExceptionCallStack(E);
+   end;
+  end;
+ end;
+
+ EdtPassword.Text:='';
+end;
 
 procedure TFrmParam.EdtKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
 begin
