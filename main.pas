@@ -69,8 +69,10 @@ type
     procedure FormWindowStateChange(Sender: TObject);
     procedure MIAboutClick(Sender: TObject);
     procedure SetLognBtn(Login:Boolean);
-    function  try_theif_vip(Var Context:TMTRandomContext;const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
+    function  getRandomTmpVip(const msg:RawByteString):SizeInt;
+    function  try_theif_vip(const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
     procedure add_reward(const S:RawByteString);
+    procedure _add_reward_2_log(const s,cmd:RawByteString);
     procedure SetRoomStates(RS:TRoomStates);
     procedure parse_vips(msg:RawByteString);
     procedure add_to_notice(const id,msg:RawByteString);
@@ -96,6 +98,7 @@ type
     procedure OnPopupClickUseTray(Sender:TObject);
     procedure OnPopupClickVolParam(Sender:TObject);
     procedure OnPopupClickSubParam(Sender:TObject);
+    procedure OnPopupClickVorRpgParam(Sender:TObject);
     procedure OnPopupClickVipParam(Sender:TObject);
     procedure OnPopupClickParam(Sender:TObject);
     procedure OnPredClick(Sender:TObject);
@@ -199,6 +202,10 @@ var
   perc_vor:Byte;
  end;
 
+ vor_rpg:record
+  Enable:Boolean;
+ end;
+
  sub_mod:record
   Enable:Boolean;
   _label:record
@@ -254,6 +261,7 @@ uses
  UFrmAbout,
  UFrmParam,
  UFrmVipParam,
+ UFrmVorRpg,
  UFrmSubParam,
  Uloginf;
 
@@ -609,15 +617,13 @@ begin
  Result:=Random(Context,100)<vip_rnd.perc_vor;
 end;
 
-function TFrmMain.try_theif_vip(Var Context:TMTRandomContext;const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
+function TFrmMain.getRandomTmpVip(const msg:RawByteString):SizeInt;
 var
- src_user:RawByteString;
- i:Integer;
- s,u,e,aRow:SizeInt;
+ i:integer;
+ s,u,e:SizeInt;
  L:TStringList;
 begin
- Result:=False;
-
+ Result:=-1;
  L:=TStringList.Create;
  L.Sorted:=True;
  s:=GridVips.RowCount;
@@ -630,33 +636,38 @@ begin
     if (GridVips.Cells[e,i]<>'') then
      L.AddObject(LowerCase(GridVips.Cells[u,i]),GridVips.Rows[i]);
  end;
-
- s:=L.Count;
  if s<>0 then
  begin
-  Result:=True;
-
   i:=-1;
   if not L.Find(LowerCase(Trim(msg)),i) then
   begin
-   i:=Random(Context,s);
+   i:=Random(RCT,s);
   end;
-
-  aRow:=TKGridRow(L.Objects[i]).Index;
-  src_user:=GridVips.FieldValue['user',ARow];
-
-  push_irc_list(vip_rnd.vor_sucs,[dst_user,src_user]);
-  cmd:=Format(_get_first_cmd(vip_rnd.vor_sucs),[dst_user,src_user]);
-
-  FrmVipParam.DbUpdateVip_user(src_user,dst_user);
-  GridVips.FieldValue['user',ARow]:=dst_user;
-
- end else
- begin
-  Result:=False;
+  Result:=TKGridRow(L.Objects[i]).Index;
  end;
-
  FreeAndNil(L);
+end;
+
+function TFrmMain.try_theif_vip(const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
+var
+ src_user:RawByteString;
+ aRow:SizeInt;
+
+begin
+ Result:=False;
+
+ aRow:=getRandomTmpVip(msg);
+ if (aRow=-1) then Exit;
+
+ src_user:=GridVips.FieldValue['user',ARow];
+
+ push_irc_list(vip_rnd.vor_sucs,[dst_user,src_user]);
+ cmd:=Format(_get_first_cmd(vip_rnd.vor_sucs),[dst_user,src_user]);
+
+ FrmVipParam.DbUpdateVip_user(src_user,dst_user);
+ GridVips.FieldValue['user',ARow]:=dst_user;
+
+ Result:=True;
 end;
 
 procedure TFrmMain.add_reward(const S:RawByteString);
@@ -667,7 +678,6 @@ var
  msg,cmd,
  user,
  display_name,
- rs,
  reward_title:RawByteString;
  FDbcScript:TDbcStatementScript;
 
@@ -696,8 +706,6 @@ begin
 
  if msg2.Path['type'].AsStr='reward-redeemed' then
  begin
-
-  rs:=s;
 
   reward_title:=Trim(fetch_reward(msg2));
   cmd:='';
@@ -728,6 +736,11 @@ begin
    end;
   end else
 
+  if (vor_rpg.Enable) and (reward_title=vip_rnd.title_vor) then //vor rpg
+  begin
+   FrmVorRpg.rpg_theif_vip(s,user,msg);
+   Exit;
+  end else
   if (vip_rnd.Enable_vor) and (reward_title=vip_rnd.title_vor) then //vor
   begin
    if fetch_random_vor(RCT) then
@@ -737,7 +750,7 @@ begin
      push_irc_list(vip_rnd.already_vip,[user]);
      cmd:=Format(_get_first_cmd(vip_rnd.already_vip),[user]);
     end else
-    if not try_theif_vip(RCT,user,msg,cmd) then
+    if not try_theif_vip(user,msg,cmd) then
     begin
      push_irc_list(vip_rnd.vor_jail,[user]);
      cmd:=Format(_get_first_cmd(vip_rnd.vor_jail),[user]);
@@ -769,7 +782,7 @@ begin
   FDbcScript.ExecuteScript;
   FDbcScript.Params.SetAsDateTime   ('datetime',DT);
   FDbcScript.Params.SetRawByteString('user'    ,display_name);
-  FDbcScript.Params.SetRawByteString('mes'     ,rs);
+  FDbcScript.Params.SetRawByteString('mes'     ,s);
   FDbcScript.Params.SetRawByteString('cmd'     ,cmd);
   FDbcScript.Start;
   FDbcScript.Release;
@@ -778,6 +791,54 @@ begin
 
  msg2.Free;
 
+end;
+
+procedure TFrmMain._add_reward_2_log(const s,cmd:RawByteString);
+var
+ DT:TDateTime;
+ ms:TStream;
+ msg2:TJson;
+ msg,
+ display_name,
+ reward_title:RawByteString;
+ FDbcScript:TDbcStatementScript;
+begin
+
+ ms:=TPCharStream.Create(PAnsiChar(s),Length(s));
+
+ msg2:=Default(TJson);
+ try
+  msg2:=TJson.New(ms);
+ except
+  on E:Exception do
+  begin
+   DumpExceptionCallStack(E);
+  end;
+ end;
+
+ FreeAndNil(ms);
+
+ DT:=fetch_dt(msg2);
+ if IsNullValue(DT) then DT:=Now;
+
+ msg:=fetch_msg(msg2);
+ display_name:=fetch_user_display_name(msg2);
+ reward_title:=Trim(fetch_reward(msg2));
+
+ msg2.Free;
+
+ add_to_story(DT,display_name,reward_title,msg,cmd);
+
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.SetSctipt(FInsertStoryScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetAsDateTime   ('datetime',DT);
+ FDbcScript.Params.SetRawByteString('user'    ,display_name);
+ FDbcScript.Params.SetRawByteString('mes'     ,s);
+ FDbcScript.Params.SetRawByteString('cmd'     ,cmd);
+ FDbcScript.Start;
+ FDbcScript.Release;
 end;
 
 procedure TFrmMain.SetRoomStates(RS:TRoomStates);
@@ -1605,6 +1666,11 @@ begin
  FrmSubParam.Open;
 end;
 
+procedure TFrmMain.OnPopupClickVorRpgParam(Sender:TObject);
+begin
+ FrmVorRpg.Open
+end;
+
 procedure TFrmMain.OnPopupClickVipParam(Sender:TObject);
 begin
  FrmVipParam.Open;
@@ -1754,6 +1820,8 @@ begin
 
    FrmVipParam.LoadCfg;
 
+   FrmVorRpg.LoadCfg;
+
    FrmSubParam.LoadCfg;
 
    FrmVolParam.LoadCfg;
@@ -1780,6 +1848,8 @@ begin
    Config.WriteString('view','mask'     ,IntToStr(view_mask));
 
    FrmVipParam.InitCfg;
+
+   FrmVorRpg.InitCfg;
 
    FrmSubParam.InitCfg;
 
@@ -1855,6 +1925,12 @@ begin
  Item:=TMenuItem.Create(PopupCfg);
  Item.Caption:='Саб мод';
  Item.OnClick:=@OnPopupClickSubParam;
+ PopupCfg.Items.Add(Item);
+
+ //vor rpg param
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='Вор Рпг';
+ Item.OnClick:=@OnPopupClickVorRpgParam;
  PopupCfg.Items.Add(Item);
 
  //sound volume
@@ -2492,6 +2568,10 @@ begin
   'delete_vips':
    begin
     Node.Push(TLoadSQL_Func,@FDeleteVipsScript);
+   end;
+  'get_rpg_users':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRpgUsersScript);
    end;
  end;
 end;

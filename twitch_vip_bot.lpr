@@ -39,7 +39,8 @@ uses
   LCLIntf,
 
   SysUtils, ExtCtrls, Classes, UAsyncQueue, ULog, Forms, printer4lazarus, main,
-  Uloginf, UFrmParam, UFrmAbout, ufrmpred, UFrmVipParam, UFrmSubParam, ufrmvol;
+  Uloginf, UFrmParam, UFrmAbout, ufrmpred, UFrmVipParam, UFrmSubParam, ufrmvol,
+  UFrmVorRpg;
 
 {$R *.res}
 
@@ -174,6 +175,7 @@ begin
   Application.CreateForm(TFrmVipParam, FrmVipParam);
   Application.CreateForm(TFrmSubParam, FrmSubParam);
   Application.CreateForm(TFrmVolParam, FrmVolParam);
+  Application.CreateForm(TFrmVorRpg, FrmVorRpg);
   Application.Run;
 end.
 

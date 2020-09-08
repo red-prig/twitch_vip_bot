@@ -109,6 +109,9 @@
   CREATE INDEX IF NOT EXISTS vips_datetime ON vips (datetime ASC);
   CREATE UNIQUE INDEX IF NOT EXISTS vips_user ON vips (user ASC);
 
+  CREATE TABLE IF NOT EXISTS rpg (user TEXT,data TEXT);
+  CREATE UNIQUE INDEX IF NOT EXISTS rpg_user ON rpg (user ASC);
+
   DROP TABLE IF EXISTS temp_table;
 
   if (SELECT value FROM params WHERE (name='rev')) IS NULL
@@ -216,6 +219,10 @@
  <delete_vips>
   DELETE FROM vips WHERE user=@user;
  </delete_vips>
+
+ <get_rpg_users>
+  SELECT * FROM rpg WHERE user in (@user1,@user2);
+ </get_rpg_users>
 
 </sql>
 
