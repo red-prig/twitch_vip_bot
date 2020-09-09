@@ -116,6 +116,7 @@
         <Filename Value="ufrmvorrpg.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrmVorRpg"/>
+        <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="UFrmVorRpg"/>
       </Unit12>
@@ -136,14 +137,8 @@
     <CodeGeneration>
       <SmartLinkUnit Value="True"/>
       <RelocatableUnit Value="True"/>
-      <Optimizations>
-        <OptimizationLevel Value="4"/>
-      </Optimizations>
     </CodeGeneration>
     <Linking>
-      <Debugging>
-        <GenerateDebugInfo Value="False"/>
-      </Debugging>
       <LinkSmart Value="True"/>
       <Options>
         <Win32>
@@ -153,9 +148,6 @@
     </Linking>
     <Other>
       <CustomOptions Value="-dDisableMemoryLeakReporting"/>
-      <OtherDefines Count="1">
-        <Define0 Value="DisableMemoryLeakReporting"/>
-      </OtherDefines>
     </Other>
   </CompilerOptions>
   <Debugging>

@@ -193,6 +193,7 @@ var
   cmd2:TStringList;
   already_vip:TStringList;
   is_max_vip:TStringList;
+  is_empty:TStringList;
   vor_sucs:TStringList;
   vor_jail:TStringList;
   days:DWORD;
@@ -204,6 +205,10 @@ var
 
  vor_rpg:record
   Enable:Boolean;
+  timeout_cmd:RawByteString;
+  vor_sucs:TStringList;
+  TickKd:Int64;
+  time_kd:DWORD;
  end;
 
  sub_mod:record
@@ -251,6 +256,13 @@ procedure push_irc_list(L:TStringList;const Args:Array of const);
 
 Const
  DefZURL='zdbc:sqlite:///new.db';
+
+type
+ TPCharStream=class(TCustomMemoryStream)
+  public
+   constructor Create(P:PChar;len:SizeUint); virtual; overload;
+   procedure   SetNew(P:PChar;len:SizeUint);
+ end;
 
 implementation
 
@@ -412,13 +424,6 @@ begin
  P^.RS:=RS;
  SendMainQueue(P);
 end;
-
-type
- TPCharStream=class(TCustomMemoryStream)
-  public
-   constructor Create(P:PChar;len:SizeUint); virtual; overload;
-   procedure   SetNew(P:PChar;len:SizeUint);
- end;
 
 constructor TPCharStream.Create(P:PChar;len:SizeUint);
 begin
@@ -636,6 +641,7 @@ begin
     if (GridVips.Cells[e,i]<>'') then
      L.AddObject(LowerCase(GridVips.Cells[u,i]),GridVips.Rows[i]);
  end;
+ s:=L.Count;
  if s<>0 then
  begin
   i:=-1;
@@ -657,7 +663,13 @@ begin
  Result:=False;
 
  aRow:=getRandomTmpVip(msg);
- if (aRow=-1) then Exit;
+ if (aRow=-1) then
+ begin
+  Result:=True;
+  push_irc_list(vip_rnd.is_empty,[dst_user]);
+  cmd:=Format(_get_first_cmd(vip_rnd.is_empty),[dst_user]);
+  Exit;
+ end;
 
  src_user:=GridVips.FieldValue['user',ARow];
 
@@ -1189,6 +1201,9 @@ begin
 
  if vol_cmd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
   add_vol_cmd(user,cmd);
+
+ if vor_rpg.Enable then
+  FrmVorRpg.add_to_chat_cmd(PC,user,display_name,msg);
 
 end;
 
@@ -2261,6 +2276,10 @@ type
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
+ TVorRpg_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
  TOpenSub_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
@@ -2287,6 +2306,10 @@ begin
   'vip_rnd':
   begin
    Node.Push(TOpenVip_Func,Node.CData);
+  end;
+  'vor_rpg':
+  begin
+   Node.Push(TVorRpg_Func,Node.CData);
   end;
   'sub_mod':
   begin
@@ -2411,6 +2434,10 @@ begin
    begin
     Node.Push(TLoadList_Func,@vip_rnd.is_max_vip);
    end;
+  'vip_is_empty':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.is_empty);
+   end;
   'vor_sucs':
    begin
     Node.Push(TLoadList_Func,@vip_rnd.vor_sucs);
@@ -2442,6 +2469,20 @@ begin
   'days':
    begin
     Node.Push(TLoadDWORD_Func,@vip_rnd.days);
+   end;
+ end;
+end;
+
+class procedure TVorRpg_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'timeout_cmd':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.timeout_cmd);
+   end;
+  'vor_sucs':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.vor_sucs);
    end;
  end;
 end;
@@ -2569,9 +2610,21 @@ begin
    begin
     Node.Push(TLoadSQL_Func,@FDeleteVipsScript);
    end;
-  'get_rpg_users':
+  'get_rpg_user1':
    begin
-    Node.Push(TLoadSQL_Func,@FGetRpgUsersScript);
+    Node.Push(TLoadSQL_Func,@FGetRpgUser1);
+   end;
+  'get_rpg_user2':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRpgUser2);
+   end;
+  'set_rpg_user1':
+   begin
+    Node.Push(TLoadSQL_Func,@FSetRpgUser1);
+   end;
+  'set_rpg_user2':
+   begin
+    Node.Push(TLoadSQL_Func,@FSetRpgUser2);
    end;
  end;
 end;

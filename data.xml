@@ -23,6 +23,10 @@
   %s зачем брать випку, если уже вип? минус поинты кста. karmikRemnya
  </already_vip>
 
+ <vip_is_empty>
+  Випов нет в банке Ярнама, так что %s уходит ни с чем 
+ </vip_is_empty>
+
  <is_max_vip>
   Извини %s випки кончились, минус поинты кста. karmikFeels 
  </is_max_vip>
@@ -46,6 +50,17 @@
  <max_vips>90</max_vips>
 
 </vip_rnd>
+
+<vor_rpg>
+
+ <timeout_cmd>/timeout %s %s</timeout_cmd>
+
+ <vor_sucs>
+  /unvip %1:s
+  /vip %s
+ </vor_sucs>
+
+</vor_rpg>
 
 <sub_mod>
  <inc_title>Sub Mode</inc_title>
@@ -220,9 +235,24 @@
   DELETE FROM vips WHERE user=@user;
  </delete_vips>
 
- <get_rpg_users>
+ <get_rpg_user1>
+  SELECT * FROM rpg WHERE user=@user1;
+ </get_rpg_user1>
+
+ <get_rpg_user2>
   SELECT * FROM rpg WHERE user in (@user1,@user2);
- </get_rpg_users>
+ </get_rpg_user2>
+
+ <set_rpg_user1>
+  INSERT OR REPLACE INTO rpg ( user,data  ) VALUES(@user1,@data1);
+ </set_rpg_user1>
+
+ <set_rpg_user2>
+  BEGIN TRANSACTION;
+   INSERT OR REPLACE INTO rpg ( user,data  ) VALUES(@user1,@data1);
+   INSERT OR REPLACE INTO rpg ( user,data  ) VALUES(@user2,@data2);
+  COMMIT TRANSACTION;
+ </set_rpg_user2>
 
 </sql>
 
