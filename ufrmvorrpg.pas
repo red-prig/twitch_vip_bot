@@ -402,7 +402,7 @@ begin
 end;
 
 Const
- BASE_TIME={4500}100;
+ BASE_TIME={4500}0;
  MUL_TIME=300;
  MAX_LVL=100;
  MUL_EXP=2;
@@ -601,12 +601,9 @@ begin
    begin
     //norm_vor
 
-    if Random(RCT,2)=0 then
-    begin
-     cmd:=norm_vor1;
-    end else
-    begin
-     cmd:=norm_vor2;
+    Case Random(RCT,2) of
+     0:cmd:=norm_vor1;
+     1:cmd:=norm_vor2;
     end;
 
     cmd:=Format(cmd,[user1,user2]);
@@ -915,7 +912,13 @@ begin
 
  if (v='!ban_test') then
  begin
+
+  if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+
   rpg_theif_vip('',user,F);
+
+  vor_rpg.TickKd:=GetTickCount64;
+
   Exit;
  end;
 
@@ -1033,7 +1036,7 @@ end;
 
 initialization
  LockStr:=TRawByteStringSet.Create;
- vor_rpg.time_kd:=5;
+ vor_rpg.time_kd:=10;
 
 end.
 
