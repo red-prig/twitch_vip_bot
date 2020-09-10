@@ -169,6 +169,8 @@ function GetDateTimeStr(Const Value:TDateTime):RawByteString;
 procedure SetDBParam(Const fname,fvalue:RawByteString);
 procedure GetDBParam(Const fname:RawByteString;N:TNotifyTask);
 
+Function  Extract_nick(const s:RawByteString):RawByteString; inline;
+
 var
  Config:TINIFile;
 
@@ -654,6 +656,15 @@ begin
  FreeAndNil(L);
 end;
 
+Function Extract_nick(const s:RawByteString):RawByteString; inline;
+begin
+ Result:=s;
+ if (s<>'') and (s[1]='@') then
+ begin
+  Result:=Copy(s,2,Length(s)-1);
+ end;
+end;
+
 function TFrmMain.try_theif_vip(const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
 var
  src_user:RawByteString;
@@ -662,7 +673,7 @@ var
 begin
  Result:=False;
 
- aRow:=getRandomTmpVip(msg);
+ aRow:=getRandomTmpVip(Extract_nick(msg));
  if (aRow=-1) then
  begin
   Result:=True;

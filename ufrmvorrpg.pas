@@ -381,7 +381,7 @@ Var
  aRow:SizeInt;
  FVorScript:TVorScript;
 begin
- aRow:=FrmMain.getRandomTmpVip(msg);
+ aRow:=FrmMain.getRandomTmpVip(Extract_nick(msg));
  if (aRow=-1) then
  begin
   push_irc_list(vip_rnd.is_empty,[dst_user]);
@@ -448,19 +448,19 @@ end;
 Function TUserPoints.GetLUKPercent:Int64;
 begin
  if (LUK=0) then Exit(0);
- Result:=Trunc(Log2(LUK*4-2)*MUL_LUK);
+ Result:=Trunc(Log2((LUK+1)*4-2)*MUL_LUK-6);
 end;
 
 Function TUserPoints.GetDEFPercent:Int64;
 begin
  if (DEF=0) then Exit(0);
- Result:=Trunc(Log2(DEF*4-2)*MUL_LUK);
+ Result:=Trunc(Log2((DEF+1)*4-2)*MUL_LUK-6);
 end;
 
 Function TUserPoints.GetSTRPercent:Int64;
 begin
  if (STR=0) then Exit(0);
- Result:=Trunc(Log2(STR*4-2)*MUL_LUK);
+ Result:=Trunc(Log2((STR+1)*4-2)*MUL_LUK-6)
 end;
 
 Function TUserPoints.GetESCPercent:Int64;
@@ -515,7 +515,10 @@ end;
 Const
  minus_vip='Невнимательный %s по дороге домой выронил из кармана випку';
  chist_vip='Чистюля %s хотел пойти на дело но вспомнил что забыл помыть руки';
- neudc_vip='Неудачник %s споткнулся и улетел в открытый люк канализации';
+ neudc_vip='Неудачник %s споткнулся и улетел в открытый люк канализации karmikRip';
+
+ pride_vip1='Обоятельный %s в общественной бане выронил из рук мыло karmikPride';
+ pride_vip2='Обоятельный %s в общественной бане выронил из рук випку karmikFeels';
 
  time4_vip='Неудачник %s успешно ушёл от полиции вместе с випкой от %s но повредил себе колено';
 
@@ -530,9 +533,10 @@ Const
  esc_vip2='Неуклюжий вор %s прыгнул в реку Турчанку и смог смыться';
  esc_vip3='Спрятавшись в лесу %s смог избежать погони';
 
- jail_vip1='Поместье недружелюбно встретило %s засадой полиции в темноте';
- jail_vip2='Задев скатерть ногой, %s снес половину бабушкиного сервиза, и был вырублен %s и доставлен в полицию';
- jail_vip3='Неудачник %s попробовав вскрыть замок был замечен %s и в неравной борьбе был доставлен в участок';
+ jail_vip1='Поместье недружелюбно встретило %s засадой полиции в темноте karmikT';
+ jail_vip2='Задев скатерть ногой, %s снес половину бабушкиного сервиза, и был вырублен %s и доставлен в полицию karmikT';
+ jail_vip3='Неудачник %s попробовав вскрыть замок был замечен %s и в неравной борьбе был доставлен в участок karmikT';
+ jail_vip4='Ловкий %s вскрыл сейф %s, но нашел только бан karmikT';
 
 Procedure TVorScript.OnEvent;
 var
@@ -550,9 +554,17 @@ begin
   rnd:=Random(RCT,100);
   if (rnd<10) then
   begin
-   cmd:=Format(minus_vip,[user1]);
+
+   Case Random(RCT,2) of
+    0:cmd:=minus_vip;
+    1:cmd:=pride_vip2;
+   end;
+
+   cmd:=Format(cmd,[user1]);
    push_irc_msg(cmd);
-   push_irc_msg(Format(vip_rnd.unvip_cmd,[user1]));
+
+   FrmVipParam.DeleteAndUnVip(user1);
+
    FrmMain._add_reward_2_log(s,cmd);
    Points1.EXP:=Points1.EXP+1;
   end else
@@ -567,7 +579,13 @@ begin
    end else
    begin
     Val:=Max(BASE_TIME-Points1.GetTime,0);
-    cmd:=Format(neudc_vip,[user1]);
+
+    Case Random(RCT,2) of
+     0:cmd:=neudc_vip;
+     1:cmd:=pride_vip1;
+    end;
+
+    cmd:=Format(cmd,[user1]);
     push_irc_msg(cmd);
     if Val<>0 then
     begin
@@ -695,6 +713,7 @@ begin
       0:cmd:=jail_vip1;
       1:cmd:=jail_vip2;
       2:cmd:=jail_vip3;
+      3:cmd:=jail_vip4;
      end;
 
      cmd:=Format(cmd,[user1,user2]);

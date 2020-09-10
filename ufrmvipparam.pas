@@ -57,6 +57,7 @@ type
     procedure OnBtnDeleteVipClick(Sender:TObject);
     procedure OnBtnInsertVipClick(Sender:TObject);
     procedure DeleteAndUnVip(aRow:Integer);
+    procedure DeleteAndUnVip(Const FUser:RawByteString);
     procedure OnBtnUnVipClick(Sender:TObject);
     procedure OnBtnUpdateVipClick(Sender:TObject);
     Procedure OnListVips(Sender:TBaseTask);
@@ -480,6 +481,15 @@ var
 begin
  user:=GridVips.FieldValue['user',ARow];
  push_irc_msg(Format(vip_rnd.unvip_cmd,[user]));
+ DeleteVip(aRow);
+end;
+
+procedure TFrmVipParam.DeleteAndUnVip(Const FUser:RawByteString);
+var
+ aRow:Integer;
+begin
+ aRow:=self.FindVipUser(FUser);
+ push_irc_msg(Format(vip_rnd.unvip_cmd,[FUser]));
  DeleteVip(aRow);
 end;
 
