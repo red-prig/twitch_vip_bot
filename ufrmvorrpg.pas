@@ -448,7 +448,7 @@ end;
 Function TUserPoints.GetLUKPercent:Int64;
 begin
  if (LUK=0) then Exit(0);
- Result:=Trunc(Log2((LUK+1)*4-2)*MUL_LUK-6);
+ Result:=Trunc(Log2((LUK+1)*4-2)*MUL_LUK-7);
 end;
 
 Function TUserPoints.GetDEFPercent:Int64;
@@ -867,6 +867,8 @@ begin
  FDbcScript.AsyncFunc(@FDbcScript.try_start);
 
 end;
+
+//А ну да, чисто подкрался незаметно со спины, но споткнулся и упал на свой нож отлетев в бан KEKW
 
 procedure TFrmVorRpg.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
