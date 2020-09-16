@@ -512,32 +512,12 @@ begin
  push_irc_list(vor_rpg.vor_sucs,[dst_user,src_user]);
 end;
 
-Const
- minus_vip='Невнимательный %s по дороге домой выронил из кармана випку';
- chist_vip='Чистюля %s хотел пойти на дело но вспомнил что забыл помыть руки';
- neudc_vip='Неудачник %s споткнулся и улетел в открытый люк канализации karmikRip';
-
- pride_vip1='Обаятельный %s в общественной бане выронил из рук мыло karmikPride';
- pride_vip2='Обаятельный %s в общественной бане выронил из рук випку karmikFeels';
-
- time4_vip='Неудачник %s успешно ушёл от полиции вместе с випкой от %s но повредил себе колено';
-
- norm_vor1='Вор %s в тишине ночи, забрал випку у %s и не был пойман. karmikThief';
- norm_vor2='Ловкими пальчиками вор %s ловко стащил випку прямо вместе со штанами у %s';
-
- str_vip1='Скрипнула половица, вор %s был замечен, но успел ударить по голове %s и cбежать с випкой';
- str_vip2='Неуклюжий вор %s разбудил хозяина %s но в неравной борьбе он смог забрать чужую випку';
- str_vip3='Задев скатерть ногой, %s снес половину бабушкиного сервиза, но всё же смог забрать силой випку у %s';
-
- esc_vip1='Ловкий вор %s хоть и не смог добиться цели, но смог cбежать от полиции.';
- esc_vip2='Неуклюжий вор %s прыгнул в реку Турчанку и смог смыться';
- esc_vip3='Спрятавшись в лесу %s смог избежать погони';
-
- jail_vip1='Поместье недружелюбно встретило %s засадой полиции в темноте karmikT';
- jail_vip2='Темнота амбара недружелюбно встретила %s ударом дубинки по голове karmikRip';
- jail_vip3='Задев скатерть ногой, %s снес половину бабушкиного сервиза, и был вырублен %s и доставлен в полицию karmikT';
- jail_vip4='Неудачник %s попробовав вскрыть замок был замечен %s и в неравной борьбе был доставлен в участок karmikT';
- jail_vip5='Ловкий %s вскрыл сейф %s, но нашел только бан karmikT';
+function get_random_msg(L:TStringList):RawByteString;
+begin
+ Result:='';
+ if L.Count>0 then
+  Result:=L.Strings[Random(RCT,L.Count)];
+end;
 
 Procedure TVorScript.OnEvent;
 var
@@ -556,10 +536,7 @@ begin
   if (rnd<10) then
   begin
 
-   Case Random(RCT,2) of
-    0:cmd:=minus_vip;
-    1:cmd:=pride_vip2;
-   end;
+   cmd:=get_random_msg(vor_rpg.minus_vip);
 
    cmd:=Format(cmd,[user1]);
    push_irc_msg(cmd);
@@ -570,21 +547,21 @@ begin
    Points1.EXP:=Points1.EXP+1;
   end else
   begin
-   rnd:=rnd-10;
+   rnd:=Random(RCT,100);
    if (rnd<Points1.GetLUKPercent) then
    begin
-    cmd:=Format(chist_vip,[user1]);
+
+    cmd:=get_random_msg(vor_rpg.chist_vip);
+
+    cmd:=Format(cmd,[user1]);
     push_irc_msg(cmd);
     FrmMain._add_reward_2_log(s,cmd);
-    Points1.EXP:=Points1.EXP+3;
+    Points1.EXP:=Points1.EXP+1;
    end else
    begin
     Val:=Max(BASE_TIME-Points1.GetTime,0);
 
-    Case Random(RCT,2) of
-     0:cmd:=neudc_vip;
-     1:cmd:=pride_vip1;
-    end;
+    cmd:=get_random_msg(vor_rpg.neudc_vip);
 
     cmd:=Format(cmd,[user1]);
     push_irc_msg(cmd);
@@ -620,10 +597,7 @@ begin
    begin
     //norm_vor
 
-    Case Random(RCT,2) of
-     0:cmd:=norm_vor1;
-     1:cmd:=norm_vor2;
-    end;
+    cmd:=get_random_msg(vor_rpg.norm_vor);
 
     cmd:=Format(cmd,[user1,user2]);
     push_irc_msg(cmd);
@@ -637,7 +611,9 @@ begin
    begin
     //change vip and timeout
 
-    cmd:=Format(time4_vip,[user1,user2]);
+    cmd:=get_random_msg(vor_rpg.time4_vip);
+
+    cmd:=Format(cmd,[user1,user2]);
     push_irc_msg(cmd);
 
     ChangeVip(user2,user1);
@@ -666,11 +642,7 @@ begin
    begin
     //str_vip
 
-    Case Random(RCT,3) of
-     0:cmd:=str_vip1;
-     1:cmd:=str_vip2;
-     2:cmd:=str_vip3;
-    end;
+    cmd:=get_random_msg(vor_rpg.str_vip);
 
     cmd:=Format(cmd,[user1,user2]);
     push_irc_msg(cmd);
@@ -694,11 +666,7 @@ begin
     begin
      //escape
 
-     Case Random(RCT,3) of
-      0:cmd:=esc_vip1;
-      1:cmd:=esc_vip2;
-      2:cmd:=esc_vip3;
-     end;
+     cmd:=get_random_msg(vor_rpg.esc_vip);
 
      cmd:=Format(cmd,[user1,user2]);
      push_irc_msg(cmd);
@@ -710,13 +678,7 @@ begin
     begin
      //jail
 
-     Case Random(RCT,5) of
-      0:cmd:=jail_vip1;
-      1:cmd:=jail_vip2;
-      2:cmd:=jail_vip3;
-      3:cmd:=jail_vip4;
-      4:cmd:=jail_vip5;
-     end;
+     cmd:=get_random_msg(vor_rpg.jail_vip);
 
      cmd:=Format(cmd,[user1,user2]);
      push_irc_msg(cmd);
@@ -826,13 +788,6 @@ begin
  Print;
 end;
 
-Const
- lvl_msg='@%s LVL:%s [%s/%s]';
- pts_msg='@%s LUK:%s;DEF:%s;CHR:%s;AGL:%s;STR:%s;PTS:%s';
- stat_msg='@%s LUK%%:%s;DEF%%:%s;ESC%%:%s;-TIME:%s';
- add_msg='@%s point add to %s';
- not_pts_msg='@%s not enough points';
-
 procedure TDbcGetUserInfo.Print;
 var
  Points:TUserPoints;
@@ -841,12 +796,12 @@ begin
  Points.CheckNewLvl;
  case cmd of
   'level',
-  'lvl' :push_irc_msg(Format(lvl_msg,[user,
+  'lvl' :push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[user,
                                       IntToStr(Points.LVL),
                                       IntToStr(Points.EXP),
                                       IntToStr(Points.GetExpToLvl)]));
   'points',
-  'pts' :push_irc_msg(Format(pts_msg,[user,
+  'pts' :push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[user,
                                       IntToStr(Points.LUK),
                                       IntToStr(Points.DEF),
                                       IntToStr(Points.CHR),
@@ -854,7 +809,7 @@ begin
                                       IntToStr(Points.STR),
                                       IntToStr(Points.PTS)]));
   'stats',
-  'stat':push_irc_msg(Format(stat_msg,[user,
+  'stat':push_irc_msg(Format(vor_rpg.stat_msg.stat_msg,[user,
                                       IntToStr(Points.GetLUKPercent),
                                       IntToStr(Points.GetDEFPercent),
                                       IntToStr(Points.GetESCPercent),
@@ -886,10 +841,10 @@ begin
    'agl':Inc(Points1.AGL);
    'str':Inc(Points1.STR);
   end;
-  push_irc_msg(Format(add_msg,[user1,cmd]));
+  push_irc_msg(Format(vor_rpg.stat_msg.add_msg,[user1,cmd]));
  end else
  begin
-  push_irc_msg(Format(not_pts_msg,[user1,cmd]));
+  push_irc_msg(Format(vor_rpg.stat_msg.not_msg,[user1,cmd]));
  end;
 
  SetUserPoints(data1,Points1);
@@ -950,7 +905,7 @@ begin
 
   if (F='') then
   begin
-   push_irc_msg('@'+user+' cmd: [lvl,pts,stat,add [param]]');
+   push_irc_msg(Format(vor_rpg.stat_msg.help_msg1,[user]));
   end else
   begin
    i:=Pos(' ',F);
@@ -978,10 +933,10 @@ begin
            'agl',
            'str':add_pts(user,F);
            else
-            push_irc_msg('@'+user+' add: [luk,def,chr,agl,str]');
+            push_irc_msg(Format(vor_rpg.stat_msg.help_msg2,[user]));
           end;
     else
-     push_irc_msg('@'+user+' cmd: [lvl,pts,stat,add [param]]');
+     push_irc_msg(Format(vor_rpg.stat_msg.help_msg1,[user]));
    end;
 
   end;
@@ -1057,7 +1012,7 @@ end;
 
 initialization
  LockStr:=TRawByteStringSet.Create;
- vor_rpg.time_kd:=5;
+ vor_rpg.time_kd:=8;
 
 end.
 

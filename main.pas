@@ -211,6 +211,26 @@ var
   vor_sucs:TStringList;
   TickKd:Int64;
   time_kd:DWORD;
+
+  jail_vip:TStringList;
+  esc_vip:TStringList;
+  str_vip:TStringList;
+  norm_vor:TStringList;
+  minus_vip:TStringList;
+  time4_vip:TStringList;
+  neudc_vip:TStringList;
+  chist_vip:TStringList;
+
+  stat_msg:record
+   lvl_msg,
+   pts_msg,
+   stat_msg,
+   add_msg,
+   not_msg,
+   help_msg1,
+   help_msg2:RawByteString;
+  end;
+
  end;
 
  sub_mod:record
@@ -657,12 +677,21 @@ begin
 end;
 
 Function Extract_nick(const s:RawByteString):RawByteString; inline;
+var
+ i:SizeInt;
 begin
  Result:=s;
  if (s<>'') and (s[1]='@') then
  begin
   Result:=Copy(s,2,Length(s)-1);
  end;
+
+ i:=Pos(' ',Result);
+ if (i<>0) then
+ begin
+  Result:=Copy(Result,1,i-1);
+ end;
+
 end;
 
 function TFrmMain.try_theif_vip(const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
@@ -2291,6 +2320,10 @@ type
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
+ Tstat_msg_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
  TOpenSub_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
@@ -2494,6 +2527,76 @@ begin
   'vor_sucs':
    begin
     Node.Push(TLoadList_Func,@vor_rpg.vor_sucs);
+   end;
+  'jail_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.jail_vip);
+   end;
+  'esc_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.esc_vip);
+   end;
+  'str_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.str_vip);
+   end;
+  'norm_vor':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.norm_vor);
+   end;
+  'minus_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.minus_vip);
+   end;
+  'time4_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.time4_vip);
+   end;
+  'neudc_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.neudc_vip);
+   end;
+  'chist_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.chist_vip);
+   end;
+  'stat_msg':
+   begin
+    Node.Push(Tstat_msg_Func,nil);
+   end;
+ end;
+end;
+
+class procedure Tstat_msg_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'lvl_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.lvl_msg);
+   end;
+  'pts_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.pts_msg);
+   end;
+  'stat_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.stat_msg);
+   end;
+  'add_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.add_msg);
+   end;
+  'not_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.not_msg);
+   end;
+  'help_msg1':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg1);
+   end;
+  'help_msg2':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg2);
    end;
  end;
 end;
