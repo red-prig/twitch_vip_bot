@@ -5,7 +5,7 @@ unit UFrmVorRpg;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, Buttons,
+  Classes, SysUtils, dateutils, Forms, Controls, Graphics, Dialogs, StdCtrls, Buttons,
   TaskManager,DbcEngine,DbcScript,Main;
 
 type
@@ -404,22 +404,74 @@ end;
 Const
  BASE_TIME={4500}0;
  MUL_TIME=300;
+
  MAX_LVL=100;
  MUL_EXP=2;
  MUL_LUK=4;
+ MUL_DEF=4;
+ MUL_STR=4;
  MUL_AGL=5;
 
+ DEC_LUK=-7;
+ DEC_DEF=-6;
+ DEC_STR=-6;
+ DEC_AGL=5;
+
+ PERCENT_MINUS_VIP=10;
+
 type
- TUserPoints=object
-  EXP,LVL,PTS,STR,LUK,DEF,CHR,AGL:Int64;
+ Tcharacteristic=object
+  PTS,STR,LUK,DEF,CHR,AGL:Int64;
+  Procedure SumTo(var S:Tcharacteristic);
+ end;
+
+ Tdebuf=object
+  id:Int64;
+  chr:Tcharacteristic;
+  text:RawByteString;
+ end;
+
+ TdebufCompare=class
+  class function c(const a,b:Tdebuf):boolean; static;
+ end;
+
+ TdebufSet=specialize TSet<Tdebuf,TdebufCompare>;
+
+ TUserPoints=object(Tcharacteristic)
+  EXP,LVL:Int64;
   function  GetExpToLvl:Int64;
   procedure CheckNewLvl;
+  procedure Load(J:TJson);
+  procedure Save(var J:TJson);
+ end;
+
+ TPlayer=object
+  Points:TUserPoints;
+  Effects:Tcharacteristic;
   Function  GetLUKPercent:Int64;
   Function  GetDEFPercent:Int64;
   Function  GetSTRPercent:Int64;
   Function  GetESCPercent:Int64;
   Function  GetTime:Int64;
+  procedure IncEXP(val:Int64);
+  procedure Load(J:TJson);
+  procedure Save(var J:TJson);
  end;
+
+class function TdebufCompare.c(const a,b:Tdebuf):boolean;
+begin
+ Result:=(a.id<b.id);
+end;
+
+Procedure Tcharacteristic.SumTo(var S:Tcharacteristic);
+begin
+ S.PTS:=S.PTS+PTS;
+ S.STR:=S.STR+STR;
+ S.LUK:=S.LUK+LUK;
+ S.DEF:=S.DEF+DEF;
+ S.CHR:=S.CHR+CHR;
+ S.AGL:=S.AGL+AGL;
+end;
 
 function TUserPoints.GetExpToLvl:Int64;
 begin
@@ -445,58 +497,144 @@ begin
  until false;
 end;
 
-Function TUserPoints.GetLUKPercent:Int64;
+Function TPlayer.GetLUKPercent:Int64;
+var
+ LUK:Int64;
 begin
- if (LUK=0) then Exit(0);
- Result:=Trunc(Log2((LUK+1)*4-2)*MUL_LUK-7);
+ LUK:=Points.LUK+Effects.LUK;
+ if (LUK<=0) then Exit(0);
+ Result:=Trunc(Log2((LUK+1)*4-2)*MUL_LUK+DEC_LUK);
 end;
 
-Function TUserPoints.GetDEFPercent:Int64;
+Function TPlayer.GetDEFPercent:Int64;
+var
+ DEF:Int64;
 begin
- if (DEF=0) then Exit(0);
- Result:=Trunc(Log2((DEF+1)*4-2)*MUL_LUK-6);
+ DEF:=Points.DEF+Effects.DEF;
+ if (DEF<=0) then Exit(0);
+ Result:=Trunc(Log2((DEF+1)*4-2)*MUL_DEF+DEC_DEF);
 end;
 
-Function TUserPoints.GetSTRPercent:Int64;
+Function TPlayer.GetSTRPercent:Int64;
+var
+ STR:Int64;
 begin
- if (STR=0) then Exit(0);
- Result:=Trunc(Log2((STR+1)*4-2)*MUL_LUK-6)
+ STR:=Points.STR+Effects.STR;
+ if (STR<=0) then Exit(0);
+ Result:=Trunc(Log2((STR+1)*4-2)*MUL_STR+DEC_STR)
 end;
 
-Function TUserPoints.GetESCPercent:Int64;
+Function TPlayer.GetESCPercent:Int64;
+var
+ AGL:Int64;
 begin
- if (AGL=0) then Exit(0);
- Result:=Trunc(Log2(AGL*3-2)*MUL_AGL+5);
+ AGL:=Points.AGL+Effects.AGL;
+ if (AGL<=0) then Exit(0);
+ Result:=Trunc(Log2(AGL*3-2)*MUL_AGL+DEC_AGL);
 end;
 
-Function TUserPoints.GetTime:Int64;
+Function TPlayer.GetTime:Int64;
+var
+ CHR:Int64;
 begin
- if (CHR=0) then Exit(0);
+ CHR:=Points.CHR+Effects.CHR;
+ if (CHR<=0) then Exit(0);
  Result:=Trunc(Log2(CHR*3-2)*MUL_TIME+MUL_TIME);
 end;
 
-Function GetUserPoints(J:TJson):TUserPoints;
+procedure TUserPoints.Load(J:TJson);
 begin
- Result.EXP:=J.Path['points.EXP'].AsInt64(0);
- Result.LVL:=J.Path['points.LVL'].AsInt64(0);
- Result.PTS:=J.Path['points.PTS'].AsInt64(0);
- Result.STR:=J.Path['points.STR'].AsInt64(0);
- Result.LUK:=J.Path['points.LUK'].AsInt64(0);
- Result.DEF:=J.Path['points.DEF'].AsInt64(0);
- Result.CHR:=J.Path['points.CHR'].AsInt64(0);
- Result.AGL:=J.Path['points.AGL'].AsInt64(0);
+ EXP:=J.Path['points.EXP'].AsInt64(0);
+ LVL:=J.Path['points.LVL'].AsInt64(0);
+ PTS:=J.Path['points.PTS'].AsInt64(0);
+ STR:=J.Path['points.STR'].AsInt64(0);
+ LUK:=J.Path['points.LUK'].AsInt64(0);
+ DEF:=J.Path['points.DEF'].AsInt64(0);
+ CHR:=J.Path['points.CHR'].AsInt64(0);
+ AGL:=J.Path['points.AGL'].AsInt64(0);
 end;
 
-Procedure SetUserPoints(var J:TJson;Const P:TUserPoints);
+Procedure Save40nul(var J:TJson;const path:RawByteString;val:Int64);
 begin
- J.Path['points.EXP']:=TJson.New(P.EXP);
- J.Path['points.LVL']:=TJson.New(P.LVL);
- J.Path['points.PTS']:=TJson.New(P.PTS);
- J.Path['points.STR']:=TJson.New(P.STR);
- J.Path['points.LUK']:=TJson.New(P.LUK);
- J.Path['points.DEF']:=TJson.New(P.DEF);
- J.Path['points.CHR']:=TJson.New(P.CHR);
- J.Path['points.AGL']:=TJson.New(P.AGL);
+ if (val=0) then
+ begin
+  J.Delete(path);
+ end else
+ begin
+  J.Path[path]:=TJson.New(val);
+ end;
+end;
+
+procedure TUserPoints.Save(var J:TJson);
+begin
+ Save40nul(J,'points.EXP',EXP);
+ Save40nul(J,'points.LVL',LVL);
+ Save40nul(J,'points.PTS',PTS);
+ Save40nul(J,'points.STR',STR);
+ Save40nul(J,'points.LUK',LUK);
+ Save40nul(J,'points.DEF',DEF);
+ Save40nul(J,'points.CHR',CHR);
+ Save40nul(J,'points.AGL',AGL);
+end;
+
+procedure TPlayer.IncEXP(val:Int64);
+begin
+ Points.EXP:=Points.EXP+val;
+ Points.CheckNewLvl;
+end;
+
+var
+ debufSet:TdebufSet;
+
+function Get_debuf(id:Int64):Tdebuf;
+var
+ Node:debufSet.PNode;
+begin
+ Result:=Default(Tdebuf);
+ Result.id:=id;
+ if (debufSet=nil) then Exit;
+ Node:=debufSet.NFind(Result);
+ if (Node=nil) then Exit;
+ Result:=Node^.Data;
+end;
+
+procedure TPlayer.Load(J:TJson);
+Var
+ instance:TJson;
+ i,C:SizeUint;
+ now,time:Int64;
+ debuf:Tdebuf;
+begin
+ Points.Load(J);
+ Points.CheckNewLvl;
+
+ Effects:=Default(Tcharacteristic);
+
+ instance:=J.Path['debuf.instance'];
+
+ C:=instance.Count;
+ if (C<>0) then
+ begin
+  now:=DateTimeToUnix(sysutils.Now,False);
+  For i:=(C-1) downto 0 do
+  begin
+   time:=instance.Item[i].Path['time'].AsInt64(0);
+   if (now>=time) then
+   begin
+    instance.Delete(i);
+   end else
+   begin
+    debuf:=Get_debuf(instance.Item[i].Path['id'].AsInt64(0));
+    debuf.chr.SumTo(Effects);
+   end;
+  end;
+ end;
+
+end;
+
+procedure TPlayer.Save(var J:TJson);
+begin
+ Points.Save(J);
 end;
 
 procedure ChangeVip(const src_user,dst_user:RawByteString);
@@ -522,18 +660,16 @@ end;
 Procedure TVorScript.OnEvent;
 var
  cmd:RawByteString;
- Points1,Points2:TUserPoints;
+ Points1,Points2:TPlayer;
  rnd:Integer;
  Val:Int64;
 begin
- Points1:=GetUserPoints(data1);
- Points2:=GetUserPoints(data2);
- Points1.CheckNewLvl;
- Points2.CheckNewLvl;
+ Points1.Load(data1);
+ Points2.Load(data2);
  if (FrmVipParam.FindVipUser(user1)<>-1) then
  begin
   rnd:=Random(RCT,100);
-  if (rnd<10) then
+  if (rnd<PERCENT_MINUS_VIP) then
   begin
 
    cmd:=get_random_msg(vor_rpg.minus_vip);
@@ -544,7 +680,7 @@ begin
    FrmVipParam.DeleteAndUnVip(user1);
 
    FrmMain._add_reward_2_log(s,cmd);
-   Points1.EXP:=Points1.EXP+1;
+   Points1.IncExp(1);
   end else
   begin
    rnd:=Random(RCT,100);
@@ -556,7 +692,7 @@ begin
     cmd:=Format(cmd,[user1]);
     push_irc_msg(cmd);
     FrmMain._add_reward_2_log(s,cmd);
-    Points1.EXP:=Points1.EXP+1;
+    Points1.IncExp(1);
    end else
    begin
     Val:=Max(BASE_TIME-Points1.GetTime,0);
@@ -570,11 +706,10 @@ begin
      push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
     end;
     FrmMain._add_reward_2_log(s,cmd);
-    Points1.EXP:=Points1.EXP+2;
+    Points1.IncExp(2);
    end;
   end;
-  Points1.CheckNewLvl;
-  SetUserPoints(data1,Points1);
+  Points1.Save(data1);
   SetDBRpgUser1(user1,data1,@OnUnlock);
  end else
  begin
@@ -604,8 +739,8 @@ begin
 
     ChangeVip(user2,user1);
 
-    Points1.EXP:=Points1.EXP+5;
-    Points2.EXP:=Points2.EXP+1;
+    Points1.IncExp(5);
+    Points2.IncExp(1);
 
    end else
    begin
@@ -624,8 +759,8 @@ begin
      push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
     end;
 
-    Points1.EXP:=Points1.EXP+4;
-    Points2.EXP:=Points2.EXP+1;
+    Points1.IncExp(4);
+    Points2.IncExp(1);
 
    end;
 
@@ -649,8 +784,8 @@ begin
 
     ChangeVip(user2,user1);
 
-    Points1.EXP:=Points1.EXP+3;
-    Points2.EXP:=Points2.EXP+2;
+    Points1.IncExp(3);
+    Points2.IncExp(2);
 
    end else
    begin
@@ -671,8 +806,8 @@ begin
      cmd:=Format(cmd,[user1,user2]);
      push_irc_msg(cmd);
 
-     Points1.EXP:=Points1.EXP+3;
-     Points2.EXP:=Points2.EXP+1;
+     Points1.IncExp(3);
+     Points2.IncExp(1);
 
     end else
     begin
@@ -689,8 +824,8 @@ begin
       push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
      end;
 
-     Points1.EXP:=Points1.EXP+1;
-     Points2.EXP:=Points2.EXP+2;
+     Points1.IncExp(1);
+     Points2.IncExp(2);
 
     end;
 
@@ -699,10 +834,8 @@ begin
 
   end;
 
-  Points1.CheckNewLvl;
-  Points2.CheckNewLvl;
-  SetUserPoints(data1,Points1);
-  SetUserPoints(data2,Points2);
+  Points1.Save(data1);
+  Points2.Save(data2);
   SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
 
  end;
@@ -790,24 +923,23 @@ end;
 
 procedure TDbcGetUserInfo.Print;
 var
- Points:TUserPoints;
+ Points:TPlayer;
 begin
- Points:=GetUserPoints(data);
- Points.CheckNewLvl;
+ Points.Load(data);
  case cmd of
   'level',
   'lvl' :push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[user,
-                                      IntToStr(Points.LVL),
-                                      IntToStr(Points.EXP),
-                                      IntToStr(Points.GetExpToLvl)]));
+                                      IntToStr(Points.Points.LVL),
+                                      IntToStr(Points.Points.EXP),
+                                      IntToStr(Points.Points.GetExpToLvl)]));
   'points',
   'pts' :push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[user,
-                                      IntToStr(Points.LUK),
-                                      IntToStr(Points.DEF),
-                                      IntToStr(Points.CHR),
-                                      IntToStr(Points.AGL),
-                                      IntToStr(Points.STR),
-                                      IntToStr(Points.PTS)]));
+                                      IntToStr(Points.Points.LUK),
+                                      IntToStr(Points.Points.DEF),
+                                      IntToStr(Points.Points.CHR),
+                                      IntToStr(Points.Points.AGL),
+                                      IntToStr(Points.Points.STR),
+                                      IntToStr(Points.Points.PTS)]));
   'stats',
   'stat':push_irc_msg(Format(vor_rpg.stat_msg.stat_msg,[user,
                                       IntToStr(Points.GetLUKPercent),
@@ -828,8 +960,7 @@ Procedure TAddPtsScript.OnEvent;
 var
  Points1:TUserPoints;
 begin
- Points1:=GetUserPoints(data1);
- Points1.CheckNewLvl;
+ Points1.Load(data1);
 
  if (Points1.PTS>0) then
  begin
@@ -847,7 +978,7 @@ begin
   push_irc_msg(Format(vor_rpg.stat_msg.not_msg,[user1,cmd]));
  end;
 
- SetUserPoints(data1,Points1);
+ Points1.Save(data1);
  SetDBRpgUser1(user1,data1,@OnUnlock);
 
 end;
@@ -1014,6 +1145,7 @@ end;
 
 initialization
  LockStr:=TRawByteStringSet.Create;
+ debufSet:=TdebufSet.Create;
  vor_rpg.time_kd:=8;
 
 end.
