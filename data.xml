@@ -120,10 +120,37 @@
   <pts_msg>   @%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s </pts_msg>
   <stat_msg>  @%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s         </stat_msg>
   <add_msg>   @%s навык вкачен в %s                              </add_msg>
-  <not_msg>   @%s нет свободных очков навыка                          </not_msg>
+  <not_msg>   @%s нет свободных очков навыка                     </not_msg>
+  <max_msg>   @%s максимум очков навыка в %s                     </max_msg>
   <help_msg1> @%s команды вора: [lvl,pts,stat,add [парам.]]      </help_msg1>
   <help_msg2> @%s для прокачки: [luk,def,chr,agl,str]            </help_msg2>
  </stat_msg>
+
+ <calc>
+  <BASE_TIME>0</BASE_TIME>
+  <MUL_TIME>300</MUL_TIME>
+  <DEC_TIME>300</DEC_TIME>
+  
+  <MAX_LVL>100</MAX_LVL>
+  <MAX_LUK>30</MAX_LUK>
+  <MAX_DEF>30</MAX_DEF>
+  <MAX_CHR>30</MAX_CHR>
+  <MAX_STR>30</MAX_STR>
+  <MAX_AGL>30</MAX_AGL>
+
+  <MUL_EXP>2</MUL_EXP>
+  <MUL_LUK>4</MUL_LUK>
+  <MUL_DEF>4</MUL_DEF>
+  <MUL_STR>4</MUL_STR>
+  <MUL_AGL>5</MUL_AGL>
+  
+  <DEC_LUK>-7</DEC_LUK>
+  <DEC_DEF>-6</DEC_DEF>
+  <DEC_STR>-6</DEC_STR>
+  <DEC_AGL>5</DEC_AGL>
+  
+  <PERC_MINUS_VIP>10</PERC_MINUS_VIP>
+ </calc>
 
 </vor_rpg>
 

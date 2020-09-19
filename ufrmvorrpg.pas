@@ -401,7 +401,7 @@ begin
 
 end;
 
-Const
+{Const
  BASE_TIME={4500}0;
  MUL_TIME=300;
 
@@ -417,7 +417,7 @@ Const
  DEC_STR=-6;
  DEC_AGL=5;
 
- PERCENT_MINUS_VIP=10;
+ PERCENT_MINUS_VIP=10;}
 
 type
  Tcharacteristic=object
@@ -475,7 +475,7 @@ end;
 
 function TUserPoints.GetExpToLvl:Int64;
 begin
- Result:=Trunc((LVL+1)*MUL_EXP-Log2((LVL+1)));
+ Result:=Trunc((LVL+1)*vor_rpg.calc.MUL_EXP-Log2((LVL+1)));
 end;
 
 procedure TUserPoints.CheckNewLvl;
@@ -483,7 +483,7 @@ var
  need:Int64;
 begin
  repeat
-  if (LVL>=MAX_LVL) then Break;
+  if (LVL>=vor_rpg.calc.MAX_LVL) then Break;
   need:=GetExpToLvl;
   if (EXP>=need) then
   begin
@@ -503,7 +503,7 @@ var
 begin
  LUK:=Points.LUK+Effects.LUK;
  if (LUK<=0) then Exit(0);
- Result:=Trunc(Log2((LUK+1)*4-2)*MUL_LUK+DEC_LUK);
+ Result:=Trunc(Log2((LUK+1)*4-2)*vor_rpg.calc.MUL_LUK+vor_rpg.calc.DEC_LUK);
 end;
 
 Function TPlayer.GetDEFPercent:Int64;
@@ -512,7 +512,7 @@ var
 begin
  DEF:=Points.DEF+Effects.DEF;
  if (DEF<=0) then Exit(0);
- Result:=Trunc(Log2((DEF+1)*4-2)*MUL_DEF+DEC_DEF);
+ Result:=Trunc(Log2((DEF+1)*4-2)*vor_rpg.calc.MUL_DEF+vor_rpg.calc.DEC_DEF);
 end;
 
 Function TPlayer.GetSTRPercent:Int64;
@@ -521,7 +521,7 @@ var
 begin
  STR:=Points.STR+Effects.STR;
  if (STR<=0) then Exit(0);
- Result:=Trunc(Log2((STR+1)*4-2)*MUL_STR+DEC_STR)
+ Result:=Trunc(Log2((STR+1)*4-2)*vor_rpg.calc.MUL_STR+vor_rpg.calc.DEC_STR)
 end;
 
 Function TPlayer.GetESCPercent:Int64;
@@ -530,7 +530,7 @@ var
 begin
  AGL:=Points.AGL+Effects.AGL;
  if (AGL<=0) then Exit(0);
- Result:=Trunc(Log2(AGL*3-2)*MUL_AGL+DEC_AGL);
+ Result:=Trunc(Log2(AGL*3-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL);
 end;
 
 Function TPlayer.GetTime:Int64;
@@ -539,7 +539,7 @@ var
 begin
  CHR:=Points.CHR+Effects.CHR;
  if (CHR<=0) then Exit(0);
- Result:=Trunc(Log2(CHR*3-2)*MUL_TIME+MUL_TIME);
+ Result:=Trunc(Log2(CHR*3-2)*vor_rpg.calc.MUL_TIME+vor_rpg.calc.DEC_TIME);
 end;
 
 procedure TUserPoints.Load(J:TJson);
@@ -669,7 +669,7 @@ begin
  if (FrmVipParam.FindVipUser(user1)<>-1) then
  begin
   rnd:=Random(RCT,100);
-  if (rnd<PERCENT_MINUS_VIP) then
+  if (rnd<vor_rpg.calc.PERC_MINUS_VIP) then
   begin
 
    cmd:=get_random_msg(vor_rpg.minus_vip);
@@ -695,7 +695,7 @@ begin
     Points1.IncExp(1);
    end else
    begin
-    Val:=Max(BASE_TIME-Points1.GetTime,0);
+    Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
 
     cmd:=get_random_msg(vor_rpg.neudc_vip);
 
@@ -753,7 +753,7 @@ begin
 
     ChangeVip(user2,user1);
 
-    Val:=Max(BASE_TIME-Points1.GetTime,0);
+    Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
     if Val<>0 then
     begin
      push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
@@ -818,7 +818,7 @@ begin
      cmd:=Format(cmd,[user1,user2]);
      push_irc_msg(cmd);
 
-     Val:=Max(BASE_TIME-Points1.GetTime,0);
+     Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
      if Val<>0 then
      begin
       push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
@@ -959,20 +959,39 @@ type
 Procedure TAddPtsScript.OnEvent;
 var
  Points1:TUserPoints;
+ do_inc:Boolean;
+
+ function try_inc(var param:Int64;var max:DWORD):Boolean;
+ begin
+  Result:=(param<max);
+  if Result then
+  begin
+   Inc(param);
+  end;
+ end;
+
 begin
  Points1.Load(data1);
 
  if (Points1.PTS>0) then
  begin
-  Dec(Points1.PTS);
   Case cmd of
-   'luk':Inc(Points1.LUK);
-   'def':Inc(Points1.DEF);
-   'chr':Inc(Points1.CHR);
-   'agl':Inc(Points1.AGL);
-   'str':Inc(Points1.STR);
+   'luk':do_inc:=try_inc(Points1.LUK,vor_rpg.calc.MAX_LUK);
+   'def':do_inc:=try_inc(Points1.DEF,vor_rpg.calc.MAX_DEF);
+   'chr':do_inc:=try_inc(Points1.CHR,vor_rpg.calc.MAX_CHR);
+   'agl':do_inc:=try_inc(Points1.AGL,vor_rpg.calc.MAX_AGL);
+   'str':do_inc:=try_inc(Points1.STR,vor_rpg.calc.MAX_STR);
   end;
-  push_irc_msg(Format(vor_rpg.stat_msg.add_msg,[user1,cmd]));
+
+  if do_inc then
+  begin
+   Dec(Points1.PTS);
+   push_irc_msg(Format(vor_rpg.stat_msg.add_msg,[user1,cmd]));
+  end else
+  begin
+   push_irc_msg(Format(vor_rpg.stat_msg.max_msg,[user1,cmd]));
+  end;
+
  end else
  begin
   push_irc_msg(Format(vor_rpg.stat_msg.not_msg,[user1,cmd]));

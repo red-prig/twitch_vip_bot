@@ -227,8 +227,36 @@ var
    stat_msg,
    add_msg,
    not_msg,
+   max_msg,
    help_msg1,
    help_msg2:RawByteString;
+  end;
+
+  calc:record
+   BASE_TIME:Int64;
+
+   MUL_TIME:Double;
+   DEC_TIME:Double;
+
+   MAX_LVL:DWORD;
+   MAX_LUK:DWORD;
+   MAX_DEF:DWORD;
+   MAX_CHR:DWORD;
+   MAX_STR:DWORD;
+   MAX_AGL:DWORD;
+
+   MUL_EXP:Double;
+   MUL_LUK:Double;
+   MUL_DEF:Double;
+   MUL_STR:Double;
+   MUL_AGL:Double;
+
+   DEC_LUK:Double;
+   DEC_DEF:Double;
+   DEC_STR:Double;
+   DEC_AGL:Double;
+
+   PERC_MINUS_VIP:Byte;
   end;
 
  end;
@@ -2312,6 +2340,14 @@ type
   class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
  end;
 
+ TLoadInt64_Func=class(TNodeFunc)
+  class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
+ end;
+
+ TLoadDouble_Func=class(TNodeFunc)
+  class procedure TXT(Node:TNodeReader;Const Name,Value:RawByteString); override;
+ end;
+
  TOpenVip_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
@@ -2321,6 +2357,10 @@ type
  end;
 
  Tstat_msg_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_calc_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
@@ -2435,7 +2475,7 @@ begin
  Case Name of
   '':
   begin
-   PByte(Node.CData)^:=StrToQWORDDef(Value,1);
+   PByte(Node.CData)^:=StrToQWORDDef(Value,0);
    if PByte(Node.CData)^>100 then PByte(Node.CData)^:=100;
   end;
  end;
@@ -2447,6 +2487,26 @@ begin
   '':
   begin
    PDWORD(Node.CData)^:=StrToDWORDDef(Value,0);
+  end;
+ end;
+end;
+
+class procedure TLoadInt64_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+begin
+ Case Name of
+  '':
+  begin
+   PInt64(Node.CData)^:=StrToInt64Def(Value,0);
+  end;
+ end;
+end;
+
+class procedure TLoadDouble_Func.TXT(Node:TNodeReader;Const Name,Value:RawByteString);
+begin
+ Case Name of
+  '':
+  begin
+   PDouble(Node.CData)^:=StrToFloatDef(Value,0);
   end;
  end;
 end;
@@ -2564,6 +2624,10 @@ begin
    begin
     Node.Push(Tstat_msg_Func,nil);
    end;
+  'calc':
+   begin
+    Node.Push(TVorRpg_calc_Func,nil);
+   end;
  end;
 end;
 
@@ -2590,6 +2654,10 @@ begin
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.not_msg);
    end;
+  'max_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.max_msg);
+   end;
   'help_msg1':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg1);
@@ -2598,6 +2666,93 @@ begin
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg2);
    end;
+ end;
+end;
+
+class procedure TVorRpg_calc_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'BASE_TIME':
+  begin
+   Node.Push(TLoadInt64_Func,@vor_rpg.calc.BASE_TIME);
+  end;
+  'MUL_TIME':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_TIME);
+  end;
+  'DEC_TIME':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_TIME);
+  end;
+
+  'MAX_LVL':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_LVL);
+  end;
+  'MAX_LUK':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_LUK);
+  end;
+  'MAX_DEF':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_DEF);
+  end;
+  'MAX_CHR':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_CHR);
+  end;
+  'MAX_STR':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_STR);
+  end;
+  'MAX_AGL':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_AGL);
+  end;
+
+  'MUL_EXP':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_EXP);
+  end;
+  'MUL_LUK':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_LUK);
+  end;
+  'MUL_DEF':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_DEF);
+  end;
+  'MUL_STR':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_STR);
+  end;
+  'MUL_AGL':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_AGL);
+  end;
+
+  'DEC_LUK':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_LUK);
+  end;
+  'DEC_DEF':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_DEF);
+  end;
+  'DEC_STR':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_STR);
+  end;
+  'DEC_AGL':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_AGL);
+  end;
+
+  'PERC_MINUS_VIP':
+  begin
+   Node.Push(TLoadPerc_Func,@vor_rpg.calc.PERC_MINUS_VIP);
+  end;
+
  end;
 end;
 
