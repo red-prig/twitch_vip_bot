@@ -86,12 +86,15 @@ Var
  F:RawByteString;
 begin
  Result:=True;
- F:=LowerCase(name);
- if vol_cmd.Exclude.IndexOf(F)=-1 then
-  if L.IndexOfName(F)=-1 then
-  begin
-   L.Add(GetVolumeInfo(name,Volume))
-  end;
+ if (name<>'') then
+ begin
+  F:=LowerCase(name);
+  if vol_cmd.Exclude.IndexOf(F)=-1 then
+   if L.IndexOfName(F)=-1 then
+   begin
+    L.Add(GetVolumeInfo(name,Volume))
+   end;
+ end;
 end;
 
 Function GetSessionsStr:RawByteString;

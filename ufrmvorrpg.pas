@@ -30,6 +30,62 @@ type
   end;
 
 var
+  vor_rpg:record
+   Enable:Boolean;
+   timeout_cmd:RawByteString;
+   vor_sucs:TStringList;
+   TickKd:Int64;
+   time_kd:DWORD;
+
+   jail_vip:TStringList;
+   esc_vip:TStringList;
+   str_vip:TStringList;
+   norm_vor:TStringList;
+   minus_vip:TStringList;
+   time4_vip:TStringList;
+   neudc_vip:TStringList;
+   chist_vip:TStringList;
+
+   stat_msg:record
+    lvl_msg,
+    pts_msg,
+    stat_msg,
+    add_msg,
+    not_msg,
+    max_msg,
+    help_msg1,
+    help_msg2:RawByteString;
+   end;
+
+   calc:record
+    BASE_TIME:Int64;
+
+    MUL_TIME:Double;
+    DEC_TIME:Double;
+
+    MAX_LVL:DWORD;
+    MAX_LUK:DWORD;
+    MAX_DEF:DWORD;
+    MAX_CHR:DWORD;
+    MAX_STR:DWORD;
+    MAX_AGL:DWORD;
+
+    MUL_EXP:Double;
+    MUL_LUK:Double;
+    MUL_DEF:Double;
+    MUL_STR:Double;
+    MUL_AGL:Double;
+
+    DEC_LUK:Double;
+    DEC_DEF:Double;
+    DEC_STR:Double;
+    DEC_AGL:Double;
+
+    PERC_MINUS_VIP:Byte;
+   end;
+
+  end;
+
   FrmVorRpg: TFrmVorRpg;
 
   FGetRpgUser1:TSQLScript;

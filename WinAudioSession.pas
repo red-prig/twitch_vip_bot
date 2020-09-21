@@ -247,6 +247,7 @@ begin
 
  Prop:=nil;
  Device.OpenPropertyStore(STGM_READ,Prop);
+ if Prop=nil then Exit;
 
  Name:=Default(TPROPVARIANT);
  if Prop.GetValue(PKEY_Device_FriendlyName,Name)<>S_OK then Exit;
@@ -268,6 +269,7 @@ begin
 
  PWID:=nil;
  if Device.GetId(PWID)<>S_OK then Exit;
+ if PWID=nil then Exit;
 
  Result:=UTF8Encode(WideString(PWID));
  CoTaskMemFree(PWID);
@@ -338,6 +340,7 @@ begin
 
  PWID:=nil;
  if Session.GetSessionInstanceIdentifier(PWID)<>S_OK then Exit;
+ if PWID=nil then Exit;
  WS:=WideString(PWID);
  CoTaskMemFree(PWID);
  WS:=Trim(WS);

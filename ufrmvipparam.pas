@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  Buttons,MaskEdit,
+  Buttons,MaskEdit, ComCtrls,
   TaskManager,DbcEngine,
   kgrids,
   ExtStringGrid,DbcScript;
@@ -43,8 +43,10 @@ type
     prev_perc:Byte;
     prev_dw:DWORD;
   public
+    procedure UpdateStatusBarVips;
     procedure VipsEditorCreate(Sender:TObject;ACol,ARow:Integer;var AEditor:TWinControl);
     function  FindVipUser(Const FValue:RawByteString):Integer;
+    function  FindPosVipUser(Const FValue:RawByteString):Integer;
     function  DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     procedure DbUpdateVip_user(const src_user,dst_user:RawByteString);
@@ -61,6 +63,8 @@ type
     procedure OnBtnUnVipClick(Sender:TObject);
     procedure OnBtnUpdateVipClick(Sender:TObject);
     Procedure OnListVips(Sender:TBaseTask);
+    procedure GridKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
+    procedure OnBtnFind(Sender:TObject);
     Procedure InitCfg;
     Procedure LoadCfg;
     Procedure Open;
@@ -71,6 +75,7 @@ var
 
   PanelVips:TPanel;
   GridVips:TDBStringGrid;
+  StatusBarVips:TStatusBar;
 
   FListVipsScript  :TSQLScript;
   FAddVipsScript   :TSQLScript;
@@ -148,15 +153,35 @@ end;
 function TFrmVipParam.FindVipUser(Const FValue:RawByteString):Integer;
 Var
  i,u,C:Integer;
+ v:RawByteString;
+begin
+ Result:=-1;
+ C:=GridVips.RowCount;
+ if C>1 then
+ begin
+  v:=LowerCase(FValue);
+  u:=GridVips.FindColumn('user');
+  if u<>-1 then
+   For i:=1 to C-1 do
+    if LowerCase(GridVips.Cells[u,i])=v then
+     Exit(i);
+ end;
+end;
+
+function TFrmVipParam.FindPosVipUser(Const FValue:RawByteString):Integer;
+Var
+ i,u,C:Integer;
+ v:RawByteString;
 begin
  Result:=-1;
  C:=GridVips.RowCount;
  if C>1 then
  begin
   u:=GridVips.FindColumn('user');
+  v:=LowerCase(FValue);
   if u<>-1 then
    For i:=1 to C-1 do
-    if GridVips.Cells[u,i]=FValue then
+    if Pos(v,LowerCase(GridVips.Cells[u,i]))<>0 then
      Exit(i);
  end;
 end;
@@ -194,6 +219,7 @@ begin
       GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
 
       GridVips.ResetRowInsert;
+      UpdateStatusBarVips;
      end else
      begin
       Result:=False;
@@ -220,6 +246,7 @@ begin
     FDbcScript.Release;
 
     GridVips.ResetRowInsert;
+    UpdateStatusBarVips;
    end;
   end;
  end;
@@ -335,9 +362,12 @@ begin
                     [mrYes,'Да',mrNo,'Нет'],
                     'Удаление из таблицы')=mrYes;
 
- if not Result then Exit;
+ if Result then
+ begin
+  Result:=False;
+  DeleteVip(aRow);
+ end;
 
- DbDeleteVip(GridVips.FieldValue['user',ARow]);
 end;
 
 procedure TFrmVipParam.DeleteVip(aRow:Integer);
@@ -346,6 +376,7 @@ begin
  begin
   DbDeleteVip(GridVips.FieldValue['user',ARow]);
   GridVips.DeleteRow(aRow);
+  UpdateStatusBarVips;
  end;
 end;
 
@@ -388,6 +419,8 @@ begin
  end;
 
  GridVips.FieldValue['user'   ,ARow]:=FUser;
+
+ UpdateStatusBarVips;
 
  if GridVips.HandleAllocated then
  begin
@@ -468,11 +501,13 @@ end;
 procedure TFrmVipParam.OnBtnDeleteVipClick(Sender:TObject);
 begin
  GridVips.DoDelete;
+ UpdateStatusBarVips;
 end;
 
 procedure TFrmVipParam.OnBtnInsertVipClick(Sender:TObject);
 begin
  GridVips.DoInsert;
+ UpdateStatusBarVips;
 end;
 
 procedure TFrmVipParam.DeleteAndUnVip(aRow:Integer);
@@ -488,7 +523,7 @@ procedure TFrmVipParam.DeleteAndUnVip(Const FUser:RawByteString);
 var
  aRow:Integer;
 begin
- aRow:=self.FindVipUser(FUser);
+ aRow:=FindVipUser(FUser);
  push_irc_msg(Format(vip_rnd.unvip_cmd,[FUser]));
  DeleteVip(aRow);
 end;
@@ -579,12 +614,49 @@ begin
   end;
  end;
 
+ UpdateStatusBarVips;
+
  if GridVips.HandleAllocated then
  begin
   //GridVips.ScrollModeVert:=smCell;
   //GridVips.ScrollModeVert:=smSmooth;
   GridVips.Columns[0].Extent:=GridVips.Columns[0].MinExtent;
  end;
+end;
+
+procedure TFrmVipParam.GridKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
+begin
+ if ssCtrl in Shift then
+ begin
+  Case Key of
+   Word('F'):OnBtnFind(Sender);
+  end;
+ end;
+end;
+
+procedure TFrmVipParam.OnBtnFind(Sender:TObject);
+Var
+ Value:String;
+ i:Integer;
+begin
+ Value:='';
+ if InputQuery('Поиск','Найти ник:',Value) then
+ begin
+  i:=FindPosVipUser(Value);
+  if (i=-1) then
+  begin
+   ShowMessage('Не найдено!');
+  end else
+  begin
+   GridVips.SelectRow(i);
+  end;
+ end;
+end;
+
+procedure TFrmVipParam.UpdateStatusBarVips;
+begin
+ if StatusBarVips<>nil then
+  StatusBarVips.SimpleText:='Всего: '+IntToStr(GridVips.RowCount-1);
 end;
 
 procedure TFrmVipParam.FormCreate(Sender: TObject);
@@ -596,6 +668,10 @@ begin
  PanelVips.Align:=alClient;
  PanelVips.BevelInner:=bvNone;
  PanelVips.BevelOuter:=bvNone;
+
+ StatusBarVips:=TStatusBar.Create(PanelVips);
+ StatusBarVips.SimplePanel:=True;
+ StatusBarVips.Parent:=PanelVips;
 
  Btn:=TButton.Create(PanelVips);
  Btn.OnClick:=@OnBtnInsertVipClick;
@@ -623,6 +699,18 @@ begin
  Btn.OnClick:=@OnBtnUnVipClick;
  Btn.AutoSize:=True;
  Btn.Caption:='Unvip';
+ Btn.AnchorSide[akLeft].Side:=asrRight;
+ Btn.AnchorSide[akLeft].Control:=Tmp2;
+ Btn.Top :=5;
+ Btn.BorderSpacing.Left:=10;
+ Btn.Parent:=PanelVips;
+
+ Tmp2:=Btn;
+
+ Btn:=TButton.Create(PanelVips);
+ Btn.OnClick:=@OnBtnFind;
+ Btn.AutoSize:=True;
+ Btn.Caption:='Поиск';
  Btn.AnchorSide[akLeft].Side:=asrRight;
  Btn.AnchorSide[akLeft].Control:=Tmp2;
  Btn.Top :=5;
@@ -663,8 +751,8 @@ begin
  GridVips.AnchorSide[akLeft]  .Control:=PanelVips;
  GridVips.AnchorSide[akRight] .Side:=asrRight;
  GridVips.AnchorSide[akRight] .Control:=PanelVips;
- GridVips.AnchorSide[akBottom].Side:=asrBottom;
- GridVips.AnchorSide[akBottom].Control:=PanelVips;
+ GridVips.AnchorSide[akBottom].Side:=asrTop;
+ GridVips.AnchorSide[akBottom].Control:=StatusBarVips;
 
  GridVips.BorderSpacing.Top:=5;
 
@@ -678,6 +766,7 @@ begin
  GridVips.FOnDbInsert:=@DoVipInsert;
  GridVips.FOnDbUpdate:=@DoVipUpdate;
  GridVips.FOnDbDelete:=@DoVipDelete;
+ GridVips.OnKeyDown:=@GridKeyDown;
  GridVips.Parent:=PanelVips;
 
  SetTimerVipExpired(vip_rnd.Auto_expired);

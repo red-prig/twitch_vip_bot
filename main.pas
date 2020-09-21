@@ -2,6 +2,8 @@ unit main;
 
 {$mode objfpc}{$H+}
 
+{$DEFINE VOR_RPG}
+
 interface
 
 uses
@@ -205,62 +207,6 @@ var
   perc_vor:Byte;
  end;
 
- vor_rpg:record
-  Enable:Boolean;
-  timeout_cmd:RawByteString;
-  vor_sucs:TStringList;
-  TickKd:Int64;
-  time_kd:DWORD;
-
-  jail_vip:TStringList;
-  esc_vip:TStringList;
-  str_vip:TStringList;
-  norm_vor:TStringList;
-  minus_vip:TStringList;
-  time4_vip:TStringList;
-  neudc_vip:TStringList;
-  chist_vip:TStringList;
-
-  stat_msg:record
-   lvl_msg,
-   pts_msg,
-   stat_msg,
-   add_msg,
-   not_msg,
-   max_msg,
-   help_msg1,
-   help_msg2:RawByteString;
-  end;
-
-  calc:record
-   BASE_TIME:Int64;
-
-   MUL_TIME:Double;
-   DEC_TIME:Double;
-
-   MAX_LVL:DWORD;
-   MAX_LUK:DWORD;
-   MAX_DEF:DWORD;
-   MAX_CHR:DWORD;
-   MAX_STR:DWORD;
-   MAX_AGL:DWORD;
-
-   MUL_EXP:Double;
-   MUL_LUK:Double;
-   MUL_DEF:Double;
-   MUL_STR:Double;
-   MUL_AGL:Double;
-
-   DEC_LUK:Double;
-   DEC_DEF:Double;
-   DEC_STR:Double;
-   DEC_AGL:Double;
-
-   PERC_MINUS_VIP:Byte;
-  end;
-
- end;
-
  sub_mod:record
   Enable:Boolean;
   _label:record
@@ -323,7 +269,9 @@ uses
  UFrmAbout,
  UFrmParam,
  UFrmVipParam,
+ {$IFDEF VOR_RPG}
  UFrmVorRpg,
+ {$ENDIF}
  UFrmSubParam,
  Uloginf;
 
@@ -816,11 +764,13 @@ begin
    end;
   end else
 
+  {$IFDEF VOR_RPG}
   if (vor_rpg.Enable) and (reward_title=vip_rnd.title_vor) then //vor rpg
   begin
    FrmVorRpg.rpg_theif_vip(s,user,msg);
    Exit;
   end else
+  {$ENDIF}
   if (vip_rnd.Enable_vor) and (reward_title=vip_rnd.title_vor) then //vor
   begin
    if fetch_random_vor(RCT) then
@@ -1270,8 +1220,10 @@ begin
  if vol_cmd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
   add_vol_cmd(user,cmd);
 
+ {$IFDEF VOR_RPG}
  if vor_rpg.Enable then
   FrmVorRpg.add_to_chat_cmd(PC,user,display_name,msg);
+ {$ENDIF}
 
 end;
 
@@ -1751,7 +1703,9 @@ end;
 
 procedure TFrmMain.OnPopupClickVorRpgParam(Sender:TObject);
 begin
+ {$IFDEF VOR_RPG}
  FrmVorRpg.Open
+ {$ENDIF}
 end;
 
 procedure TFrmMain.OnPopupClickVipParam(Sender:TObject);
@@ -1903,7 +1857,9 @@ begin
 
    FrmVipParam.LoadCfg;
 
+   {$IFDEF VOR_RPG}
    FrmVorRpg.LoadCfg;
+   {$ENDIF}
 
    FrmSubParam.LoadCfg;
 
@@ -1932,7 +1888,9 @@ begin
 
    FrmVipParam.InitCfg;
 
+   {$IFDEF VOR_RPG}
    FrmVorRpg.InitCfg;
+   {$ENDIF}
 
    FrmSubParam.InitCfg;
 
@@ -2004,16 +1962,18 @@ begin
  Item.OnClick:=@OnPopupClickVipParam;
  PopupCfg.Items.Add(Item);
 
- //sub param
- Item:=TMenuItem.Create(PopupCfg);
- Item.Caption:='Саб мод';
- Item.OnClick:=@OnPopupClickSubParam;
- PopupCfg.Items.Add(Item);
-
+ {$IFDEF VOR_RPG}
  //vor rpg param
  Item:=TMenuItem.Create(PopupCfg);
  Item.Caption:='Вор Рпг';
  Item.OnClick:=@OnPopupClickVorRpgParam;
+ PopupCfg.Items.Add(Item);
+ {$ENDIF}
+
+ //sub param
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='Саб мод';
+ Item.OnClick:=@OnPopupClickSubParam;
  PopupCfg.Items.Add(Item);
 
  //sound volume
@@ -2352,6 +2312,7 @@ type
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
+ {$IFDEF VOR_RPG}
  TVorRpg_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
@@ -2363,6 +2324,7 @@ type
  TVorRpg_calc_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
+ {$ENDIF}
 
  TOpenSub_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
@@ -2391,10 +2353,12 @@ begin
   begin
    Node.Push(TOpenVip_Func,Node.CData);
   end;
+  {$IFDEF VOR_RPG}
   'vor_rpg':
   begin
    Node.Push(TVorRpg_Func,Node.CData);
   end;
+  {$ENDIF}
   'sub_mod':
   begin
    Node.Push(TOpenSub_Func,Node.CData);
@@ -2577,6 +2541,7 @@ begin
  end;
 end;
 
+{$IFDEF VOR_RPG}
 class procedure TVorRpg_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin
  Case Name of
@@ -2755,6 +2720,7 @@ begin
 
  end;
 end;
+{$ENDIF}
 
 class procedure TOpenSub_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin
@@ -2879,6 +2845,7 @@ begin
    begin
     Node.Push(TLoadSQL_Func,@FDeleteVipsScript);
    end;
+  {$IFDEF VOR_RPG}
   'get_rpg_user1':
    begin
     Node.Push(TLoadSQL_Func,@FGetRpgUser1);
@@ -2895,6 +2862,7 @@ begin
    begin
     Node.Push(TLoadSQL_Func,@FSetRpgUser2);
    end;
+  {$ENDIF}
  end;
 end;
 
