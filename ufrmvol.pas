@@ -89,7 +89,7 @@ begin
  if (name<>'') then
  begin
   F:=LowerCase(name);
-  if vol_cmd.Exclude.IndexOf(F)=-1 then
+  if (Vol_cmd.Exclude=nil) or (vol_cmd.Exclude.IndexOf(F)=-1) then
    if L.IndexOfName(F)=-1 then
    begin
     L.Add(GetVolumeInfo(name,Volume))
@@ -132,7 +132,7 @@ Var
  F:TSessionFind;
 begin
  Result:=nil;
- if vol_cmd.Exclude.IndexOf(name)=-1 then
+ if (Vol_cmd.Exclude=nil) or (vol_cmd.Exclude.IndexOf(name)=-1) then
  begin
   F:=Default(TSessionFind);
   F.S:=LowerCase(name);
@@ -153,7 +153,7 @@ var
  i:SizeInt;
  param,v:RawByteString;
 begin
- if Vol_cmd.Exclude=nil then
+ if (Vol_cmd.Exclude=nil)_ then
  begin
   Vol_cmd.Exclude:=TStringList.Create;
   Vol_cmd.Exclude.LineBreak:=',';
@@ -177,7 +177,7 @@ begin
   if v<>'' then
   begin
    v:=LowerCase(v);
-   if Vol_cmd.Exclude.IndexOf(v)=-1 then
+   if (Vol_cmd.Exclude.IndexOf(v)=-1) then
    begin
     Vol_cmd.Exclude.Add(v);
    end;
@@ -188,7 +188,7 @@ end;
 function TFrmVolParam.GetVolExclude:RawByteString;
 begin
  Result:='';
- if Vol_cmd.Exclude<>nil then
+ if (Vol_cmd.Exclude<>nil) then
  begin
   Result:=Vol_cmd.Exclude.Text;
  end;
@@ -196,6 +196,8 @@ end;
 
 Procedure TFrmVolParam.InitCfg;
 begin
+ SetVolExclude('');
+
  case Vol_cmd.Enable of
   True :Config.WriteString('vol' ,'enable','1');
   False:Config.WriteString('vol' ,'enable','0');
@@ -224,12 +226,14 @@ begin
  CBSystemSound.Checked:=Vol_cmd.System;
  FDeviceID            :=Vol_cmd.Device;
 
- if FExclude=nil then
+ if (FExclude=nil) then
  begin
   FExclude:=TStringList.Create;
   FExclude.Sorted:=True;
  end;
- FExclude.Assign(Vol_cmd.Exclude);
+ FExclude.Clear;
+ if (Vol_cmd.Exclude<>nil) then
+  FExclude.Assign(Vol_cmd.Exclude);
 
  if ShowModal=1 then
  begin
@@ -237,7 +241,18 @@ begin
   Vol_cmd.Enable :=CBVolEnable.Checked;
   Vol_cmd.System :=CBSystemSound.Checked;
   Vol_cmd.Device :=FDeviceID;
-  Vol_cmd.Exclude.Assign(FExclude);
+
+  if (Vol_cmd.Exclude=nil)_ then
+  begin
+   Vol_cmd.Exclude:=TStringList.Create;
+   Vol_cmd.Exclude.LineBreak:=',';
+   Vol_cmd.Exclude.Sorted:=True;
+  end;
+  Vol_cmd.Exclude.Clear;
+
+  if (FExclude<>nil) then
+   Vol_cmd.Exclude.Assign(FExclude);
+
   FreeAndNil(FExclude);
 
   try
