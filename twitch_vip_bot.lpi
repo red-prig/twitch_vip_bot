@@ -148,6 +148,9 @@
     </Linking>
     <Other>
       <CustomOptions Value="-dDisableMemoryLeakReporting"/>
+      <OtherDefines Count="1">
+        <Define0 Value="DisableMemoryLeakReporting"/>
+      </OtherDefines>
     </Other>
   </CompilerOptions>
   <Debugging>

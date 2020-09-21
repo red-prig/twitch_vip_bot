@@ -457,8 +457,8 @@ procedure TFrmVipParam.OnBtnCheckVipClick(Sender:TObject);
 var
  ND,DT:TDateTime;
  T:RawByteString;
- i,s,u:SizeInt;
- L:array of Integer;
+ i,s,de,u:SizeInt;
+ L:array of RawByteString;
 begin
  if not frmmain.BtnInfo.Visible then
  begin
@@ -473,18 +473,19 @@ begin
  s:=GridVips.RowCount;
  if s>1 then
  begin
-  u:=GridVips.FindColumn('dateend');
+  de:=GridVips.FindColumn('dateend');
+  u:=GridVips.FindColumn('user');
   ND:=Now;
-  if (u<>-1) then
+  if (u<>-1) and (de<>-1) then
    For i:=1 to s-1 do
    begin
-    T:=GridVips.Cells[u,i];
+    T:=GridVips.Cells[de,i];
     if (T<>'') and TryGetDateTime(T,DT) then
     begin
      if ND>DT then
      begin
       SetLength(L,Length(L)+1);
-      L[Length(L)-1]:=i;
+      L[Length(L)-1]:=LowerCase(GridVips.Cells[u,i]);
      end;
     end;
    end;

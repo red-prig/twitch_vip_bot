@@ -153,7 +153,7 @@ var
  i:SizeInt;
  param,v:RawByteString;
 begin
- if (Vol_cmd.Exclude=nil)_ then
+ if (Vol_cmd.Exclude=nil) then
  begin
   Vol_cmd.Exclude:=TStringList.Create;
   Vol_cmd.Exclude.LineBreak:=',';
@@ -242,7 +242,7 @@ begin
   Vol_cmd.System :=CBSystemSound.Checked;
   Vol_cmd.Device :=FDeviceID;
 
-  if (Vol_cmd.Exclude=nil)_ then
+  if (Vol_cmd.Exclude=nil) then
   begin
    Vol_cmd.Exclude:=TStringList.Create;
    Vol_cmd.Exclude.LineBreak:=',';
