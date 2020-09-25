@@ -160,7 +160,7 @@ type
     IImmediatelyReleasable, IZInterbaseFirebirdLob)
   private
     FLobStream: TZFirebirdLobStream;
-    FPlainDriver: TZFirebird3UpPlainDriver;
+    FPlainDriver: TZFirebirdPlainDriver;
     FBlobId: TISC_QUAD;
     FFBConnection: IZFirebirdConnection;
     FFBTransaction: IZFirebirdTransaction;
@@ -275,6 +275,7 @@ begin
         then Result := stAsciiStream
         else Result := stBinaryStream;
     SQL_ARRAY: Result := stArray;
+    SQL_DEC_FIXED, SQL_DEC16,SQL_DEC34: Result := stBigDecimal;
     else  Result := stUnknown;
   end;
 end;
@@ -400,6 +401,8 @@ begin
                 SQL_SHORT:  Precision := 4;
                 SQL_LONG:   Precision := 9;
                 SQL_INT64:  Precision := 18;
+                SQL_DEC34,
+                SQL_DEC_FIXED: Precision := 34;
                 {$IFDEF WITH_CASE_WARNING}else ;{$ENDIF} //nothing todo
               end;
             end;
@@ -481,7 +484,11 @@ function TZFirebirdResultSet.First: Boolean;
 var Status: Integer;
 begin
   Result := False;
-  if not Closed and (FResultSetAddr^ <> nil) then begin
+  if ResultSetType = rtForwardOnly then
+    if RowNo = 0
+    then Result := Next
+    else raise EZSQLException.Create(SOperationIsNotAllowed1)
+  else if not Closed and (FResultSetAddr^ <> nil) then begin
     if (FResultSet = nil) then begin
       FResultSet := FResultSetAddr^;
       RegisterCursor;
@@ -494,6 +501,8 @@ begin
         RowNo := 1; //set AfterLast
       end else
         FFBConnection.HandleErrorOrWarning(lcExecute, PARRAY_ISC_STATUS(FStatus.getErrors), 'IResultSet.fetchFirst', Self);
+      if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
     end else begin
       RowNo := 1;
       if LastRowNo < RowNo then
@@ -512,13 +521,17 @@ end;
 }
 function TZFirebirdResultSet.IsAfterLast: Boolean;
 begin
-  Result := True;
-  if not Closed and (FResultSetAddr^ <> nil) then begin
-    if (FResultSet = nil) then begin
-      FResultSet := FResultSetAddr^;
-      RegisterCursor;
+  if ResultSetType = rtForwardOnly then
+    Result := (RowNo > LastRowNo)
+  else begin
+    Result := True;
+    if not Closed and (FResultSetAddr^ <> nil) then begin
+      if (FResultSet = nil) then begin
+        FResultSet := FResultSetAddr^;
+        RegisterCursor;
+      end;
+      Result := FResultset.isEof(FStatus)
     end;
-    Result := FResultset.isEof(FStatus)
   end;
 end;
 
@@ -532,13 +545,17 @@ end;
 }
 function TZFirebirdResultSet.IsBeforeFirst: Boolean;
 begin
-  Result := True;
-  if not Closed and (FResultSetAddr^ <> nil) then begin
-    if (FResultSet = nil) then begin
-      FResultSet := FResultSetAddr^;
-      RegisterCursor;
+  if ResultSetType = rtForwardOnly then
+    Result :=  (FRowNo = 0)
+  else begin
+    Result := True;
+    if not Closed and (FResultSetAddr^ <> nil) then begin
+      if (FResultSet = nil) then begin
+        FResultSet := FResultSetAddr^;
+        RegisterCursor;
+      end;
+      Result := FResultset.isBof(FStatus)
     end;
-    Result := FResultset.isBof(FStatus)
   end;
 end;
 
@@ -553,6 +570,8 @@ function TZFirebirdResultSet.Last: Boolean;
 var Status: Integer;
 begin
   Result := False;
+  if ResultSetType = rtForwardOnly then
+    raise EZSQLException.Create(SOperationIsNotAllowed1);
   if not Closed and (FResultSetAddr^ <> nil) then begin
     if (FResultSet = nil) then begin
       FResultSet := FResultSetAddr^;
@@ -566,6 +585,8 @@ begin
           RowNo := 1; //else ?? which row do we have now?
       end else
         FFBConnection.HandleErrorOrWarning(lcExecute, PARRAY_ISC_STATUS(FStatus.getErrors), 'IResultSet.fetchLast', Self);
+      if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
     end else begin
       //how to know a rowno now?
     end;
@@ -603,6 +624,10 @@ function TZFirebirdResultSet.MoveAbsolute(Row: Integer): Boolean;
 var Status: Integer;
 begin
   Result := False;
+  if ResultSetType = rtForwardOnly then
+    if Row = RowNo+1
+    then Result := Next
+    else raise EZSQLException.Create(SOperationIsNotAllowed1);
   if not Closed and (FResultSetAddr^ <> nil) then begin
     if (FResultSet = nil) then begin
       FResultSet := FResultSetAddr^;
@@ -617,6 +642,8 @@ begin
           LastRowNo := Row -1;
       end else
         FFBConnection.HandleErrorOrWarning(lcExecute, PARRAY_ISC_STATUS(FStatus.getErrors), 'IResultSet.fetchAbsolute', Self);
+      if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
     end else begin
       RowNo := Row;
       if LastRowNo < Row then
@@ -646,6 +673,10 @@ function TZFirebirdResultSet.MoveRelative(Rows: Integer): Boolean;
 var Status: Integer;
 begin
   Result := False;
+  if ResultSetType = rtForwardOnly then
+    if Rows = 1
+    then Result := Next
+    else raise EZSQLException.Create(SOperationIsNotAllowed1);
   if not Closed and (FResultSetAddr^ <> nil) then begin
     if (FResultSet = nil) then begin
       FResultSet := FResultSetAddr^;
@@ -660,6 +691,8 @@ begin
           LastRowNo := RowNo -1;
       end else
         FFBConnection.HandleErrorOrWarning(lcExecute, PARRAY_ISC_STATUS(FStatus.getErrors), 'IResultSet.fetchAbsolute', Self);
+      if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
     end else begin
       if LastRowNo < RowNo then
         LastRowNo := RowNo;
@@ -713,6 +746,8 @@ begin
         end;
       end else
         FFBConnection.HandleErrorOrWarning(lcExecute, PARRAY_ISC_STATUS(FStatus.getErrors), 'IResultSet.fetchNext', Self);
+      if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
     end else begin
       RowNo := RowNo +1;
       if LastRowNo < RowNo then
@@ -736,6 +771,8 @@ function TZFirebirdResultSet.Previous: Boolean;
 var Status: Integer;
 begin
   Result := False;
+  if ResultSetType = rtForwardOnly then
+    raise EZSQLException.Create(SOperationIsNotAllowed1);
   if not Closed and (FResultSetAddr^ <> nil) then begin
     if (FResultSet = nil) then begin
       FResultSet := FResultSetAddr^;
@@ -750,13 +787,15 @@ begin
           LastRowNo := RowNo;
       end else
         FFBConnection.HandleErrorOrWarning(lcExecute, PARRAY_ISC_STATUS(FStatus.getErrors), 'IResultSet.fetchPrior', Self);
+      if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
     end;
   end;
 end;
 
 procedure TZFirebirdResultSet.ResetCursor;
 begin
-  inherited;
+  inherited ResetCursor;
   if FResultSet <> nil then begin
     FResultSet.close(FStatus);
     if (FStatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0 then

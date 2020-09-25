@@ -368,12 +368,16 @@ begin
  Result:=false;
  if Assigned(Value) then
  begin
-  _Result:=ValRawDbl(PByteArray(Value),'.',E);
-  Result:=(E=0);
-  if not Result then
-  begin
-   _Result:=ValRawDbl(PByteArray(Value),',',E);
+  try
+   _Result:=ValRawDbl(PByteArray(Value),'.',E);
    Result:=(E=0);
+   if not Result then
+   begin
+    _Result:=ValRawDbl(PByteArray(Value),',',E);
+    Result:=(E=0);
+   end;
+  except
+   Result:=False;
   end;
  end;
 end;
@@ -1411,6 +1415,8 @@ begin
  end;
 end;
 
+
+
 //////////////
 
 function _OpMul_Int(Value1:Int64;const Value2:TZVariant):TZVariant; inline;
@@ -1421,7 +1427,11 @@ begin
  begin
   Result.VType:=vtBigDecimal;
   ScaledOrdinal2Bcd(Value1,0,Result.VBigDecimal);
-  BCDMultiply(Result.VBigDecimal, Value2.VInteger, Result.VBigDecimal);
+  try
+   BCDMultiply(Result.VBigDecimal, Value2.VInteger, Result.VBigDecimal);
+  except
+   Result:=EncodeNull;
+  end;
  end;
 end;
 
@@ -1437,7 +1447,11 @@ begin
   T:=Default(TBCD);
   ScaledOrdinal2Bcd(Value1,0,T,false);
   ScaledOrdinal2Bcd(Value2.VUInteger,0,Result.VBigDecimal,false);
-  BCDMultiply(T, Result.VBigDecimal, Result.VBigDecimal);
+  try
+   BCDMultiply(T, Result.VBigDecimal, Result.VBigDecimal);
+  except
+   Result:=EncodeNull;
+  end;
  end;
 end;
 
@@ -1449,7 +1463,11 @@ begin
  begin
   Result.VType:=vtBigDecimal;
   ScaledOrdinal2Bcd(Value2.VUInteger,0,Result.VBigDecimal,false);
-  BCDMultiply(Result.VBigDecimal, Value1.VInteger, Result.VBigDecimal);
+  try
+   BCDMultiply(Result.VBigDecimal, Value1.VInteger, Result.VBigDecimal);
+  except
+   Result:=EncodeNull;
+  end;
  end;
 end;
 
@@ -1468,20 +1486,32 @@ end;
 function _OpMul_Int_BCD(Value1:Int64;const Value2:TZVariant):TZVariant; inline;
 begin
  Result.VType:=vtBigDecimal;
- BCDMultiply(Value1, Value2.VBigDecimal, Result.VBigDecimal);
+ try
+  BCDMultiply(Value1, Value2.VBigDecimal, Result.VBigDecimal);
+ except
+  Result:=EncodeNull;
+ end;
 end;
 
 function _OpMul_UInt_BCD(const Value1,Value2:TZVariant):TZVariant; inline;
 begin
  Result.VType:=vtBigDecimal;
  ScaledOrdinal2BCD(Value1.VUInteger,0,Result.VBigDecimal,False);
- BCDMultiply(Result.VBigDecimal, Value2.VBigDecimal, Result.VBigDecimal);
+ try
+  BCDMultiply(Result.VBigDecimal, Value2.VBigDecimal, Result.VBigDecimal);
+ except
+  Result:=EncodeNull;
+ end;
 end;
 
 function _OpMul_BCD(const Value1,Value2:TZVariant):TZVariant; inline;
 begin
  Result.VType:=vtBigDecimal;
- BCDMultiply(Value1.VBigDecimal, Value2.VBigDecimal, Result.VBigDecimal);
+ try
+  BCDMultiply(Value1.VBigDecimal, Value2.VBigDecimal, Result.VBigDecimal);
+ except
+  Result:=EncodeNull;
+ end;
 end;
 
 function _OpMul_Double(Value1,Value2:Double;VType:TZVariantType):TZVariant; inline;
@@ -1493,13 +1523,21 @@ end;
 function _OpMul_Double_BCD(const Value1,Value2:TZVariant):TZVariant; inline;
 begin
  Result.VType:=vtBigDecimal;
- BCDMultiply(Value1.VDouble, Value2.VBigDecimal, Result.VBigDecimal);
+ try
+  BCDMultiply(Value1.VDouble, Value2.VBigDecimal, Result.VBigDecimal);
+ except
+  Result:=EncodeNull;
+ end;
 end;
 
 function _OpMul_Curr_BCD(const Value1,Value2:TZVariant):TZVariant; inline;
 begin
  Result.VType:=vtBigDecimal;
- BCDMultiply(Value1.VCurrency, Value2.VBigDecimal, Result.VBigDecimal);
+ try
+  BCDMultiply(Value1.VCurrency, Value2.VBigDecimal, Result.VBigDecimal);
+ except
+  Result:=EncodeNull;
+ end;
 end;
 
 function _OpMul(const Value1,Value2:TZVariant):TZVariant;
@@ -1573,7 +1611,11 @@ begin
  Result:=Default(TZVariant);
  if _GetAsDouble(Value1,D1) and _GetAsDouble(Value2,D2) then
  begin
-  Result:=EncodeDouble(Power(D1,D2));
+  try
+   Result:=EncodeDouble(Power(D1,D2));
+  except
+   Result:=EncodeNull;
+  end;
  end;
 end;
 
@@ -1615,9 +1657,27 @@ begin
  end;
 end;
 
+function BCDCompareZero(Const BCD:TBCD):Boolean;
+begin
+ Result:=System.CompareByte(BCD.Fraction,NullBCD.Fraction,SizeOf(TBCD.Fraction))=0;
+end;
+
+function BCDIsZero(Const BCD:TBCD):Boolean;
+var
+ OutBCD:TBCD;
+begin
+ Result:=BCDCompareZero(BCD);
+ if not Result then
+ begin
+  OutBCD:=Default(TBCD);
+  NormalizeBCD(BCD,OutBCD,MaxBCDPrecision,MaxBCDScale);
+  Result:=BCDCompareZero(OutBCD);
+ end;
+end;
+
 function  _OpDiv_Int_BCD(Value1:Int64;const Value2:TZVariant):TZVariant; inline;
 begin
- if BCDCompare(Value2.VBigDecimal,NullBCD)=0 then
+ if BCDIsZero(Value2.VBigDecimal) then
  begin
   Result:=Default(TZVariant);
  end else
@@ -1651,9 +1711,9 @@ begin
  end;
 end;
 
-function  _OpDiv_UInt_BCD(const Value1,Value2:TZVariant):TZVariant; inline;
+function  _OpDiv_UInt_BCD(const Value1,Value2:TZVariant):TZVariant; //inline;
 begin
- if BCDCompare(Value2.VBigDecimal,NullBCD)=0 then
+ if BCDIsZero(Value2.VBigDecimal) then
  begin
   Result:=Default(TZVariant);
  end else
@@ -1666,7 +1726,7 @@ end;
 
 function  _OpDiv_Double_BCD(const Value1,Value2:TZVariant):TZVariant; inline;
 begin
- if BCDCompare(Value2.VBigDecimal,NullBCD)=0 then
+ if BCDIsZero(Value2.VBigDecimal) then
  begin
   Result:=Default(TZVariant);
  end else
@@ -1709,7 +1769,7 @@ end;
 
 function  _OpDiv_Curr_BCD(const Value1,Value2:TZVariant):TZVariant; inline;
 begin
- if BCDCompare(Value2.VBigDecimal,NullBCD)=0 then
+ if BCDIsZero(Value2.VBigDecimal) then
  begin
   Result:=Default(TZVariant);
  end else
@@ -1756,9 +1816,9 @@ begin
  end;
 end;
 
-function  _OpDiv_BCD(const Value1,Value2:TZVariant):TZVariant; inline;
+function  _OpDiv_BCD(const Value1,Value2:TZVariant):TZVariant; //inline;
 begin
- if BCDCompare(Value2.VBigDecimal,NullBCD)=0 then
+ if BCDIsZero(Value2.VBigDecimal) then
  begin
   Result:=Default(TZVariant);
  end else

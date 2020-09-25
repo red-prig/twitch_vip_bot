@@ -514,7 +514,7 @@ end;
 }
 function TZAdoDatabaseMetadata.UncachedGetTableTypes: IZResultSet;
 const
-  TableTypes: array[0..7] of ZWideString = (
+  TableTypes: array[0..7] of UnicodeString = (
     'ALIAS', 'TABLE', 'SYNONYM', 'SYSTEM TABLE', 'VIEW',
     'GLOBAL TEMPORARY', 'LOCAL TEMPORARY', 'SYSTEM VIEW'
   );
@@ -590,9 +590,13 @@ var
   Flags: Integer;
   SQLType: TZSQLType;
   Len: NativeUInt;
+  P: PChar;
 begin
   Result:=inherited UncachedGetColumns(Catalog, SchemaPattern,
       TableNamePattern, ColumnNamePattern);
+  P := Pointer(TableNamePattern);
+  if (P <> nil) and (P^ = '#') and (GetConnection.GetServerProvider in [spMSSQL, spASE]) then //test against temporary table -> not resolvable
+    Exit;
 
   AdoRecordSet := AdoOpenSchema(adSchemaColumns,
     [DecomposeObjectString(Catalog), DecomposeObjectString(SchemaPattern),

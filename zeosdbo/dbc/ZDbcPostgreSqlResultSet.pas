@@ -243,7 +243,22 @@ type
       {$IFDEF AUTOREFCOUNT}const {$ENDIF} Params: TStrings); override;
   end;
 
-  {** Implements a specialized cached resultset }
+  {** Implements a specialized cached resolver for PostgreSQL version 10.0 and up. }
+  TZPostgreSQLCachedResolverV10up = class(TZPostgreSQLCachedResolverV8up)
+  protected
+    FInsertReturningFields: TStrings;
+    FHasAutoIncrementColumns, FHasWritableAutoIncrementColumns: Boolean;
+    FReturningPairs: TZIndexPairList;
+  public
+    procedure AfterConstruction; override;
+    procedure BeforeDestruction; override;
+  public
+    function FormInsertStatement(NewRowAccessor: TZRowAccessor): SQLString; override;
+    procedure UpdateAutoIncrementFields(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
+      const OldRowAccessor, NewRowAccessor: TZRowAccessor; const Resolver: IZCachedResolver); override;
+    procedure PostUpdates(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
+      const OldRowAccessor, NewRowAccessor: TZRowAccessor); override;
+  end;
 
   { TZPostgresCachedResultSet }
 
@@ -268,10 +283,11 @@ implementation
 {$IFNDEF ZEOS_DISABLE_POSTGRESQL} //if set we have an empty unit
 
 uses
-  {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF} Math, SysConst,
-  ZMessages, ZEncoding, ZFastCode, ZDbcPostgreSqlMetadata, ZDbcMetadata,
-  ZDbcPostgreSqlUtils, ZDbcUtils, ZDbcProperties, TypInfo,
-  ZVariant;
+  {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF} Math, SysConst, TypInfo,
+  ZMessages, ZEncoding, ZFastCode, ZVariant, ZTokenizer,
+  ZGenericSqlAnalyser, ZSelectSchema,
+  ZDbcPostgreSqlMetadata, ZDbcMetadata, ZDbcPostgreSqlUtils, ZDbcUtils,
+  ZDbcProperties;
 
 { TZPostgreSQLResultSet }
 
@@ -377,7 +393,7 @@ jmpTime:                      if jcoMongoISODate in JSONComposeOptions
                               if Finteger_datetimes
                               then dt2Time(PG2Int64(P), TS.Hour, TS.Minute, TS.Second, Ts.Fractions)
                               else dt2Time(PG2Double(P), TS.Hour, TS.Minute, TS.Second, Ts.Fractions);
-                              TimeToIso8601PChar(PUTF8Char(FByteBuffer), True, TS.Hour, TS.Minute, TS.Second, TS.Fractions, 'T', jcoMilliseconds in JSONComposeOptions);
+                              TimeToIso8601PChar(PUTF8Char(FByteBuffer), True, TS.Hour, TS.Minute, TS.Second, TS.Fractions div NanoSecsPerMSec, 'T', jcoMilliseconds in JSONComposeOptions);
                               JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer), 9+4*Ord(not (jcoMongoISODate in JSONComposeOptions) and (jcoMilliseconds in JSONComposeOptions)));
                               if jcoMongoISODate in JSONComposeOptions
                               then JSONWriter.AddShort('Z)"')
@@ -393,7 +409,7 @@ jmpTS:                        if jcoMongoISODate in JSONComposeOptions
                               then PG2DateTime(PInt64(P)^, TS.Year, TS.Month, TS.Day, Ts.Hour, TS.Minute, TS.Second, TS.Fractions)
                               else PG2DateTime(PDouble(P)^, TS.Year, TS.Month, TS.Day, Ts.Hour, TS.Minute, TS.Second, TS.Fractions);
                               DateToIso8601PChar(PUTF8Char(FByteBuffer), True, TS.Year, TS.Month, TS.Day);
-                              TimeToIso8601PChar(PUTF8Char(FByteBuffer)+10, True, TS.Hour, TS.Minute, TS.Second, TS.Fractions, 'T', jcoMilliseconds in JSONComposeOptions);
+                              TimeToIso8601PChar(PUTF8Char(FByteBuffer)+10, True, TS.Hour, TS.Minute, TS.Second, TS.Fractions div NanoSecsPerMSec, 'T', jcoMilliseconds in JSONComposeOptions);
                               JSONWriter.AddNoJSONEscape(PUTF8Char(FByteBuffer),19+(4*Ord(not (jcoMongoISODate in JSONComposeOptions) and (jcoMilliseconds in JSONComposeOptions))));
                               if jcoMongoISODate in JSONComposeOptions
                               then JSONWriter.AddShort('Z)"')
@@ -777,9 +793,7 @@ begin
       {$IFDEF UNICODE}
       ColumnLabel := PRawToUnicode(P, Precision, FClientCP);
       {$ELSE}
-      if (not ConSettings^.AutoEncode) or (FClientCP = ConSettings^.CTRL_CP)
-      then ColumnLabel := BufferToStr(P, Precision)
-      else ColumnLabel := ZUnicodeToString(PRawToUnicode(P, Precision, FClientCP), ConSettings^.CTRL_CP);
+      ColumnLabel := BufferToStr(P, Precision);
       {$ENDIF}
       Nullable := ntNullableUnknown; //there is NO information about nullable
       Precision := 0;
@@ -945,7 +959,7 @@ JmpPEndTinyBuf:       Result := PAnsiChar(fByteBuffer);
                       PG2Date(PInteger(Result)^, TS.Year, TS.Month, TS.Day);
 jmpDate:              Result := PAnsiChar(fByteBuffer);
                       Len := DateToRaw(TS.Year, TS.Month, TS.Day, Result,
-                        ConSettings.DisplayFormatSettings.DateFormat, False, False);
+                        ConSettings.ReadFormatSettings.DateFormat, False, False);
                     end;
         stTime:     begin
                       if Finteger_datetimes
@@ -953,7 +967,7 @@ jmpDate:              Result := PAnsiChar(fByteBuffer);
                       else dt2time(PG2Double(Result), TS.Hour, TS.Minute, TS.Second, TS.Fractions);
 jmpTime:              Result := PAnsiChar(fByteBuffer);
                       Len := TimeToRaw(TS.Hour, TS.Minute, TS.Second, TS.Fractions,
-                        Result, ConSettings.DisplayFormatSettings.TimeFormat, False, False);
+                        Result, ConSettings.ReadFormatSettings.TimeFormat, False, False);
                     end;
         stTimestamp:begin
                       if Finteger_datetimes
@@ -961,7 +975,7 @@ jmpTime:              Result := PAnsiChar(fByteBuffer);
                       else PG2DateTime(PDouble(Result)^, TS.Year, TS.Month, TS.Day, TS.Hour, TS.Minute, TS.Second, TS.Fractions);
 jmpTS:                Result := PAnsiChar(fByteBuffer);
                       Len := ZSysUtils.DateTimeToRaw(TS.Year, TS.Month, TS.Day, TS.Hour, TS.Minute,
-                        TS.Second, TS.Fractions, Result, ConSettings.DisplayFormatSettings.DateTimeFormat, False, False);
+                        TS.Second, TS.Fractions, Result, ConSettings.ReadFormatSettings.DateTimeFormat, False, False);
                     end;
         stGUID:     begin
                       {$IFNDEF ENDIAN_BIG} {$Q-} {$R-}
@@ -975,8 +989,8 @@ jmpTS:                Result := PAnsiChar(fByteBuffer);
                       {$ELSE}
                       ZSysUtils.GUIDToBuffer(Result, PAnsiChar(fByteBuffer), []); //pg does not Return brackets adopt behavior
                       {$ENDIF}
-                      for ColumnIndex := 0 to 35 do
-                        PByte(PAnsiChar(fByteBuffer)+ColumnIndex)^ := PByte(PAnsiChar(fByteBuffer)+ColumnIndex)^ or 20;
+                      for ColumnIndex := 0 to 8 do
+                        PCardinal(PAnsiChar(fByteBuffer)+(4*ColumnIndex))^ := PCardinal(PAnsiChar(fByteBuffer)+(4*ColumnIndex))^ or $20202020;
                       Result := PAnsiChar(fByteBuffer);
                       Len := 36;
                     end;
@@ -1132,7 +1146,7 @@ JmpPEndTinyBuf:       Result := PWideChar(fByteBuffer);
                       PG2Date(PInteger(P)^, TS.Year, TS.Month, TS.Day);
 jmpDate:              Result := PWideChar(fByteBuffer);
                       Len := DateToUni(TS.Year, TS.Month, TS.Day,
-                        Result, ConSettings.DisplayFormatSettings.DateFormat, False, False);
+                        Result, ConSettings.ReadFormatSettings.DateFormat, False, False);
                     end;
         stTime:     begin
                       if Finteger_datetimes
@@ -1140,7 +1154,7 @@ jmpDate:              Result := PWideChar(fByteBuffer);
                       else dt2time(PG2Double(P), TS.Hour, TS.Minute, TS.Second, TS.Fractions);
 jmpTime:              Result := PWideChar(fByteBuffer);
                       Len := TimeToUni(TS.Hour, TS.Minute, TS.Second, TS.Fractions,
-                        Result, ConSettings.DisplayFormatSettings.TimeFormat, False, tS.IsNegative);
+                        Result, ConSettings.ReadFormatSettings.TimeFormat, False, tS.IsNegative);
                     end;
         stTimestamp:begin
                       if Finteger_datetimes
@@ -1148,7 +1162,7 @@ jmpTime:              Result := PWideChar(fByteBuffer);
                       else PG2DateTime(PDouble(P)^, TS.Year, TS.Month, TS.Day, TS.Hour, TS.Minute, TS.Second, TS.Fractions);
 jmpTS:                Result := PWideChar(fByteBuffer);
                       Len := ZSysUtils.DateTimeToUni(TS.Year, TS.Month, TS.Day, TS.Hour, TS.Minute,
-                        TS.Second, TS.Fractions, Result, ConSettings.DisplayFormatSettings.DateTimeFormat, False, False);
+                        TS.Second, TS.Fractions, Result, ConSettings.ReadFormatSettings.DateTimeFormat, False, False);
                     end;
         stGUID:     begin
                       {$IFNDEF ENDIAN_BIG} {$Q-} {$R-}
@@ -2189,8 +2203,11 @@ begin
   if FFirstRow then begin
     Fres := FresAddress^; //first row is obtained already
     FFirstRow := False;
-    if not FSingleRowMode then
+    if not FSingleRowMode then begin
       LastRowNo := FPlainDriver.PQntuples(Fres);
+      if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
+    end;
   end;
   { Checks for maximum row. }
   Result := False;
@@ -2217,9 +2234,8 @@ begin
       Result := False;
     if not Result and FSingleRowMode then
       ClearPGResult;
-  end
-  else
-    RaiseForwardOnlyException;
+  end else
+    raise CreateForwardOnlyException;
 end;
 
 {**
@@ -2275,6 +2291,8 @@ jmpRes:
     RowNo := RowNo + 1;
     Result := (RowNo <= LastRowNo);
   end;
+  if not Result and not LastRowFetchLogged and DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
 end;
 
 { TZPostgreSQLOidBlob }
@@ -2437,36 +2455,46 @@ end;
   Initializes columns with additional data.
 }
 procedure TZPostgresResultSetMetadata.LoadColumns;
-{$IFNDEF ZEOS_TEST_ONLY}
 var
   Current: TZPGColumnInfo;
   I: Integer;
+  TableColumns: IZResultSet;
+  Connection: IZConnection;
+  Driver: IZDriver;
+  Analyser: IZStatementAnalyser;
+  Tokenizer: IZTokenizer;
   PGMetaData: IZPGDatabaseMetadata;
-  RS: IZResultSet;
-{$ENDIF}
 begin
-  {$IFDEF ZEOS_TEST_ONLY}
-  inherited LoadColumns;
-  {$ELSE}
-  if Metadata.GetConnection.GetDriver.GetStatementAnalyser.DefineSelectSchemaFromQuery(Metadata.GetConnection.GetDriver.GetTokenizer, SQL) <> nil then
-    for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
-      Current := TZPGColumnInfo(ResultSet.ColumnsInfo[i]);
-      ClearColumn(Current);
-      PGMetaData := MetaData as IZPGDatabaseMetadata;
-      RS := PGMetaData.GetColumnsByTableOID(Current.TableOID);
-      if RS <> nil then begin
-        RS.BeforeFirst;
-        while RS.Next do
-          if RS.GetInt(TableColColumnOrdPosIndex) = Current.TableColNo then begin
-            FillColumInfoFromGetColumnsRS(Current, RS, RS.GetString(ColumnNameIndex));
-            Break;
-          end else
-            if RS.GetInt(TableColColumnOrdPosIndex) > Current.TableColNo then
+  Connection := Metadata.GetConnection;
+  Driver := Connection.GetDriver;
+  Analyser := Driver.GetStatementAnalyser;
+  Tokenizer := Driver.GetTokenizer;
+  PGMetaData := MetaData as IZPGDatabaseMetadata;
+  try
+    if Analyser.DefineSelectSchemaFromQuery(Tokenizer, SQL) <> nil then
+      for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
+        Current := TZPGColumnInfo(ResultSet.ColumnsInfo[i]);
+        ClearColumn(Current);
+        TableColumns := PGMetaData.GetColumnsByTableOID(Current.TableOID);
+        if TableColumns <> nil then begin
+          TableColumns.BeforeFirst;
+          while TableColumns.Next do
+            if TableColumns.GetInt(TableColColumnOrdPosIndex) = Current.TableColNo then begin
+              FillColumInfoFromGetColumnsRS(Current, TableColumns, TableColumns.GetString(ColumnNameIndex));
               Break;
+            end else if TableColumns.GetInt(TableColColumnOrdPosIndex) > Current.TableColNo then
+              Break;
+        end;
       end;
-    end;
+  finally
+    Driver := nil;
+    Connection := nil;
+    Analyser := nil;
+    Tokenizer := nil;
+    IdentifierConvertor := nil;
+    PGMetaData := nil;
+  end;
   Loaded := True;
-  {$ENDIF}
 end;
 
 { TZPostgreSQLCachedResolver }
@@ -2736,6 +2764,176 @@ begin
     Updated := True;
   end else Result := 0;
 end;
+
+{ TZPostgreSQLCachedResolverV10up }
+
+procedure TZPostgreSQLCachedResolverV10up.AfterConstruction;
+var
+  Fields: string;
+begin
+  inherited;
+  FReturningPairs := TZIndexPairList.Create;
+  Fields := Statement.GetParameters.Values[DSProps_InsertReturningFields];
+  if Fields <> '' then
+    FInsertReturningFields := ExtractFields(Fields, [';', ',']);
+end;
+
+procedure TZPostgreSQLCachedResolverV10up.BeforeDestruction;
+begin
+  inherited;
+  FreeAndNil(FReturningPairs);
+  FreeAndNil(FInsertReturningFields);
+end;
+
+{**
+  Forms a INSERT statements.
+  @return the composed insert SQL
+}
+function TZPostgreSQLCachedResolverV10up.FormInsertStatement(
+  NewRowAccessor: TZRowAccessor): SQLString;
+var
+  I, ColumnIndex: Integer;
+  Tmp: SQLString;
+  SQLWriter: TZSQLStringWriter;
+  {$IF DECLARED(DSProps_InsertReturningFields)}
+  Fields: TStrings;
+  {$IFEND}
+begin
+  I := MetaData.GetColumnCount;
+  SQLWriter := TZSQLStringWriter.Create(512+(I shl 5));
+  {$IF DECLARED(DSProps_InsertReturningFields)}
+  if FInsertReturningFields <> nil then begin
+    Fields := TStringList.Create;
+    Fields.Assign(FInsertReturningFields);
+  end else Fields := nil;
+  {$IFEND}
+  Result := 'INSERT INTO ';
+  try
+    Tmp := DefineTableName;
+    SQLWriter.AddText(Tmp, Result);
+    SQLWriter.AddChar(' ', Result);
+    SQLWriter.AddChar('(', Result);
+    if (FInsertStatements.Count > 0) and FHasWritableAutoIncrementColumns then
+      FInsertColumns.Clear;
+    if (FInsertColumns.Count = 0) then
+      FillInsertColumnsPairList(NewRowAccessor);
+    if (FInsertColumns.Count = 0) and not
+       {test for generated always cols }
+       ((Metadata.GetColumnCount > 0) and Metadata.IsAutoIncrement(FirstDbcIndex)) then begin
+      Result := '';
+      Exit;
+    end;
+    for I := 0 to FInsertColumns.Count-1 do begin
+      ColumnIndex := PZIndexPair(FInsertColumns[i])^.ColumnIndex;
+      Tmp := Metadata.GetColumnName(ColumnIndex);
+      Tmp := IdentifierConvertor.Quote(Tmp);
+      SQLWriter.AddText(Tmp, Result);
+      SQLWriter.AddChar(',', Result);
+    end;
+    SQLWriter.ReplaceOrAddLastChar(',', ')', Result);
+    SQLWriter.AddText(' VALUES (', Result);
+    for I := 0 to FInsertColumns.Count - 1 do begin
+      SQLWriter.AddChar('?', Result);
+      SQLWriter.AddChar(',', Result);
+    end;
+    SQLWriter.ReplaceOrAddLastChar(',', ')', Result);
+    FReturningPairs.Clear;
+    for i := FirstDbcIndex to MetaData.GetColumnCount{$IFDEF GENERIC_INDEX}-1{$ENDIF} do
+      if Metadata.IsAutoIncrement(I) then begin
+        FHasAutoIncrementColumns := True;
+        if Metadata.IsWritable(I) then begin
+          FHasWritableAutoIncrementColumns := True;
+          if not NewRowAccessor.IsNull(I) then
+            Continue;
+        end;
+        if FReturningPairs.Count = 0 then
+          SQLWriter.AddText(' RETURNING ', Result);
+        FReturningPairs.Add(I, FReturningPairs.Count{$IFNDEF GENERIC_INDEX}+1{$ENDIF});
+        Tmp := Metadata.GetColumnName(I);
+        {$IF DECLARED(DSProps_InsertReturningFields)}
+        if (Fields <> nil) then begin
+          ColumnIndex := Fields.IndexOf(Tmp);
+          if ColumnIndex > -1 then
+            Fields.Delete(ColumnIndex); { avoid duplicates }
+        end;
+        {$IFEND}
+        Tmp := IdentifierConvertor.Quote(Tmp);
+        SQLWriter.AddText(Tmp, Result);
+        SQLWriter.AddChar(',', Result);
+      end;
+    {$IF DECLARED(DSProps_InsertReturningFields)}
+    if (Fields <> nil) and (Fields.Count > 0) then begin
+      if FReturningPairs.Count = 0 then
+        SQLWriter.AddText(' RETURNING ', Result);
+      for I := 0 to Fields.Count - 1 do begin
+        Tmp := Fields[I];
+        ColumnIndex := MetaData.FindColumn(Tmp);
+        if ColumnIndex = InvalidDbcIndex then
+          raise CreateColumnWasNotFoundException(Tmp);
+        FReturningPairs.Add(ColumnIndex, FReturningPairs.Count{$IFNDEF GENERIC_INDEX}+1{$ENDIF});
+        Tmp := IdentifierConvertor.Quote(Tmp);
+        SQLWriter.AddText(Tmp, Result);
+        SQLWriter.AddChar(',', Result);
+      end;
+    end;
+    {$IFEND}
+    SQLWriter.CancelLastComma(Result);
+    SQLWriter.Finalize(Result);
+  finally
+    FreeAndNil(SQLWriter);
+    {$IF DECLARED(DSProps_InsertReturningFields)}
+    FreeAndNil(Fields);
+    {$IFEND}
+  end;
+end;
+
+{**
+  Posts updates to database.
+  @param Sender a cached result set object.
+  @param UpdateType a type of updates.
+  @param OldRowAccessor an accessor object to old column values.
+  @param NewRowAccessor an accessor object to new column values.
+}
+procedure TZPostgreSQLCachedResolverV10up.PostUpdates(
+  const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
+  const OldRowAccessor, NewRowAccessor: TZRowAccessor);
+begin
+  inherited PostUpdates(Sender, UpdateType, OldRowAccessor, NewRowAccessor);
+  if (UpdateType = utInserted) then begin
+    if (FReturningPairs.Count >0) then
+      UpdateAutoIncrementFields(Sender, UpdateType, OldRowAccessor, NewRowAccessor, Self);
+    if FHasWritableAutoIncrementColumns then
+      InsertStatement := nil;
+  end;
+end;
+
+{**
+ Do Tasks after Post updates to database.
+  @param Sender a cached result set object.
+  @param UpdateType a type of updates.
+  @param OldRowAccessor an accessor object to old column values.
+  @param NewRowAccessor an accessor object to new column values.
+}
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "$1" not used} {$ENDIF}
+procedure TZPostgreSQLCachedResolverV10up.UpdateAutoIncrementFields(
+  const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
+  const OldRowAccessor, NewRowAccessor: TZRowAccessor;
+  const Resolver: IZCachedResolver);
+var
+  I: Integer;
+  RS: IZResultSet;
+begin
+  RS := InsertStatement.GetResultSet;
+  if (RS <> nil) then try
+    if RS.Next then
+      for i := 0 to FReturningPairs.Count -1 do with PZIndexPair(FReturningPairs[I])^ do
+        NewRowAccessor.SetValue(SrcOrDestIndex, RS.GetValue(ColumnIndex));
+  finally
+    RS.Close; { Without Close RS keeps circular ref to Statement causing mem leak }
+    RS := nil;
+  end;
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 initialization
 {$ENDIF ZEOS_DISABLE_POSTGRESQL} //if set we have an empty unit

@@ -124,18 +124,14 @@ type
   TOnConnectionLostError = procedure(var AError: EZSQLConnectionLost) of Object;
   TOnConnect = procedure of Object;
 
+  TZW2A2WEncodingSource = (encDB_CP, encUTF8, encDefaultSystemCodePage);
   {** hold some connection parameters }
   PZConSettings = ^TZConSettings;
   TZConSettings = record
-    AutoEncode: Boolean;        //Check Encoding and or convert string with FromCP ToCP
-    CTRL_CP: Word;              //Target CP of raw string conversion (CP_ACP/CP_UPF8/DefaultSytemCodePage)
-    ConvFuncs: TConvertEncodingFunctions; //a rec for the Convert functions used by the objects
+    W2A2WEncodingSource: TZW2A2WEncodingSource; //Target CP of raw string conversion (GET_ACP/UTF8/DefaultSytemCodePage)
     ClientCodePage: PZCodePage; //The codepage informations of the current characterset
-    DisplayFormatSettings: TZFormatSettings;
     ReadFormatSettings: TZFormatSettings;
     WriteFormatSettings: TZFormatSettings;
-    DataBaseSettings: Pointer;
-    Protocol, Database, User: RawByteString;
   end;
 
   {** a base class for most dbc-layer objects }
@@ -394,6 +390,9 @@ type
     /// <summary>
     ///  Locates a required driver and opens a connection to the specified database.
     /// </summary>
+    /// <param name="Url">
+    ///   a database connection url.
+    /// </param>
     /// <param name="User">
     ///   a user's name.
     /// </param>
@@ -473,8 +472,8 @@ type
     /// <param name="Msg">
     ///  a description message.
     /// </param>
-    procedure LogMessage(Category: TZLoggingCategory; const Protocol: RawByteString;
-      const Msg: RawByteString); overload;
+    procedure LogMessage(Category: TZLoggingCategory; const Protocol: String;
+      const Msg: SQLString); overload;
     procedure LogMessage(const Category: TZLoggingCategory; const Sender: IZLoggingObject); overload;
     /// <summary>
     ///  Logs a message about event with error result code.
@@ -494,8 +493,8 @@ type
     /// <param name="Error">
     ///   an error message.
     /// </param>
-    procedure LogError(Category: TZLoggingCategory; const Protocol: RawByteString;
-      const Msg: RawByteString; ErrorCode: Integer; const Error: RawByteString);
+    procedure LogError(Category: TZLoggingCategory; const Protocol: String;
+      const Msg: SQLString; ErrorCode: Integer; const Error: SQLString);
     /// <summary>
     ///  Constructs a valid URL
     /// </summary>
@@ -519,6 +518,9 @@ type
     /// </param>
     /// <param name="Properties">
     ///  the Database-Properties (could be empty).
+    /// </param>
+    /// <param name="LibLocation">
+    ///  optional. The library name with optional full path.
     /// </param>
     function ConstructURL(const Protocol, HostName, Database,
       UserName, Password: String; const Port: Integer;
@@ -549,6 +551,9 @@ type
     function GetStatementAnalyser: IZStatementAnalyser;
   end;
 
+  /// <summary>
+  ///   an immediately releasable interface.
+  /// </summary>
   IImmediatelyReleasable = interface(IZInterface)
     ['{7AA5A5DA-5EC7-442E-85B0-CCCC71C13169}']
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
@@ -568,21 +573,44 @@ type
     ///  if changing the autocommit mode was triggered by a starttransaction call.
     /// </summary>
     /// <returns>
-    ///  Returns the current txn-level. 1 means a transaction was started.
+    ///  Returns the current txn-level. -1 means no active transaction,
+    ///  0 means the txn is in AutoCommit-Mode, 1 means a expicit transaction was started.
     ///  2 means the transaction was saved. 3 means the previous savepoint got saved too and so on
     /// </returns>
     function StartTransaction: Integer;
     function GetConnection: IZConnection;
     function GetTransactionLevel: Integer;
+    procedure SetTransactionIsolation(Value: TZTransactIsolationLevel);
+    function GetAutoCommit: Boolean;
+    function IsReadOnly: Boolean;
+    procedure SetReadOnly(Value: Boolean);
+    procedure Close;
+    function IsClosed: Boolean;
+   // procedure SetProperties(Value: TStrings);
   end;
 
   IZTransactionManager = interface(IImmediatelyReleasable)
     ['{BF61AD03-1072-473D-AF1F-67F90DFB4E6A}']
+    /// <summary>
+    ///  Creates a <code>Transaction</code>
+    ///  <param name="AutoCommit">the AutoCommit mode.</param>
+    ///  <param name="ReadOnly">the ReadOnly mode.</param>
+    ///  <param name="TransactIsolationLevel">the TransactIsolationLevel one of
+    ///   the TRANSACTION_* isolation values with the
+    ///   exception of TRANSACTION_NONE; some databases may not support other values
+    ///   @see DatabaseMetaData#supportsTransactionIsolationLevel
+    ///  </param>
+    ///  <param name="Params">a list of properties used for the transaction.</param>
+    /// </summary>
+    /// <returns>
+    ///  returns the Transaction object.
+    ///   @see IZTransaction
+    /// </returns>
     function CreateTransaction(AutoCommit, ReadOnly: Boolean;
       TransactIsolationLevel: TZTransactIsolationLevel; Params: TStrings): IZTransaction;
-    procedure ReleaseTransaction(const Transaction: IZTransaction);
-    function GetTransactionCount: Integer;
-    function GetTransaction(Index: Cardinal): IZTransaction;
+    procedure ReleaseTransaction(const Value: IZTransaction);
+    function IsTransactionValid(const Value: IZTransaction): Boolean;
+    procedure ClearTransactions;
   end;
 
   {** Implements a variant manager with connection related convertion rules. }
@@ -600,6 +628,8 @@ type
     procedure ExecuteImmediat(const SQL: UnicodeString; LoggingCategory: TZLoggingCategory); overload;
 
     procedure SetOnConnectionLostErrorHandler(Handler: TOnConnectionLostError);
+    procedure SetAddLogMsgToExceptionOrWarningMsg(Value: Boolean);
+    procedure SetRaiseWarnings(Value: Boolean);
 
     procedure RegisterStatement(const Value: IZStatement);
     procedure DeregisterStatement(const Statement: IZStatement);
@@ -637,6 +667,7 @@ type
     ///  2 means the transaction was saved. 3 means the previous savepoint got saved too and so on
     /// </returns>
     function StartTransaction: Integer;
+    function GetConnectionTransaction: IZTransaction;
 
     //2Phase Commit Support initially for PostgresSQL (firmos) 21022006
     procedure PrepareTransaction(const transactionid: string);
@@ -1341,6 +1372,8 @@ type
     /// </summary>
     procedure ClearWarnings;
     procedure FreeOpenResultSetReference(const ResultSet: IZResultSet);
+
+    function GetStatementId: NativeUInt;
   end;
 
   /// <summary>
@@ -1649,7 +1682,7 @@ type
     ///  for example, when the cursor is positioned before the first row
     ///  or after the last row of the result set.
     /// </summary>
-    /// <param name="Row"><see cref="System.Integer"/>
+    /// <param name="Rows"><see cref="System.Integer"/>
     /// </param>
     /// <returns>
     /// <see cref="System.Boolean"/>
@@ -1987,11 +2020,11 @@ type
     procedure RemoveLoggingListener(const Listener: IZLoggingListener);
     function HasLoggingListener: Boolean;
 
-    procedure LogMessage(Category: TZLoggingCategory; const Protocol: RawByteString;
-      const Msg: RawByteString); overload;
+    procedure LogMessage(Category: TZLoggingCategory; const Protocol: String;
+      const Msg: SQLString); overload;
     procedure LogMessage(const Category: TZLoggingCategory; const Sender: IZLoggingObject); overload;
-    procedure LogError(Category: TZLoggingCategory; const Protocol: RawByteString;
-      const Msg: RawByteString; ErrorCode: Integer; const Error: RawByteString);
+    procedure LogError(Category: TZLoggingCategory; const Protocol: String;
+      const Msg: SQLString; ErrorCode: Integer; const Error: SQLString);
 
     function ConstructURL(const Protocol, HostName, Database,
       UserName, Password: String; const Port: Integer;
@@ -2109,7 +2142,7 @@ begin
     Driver := InternalGetDriver(URL);
     if Driver = nil then
       raise EZSQLException.Create(SDriverWasNotFound);
-    Result := GetClientVersion(Url);
+    Result := Driver.GetClientVersion(Url);
   finally
     FDriversCS.Leave;
   end;
@@ -2198,8 +2231,8 @@ end;
   @param Error an error message.
 }
 procedure TZDriverManager.LogError(Category: TZLoggingCategory;
-  const Protocol: RawByteString; const Msg: RawByteString; ErrorCode: Integer;
-  const Error: RawByteString);
+  const Protocol: String; const Msg: SQLString; ErrorCode: Integer;
+  const Error: SQLString);
 var
   Event: TZLoggingEvent;
 begin
@@ -2233,7 +2266,7 @@ end;
   @param Msg a description message.
 }
 procedure TZDriverManager.LogMessage(Category: TZLoggingCategory;
-  const Protocol: RawByteString; const Msg: RawByteString);
+  const Protocol: String; const Msg: SQLString);
 var
   Event: TZLoggingEvent;
 begin
@@ -2242,7 +2275,7 @@ begin
   try
     if not FHasLoggingListener then
       Exit;
-    Event := TZLoggingEvent.Create(Category, Protocol, Msg, 0, EmptyRaw);
+    Event := TZLoggingEvent.Create(Category, Protocol, Msg, 0, '');
     InternalLogEvent(Event);
   finally
     FreeAndNil(Event);
@@ -2382,27 +2415,15 @@ procedure TZCodePagedObject.SetConSettingsFromInfo(Info: TStrings);
 var S: String;
 begin
   if Assigned(Info) and Assigned(FConSettings) then begin
-    {$IF defined(MSWINDOWS) or defined(FPC_HAS_BUILTIN_WIDESTR_MANAGER) or defined(WITH_LCONVENCODING) or defined(UNICODE)}
-    S := Info.Values[ConnProps_AutoEncodeStrings];
-    ConSettings.AutoEncode := StrToBoolEx(S); //compatibitity Option for existing Applications;
-    {$ELSE}
-    ConSettings.AutoEncode := False;
-    {$IFEND}
-    S := Info.Values[ConnProps_ControlsCP];
+    S := Info.Values[ConnProps_RawStringEncoding];
+    if S = '' then
+      S := Info.Values[ConnProps_ControlsCP]; //left for backward compatibility
     S := UpperCase(S);
-    {$IF defined(Delphi) and defined(UNICODE) and defined(MSWINDOWS)}
-    ConSettings.CTRL_CP := DefaultSystemCodePage;
-    {$ELSE}
-      if Info.Values[ConnProps_ControlsCP] = 'GET_ACP'
-      then ConSettings.CTRL_CP := ZOSCodePage
-      else if Info.Values[ConnProps_ControlsCP] = 'CP_UTF8'
-      then ConSettings.CTRL_CP := zCP_UTF8
-      {$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}
-      else ConSettings.CTRL_CP := DefaultSystemCodePage;
-      {$ELSE}
-      else ConSettings.CTRL_CP := ZOSCodePage;
-      {$ENDIF}
-    {$IFEND}
+    if S = 'DB_CP'
+    then ConSettings.W2A2WEncodingSource := encDB_CP
+    else if S = 'CP_UTF8'
+    then ConSettings.W2A2WEncodingSource := encUTF8
+    else ConSettings.W2A2WEncodingSource := encDefaultSystemCodePage;
   end;
 end;
 
@@ -2733,3 +2754,4 @@ finalization
   DriverManager := nil;
   FreeAndNil(GlobalCriticalSection);
 end.
+

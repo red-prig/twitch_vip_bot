@@ -289,11 +289,11 @@ begin
   if Event.Error='' then
   begin
    //if Info then
-    Log(dbc_event,Event.ErrorCode,[getCat,', ',Event.Protocol,', ',Event.Message]);
+    Log(dbc_event,Event.ErrorCodeOrAffectedRows,[getCat,', ',Event.Protocol,', ',Event.Message]);
   end else
   begin
    //if Error then
-    Log(dbc_event,Event.ErrorCode,[getCat,', ',Event.Protocol,', ',Event.Message,', ',Event.Error]);
+    Log(dbc_event,Event.ErrorCodeOrAffectedRows,[getCat,', ',Event.Protocol,', ',Event.Message,', ',Event.Error]);
   end;;
  end;
 end;

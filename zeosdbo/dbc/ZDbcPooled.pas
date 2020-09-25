@@ -147,6 +147,7 @@ type
     procedure Commit;
     procedure Rollback;
     function StartTransaction: Integer;
+    function GetConnectionTransaction: IZTransaction;
     procedure PrepareTransaction(const transactionid: string);
     procedure CommitPrepared(const transactionid: string);
     procedure RollbackPrepared(const transactionid: string);
@@ -179,10 +180,12 @@ type
     destructor Destroy; override;
 
     procedure SetOnConnectionLostErrorHandler(Handler: TOnConnectionLostError);
+    procedure SetAddLogMsgToExceptionOrWarningMsg(Value: Boolean);
+    procedure SetRaiseWarnings(Value: Boolean);
 
     function GetBinaryEscapeString(const Value: TBytes): String;
 
-    function GetEscapeString(const Value: ZWideString): ZWideString; overload;
+    function GetEscapeString(const Value: UnicodeString): UnicodeString; overload;
     function GetEscapeString(const Value: RawByteString): RawByteString; overload;
 
     function GetEncoding: TZCharEncoding;
@@ -592,6 +595,11 @@ begin
   Result := GetConnection.GetServerProvider;
 end;
 
+function TZDbcPooledConnection.GetConnectionTransaction: IZTransaction;
+begin
+  Result := GetConnection.GetConnectionTransaction;
+end;
+
 function TZDbcPooledConnection.GetTransactionIsolation: TZTransactIsolationLevel;
 begin
   Result := GetConnection.GetTransactionIsolation;
@@ -679,14 +687,25 @@ begin
   GetConnection.RollbackPrepared(transactionid);
 end;
 
+procedure TZDbcPooledConnection.SetAddLogMsgToExceptionOrWarningMsg(
+  Value: Boolean);
+begin
+  GetConnection.SetAddLogMsgToExceptionOrWarningMsg(Value);
+end;
+
 procedure TZDbcPooledConnection.SetAutoCommit(Value: Boolean);
 begin
-  GetConnection.SetAutoCommit(Value);  
+  GetConnection.SetAutoCommit(Value);
 end;
 
 procedure TZDbcPooledConnection.SetCatalog(const Value: string);
 begin
   GetConnection.SetCatalog(Value);
+end;
+
+procedure TZDbcPooledConnection.SetRaiseWarnings(Value: Boolean);
+begin
+  GetConnection.SetRaiseWarnings(Value);
 end;
 
 procedure TZDbcPooledConnection.SetReadOnly(Value: Boolean);
@@ -730,7 +749,7 @@ begin
   Result := GetConnection.GetBinaryEscapeString(Value);
 end;
 
-function TZDbcPooledConnection.GetEscapeString(const Value: ZWideString): ZWideString;
+function TZDbcPooledConnection.GetEscapeString(const Value: UnicodeString): UnicodeString;
 begin
   Result := GetConnection.GetEscapeString(Value);
 end;

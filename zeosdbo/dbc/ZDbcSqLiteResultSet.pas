@@ -68,7 +68,7 @@ uses
   Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, FmtBCD,
   ZSysUtils, ZDbcIntfs, ZDbcResultSet, ZDbcResultSetMetadata, ZPlainSqLiteDriver,
   ZCompatibility, ZDbcCache, ZDbcCachedResultSet, ZDbcGenericResolver,
-  ZSelectSchema, ZClasses;
+  ZDbcSQLite, ZSelectSchema, ZClasses;
 
 type
   {** Implements SQLite ResultSet Metadata. }
@@ -97,23 +97,23 @@ type
   TZSQLiteResultSet = class(TZAbstractReadOnlyResultSet, IZResultSet)
   private
     FStmtErrorCode: PInteger;
-    FPsqlite: PPsqlite;
     FPsqlite3_stmt: PPsqlite3_stmt;
     Fsqlite3_stmt: Psqlite3_stmt;
     FColumnCount: Integer;
     FPlainDriver: TZSQLitePlainDriver;
-    FFirstRow: Boolean;
+    FFirstRow, FSQLiteIntAffinity: Boolean;
     FUndefinedVarcharAsStringLength: Integer;
     FResetCallBack: TResetCallBack;
     FCurrDecimalSep: Char;
     FByteBuffer: PByteBuffer;
+    FSQLiteConnection: IZSQLiteConnection;
   protected
     procedure Open; override;
   public
     constructor Create(const Statement: IZStatement;
-      const SQL: string; Psqlite: PPsqlite; Psqlite3_stmt: PPsqlite3_stmt;
+      const SQL: string; Psqlite3_stmt: PPsqlite3_stmt;
       PErrorCode: PInteger; UndefinedVarcharAsStringLength: Integer;
-      ResetCallBack: TResetCallback);
+      ResetCallBack: TResetCallback; SQLiteIntAffinity: Boolean);
 
     procedure ResetCursor; override;
 
@@ -188,8 +188,9 @@ implementation
 {$IFNDEF ZEOS_DISABLE_SQLITE} //if set we have an empty unit
 
 uses
-  ZMessages, ZDbcSQLiteUtils, ZEncoding, ZDbcLogging, ZFastCode, ZDbcUtils,
-  ZVariant, ZDbcMetadata, ZDbcSQLite
+  ZMessages, ZTokenizer, ZVariant, ZEncoding, ZFastCode,
+  ZGenericSqlAnalyser,
+  ZDbcSQLiteUtils, ZDbcLogging, ZDbcUtils, ZDbcMetadata
   {$IFDEF WITH_UNITANSISTRINGS}, AnsiStrings{$ENDIF};
 
 { TZSQLiteCachedResultSet }
@@ -322,25 +323,45 @@ var
   Current: TZColumnInfo;
   I: Integer;
   TableColumns: IZResultSet;
+  Connection: IZConnection;
+  Driver: IZDriver;
+  IdentifierConvertor: IZIdentifierConvertor;
+  Analyser: IZStatementAnalyser;
+  Tokenizer: IZTokenizer;
 begin
   if not FHas_ExtendedColumnInfos
   then inherited LoadColumns
-  else if Metadata.GetConnection.GetDriver.GetStatementAnalyser.DefineSelectSchemaFromQuery(Metadata.GetConnection.GetDriver.GetTokenizer, SQL) <> nil then
-    for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
-      Current := TZColumnInfo(ResultSet.ColumnsInfo[i]);
-      ClearColumn(Current);
-      if Current.TableName = '' then
-        continue;
-      TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(Metadata.GetIdentifierConvertor.Quote(Current.TableName)),'');
-      if TableColumns <> nil then begin
-        TableColumns.BeforeFirst;
-        while TableColumns.Next do
-          if TableColumns.GetString(ColumnNameIndex) = Current.ColumnName then begin
-            FillColumInfoFromGetColumnsRS(Current, TableColumns, Current.ColumnName);
-            Break;
+  else begin
+    Connection := Metadata.GetConnection;
+    Driver := Connection.GetDriver;
+    Analyser := Driver.GetStatementAnalyser;
+    Tokenizer := Driver.GetTokenizer;
+    IdentifierConvertor := Metadata.GetIdentifierConvertor;
+    try
+      if Analyser.DefineSelectSchemaFromQuery(Tokenizer, SQL) <> nil then
+        for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
+          Current := TZColumnInfo(ResultSet.ColumnsInfo[i]);
+          ClearColumn(Current);
+          if Current.TableName = '' then
+            continue;
+          TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConvertor.Quote(Current.TableName)),'');
+          if TableColumns <> nil then begin
+            TableColumns.BeforeFirst;
+            while TableColumns.Next do
+              if TableColumns.GetString(ColumnNameIndex) = Current.ColumnName then begin
+                FillColumInfoFromGetColumnsRS(Current, TableColumns, Current.ColumnName);
+                Break;
+              end;
           end;
-      end;
+        end;
+    finally
+      Driver := nil;
+      Connection := nil;
+      Analyser := nil;
+      Tokenizer := nil;
+      IdentifierConvertor := nil;
     end;
+  end;
   Loaded := True;
 end;
 
@@ -501,21 +522,19 @@ end;
     <code>False</code> to store result.
 }
 constructor TZSQLiteResultSet.Create(const Statement: IZStatement;
-  const SQL: string; Psqlite: PPsqlite; Psqlite3_stmt: PPsqlite3_stmt;
+  const SQL: string; Psqlite3_stmt: PPsqlite3_stmt;
   PErrorCode: PInteger; UndefinedVarcharAsStringLength: Integer;
-  ResetCallBack: TResetCallback);
+  ResetCallBack: TResetCallback; SQLiteIntAffinity: Boolean);
 var Metadata: TContainedObject;
-  Con: IZSQLiteConnection;
 begin
-  Con := Statement.GetConnection as IZSQLiteConnection;
-  FByteBuffer := Con.GetByteBufferAddress;
-  FPlainDriver := Con.GetPlainDriver;
+  FSQLiteConnection := Statement.GetConnection as IZSQLiteConnection;
+  FByteBuffer := FSQLiteConnection.GetByteBufferAddress;
+  FPlainDriver := FSQLiteConnection.GetPlainDriver;
   if Assigned(FPlainDriver.sqlite3_column_table_name) and Assigned(FPlainDriver.sqlite3_column_name)
-  then MetaData := TZSQLiteResultSetMetadata.Create(Statement.GetConnection.GetMetadata, SQL, Self)
-  else MetaData := TZAbstractResultSetMetadata.Create(Statement.GetConnection.GetMetadata, SQL, Self);
-  inherited Create(Statement, SQL, MetaData, Statement.GetConnection.GetConSettings);
+  then MetaData := TZSQLiteResultSetMetadata.Create(FSQLiteConnection.GetMetadata, SQL, Self)
+  else MetaData := TZAbstractResultSetMetadata.Create(FSQLiteConnection.GetMetadata, SQL, Self);
+  inherited Create(Statement, SQL, MetaData, FSQLiteConnection.GetConSettings);
 
-  FPsqlite := Psqlite;
   FPsqlite3_stmt := Psqlite3_stmt;
   Fsqlite3_stmt := Psqlite3_stmt^;
   FStmtErrorCode := PErrorCode;
@@ -524,6 +543,7 @@ begin
   FUndefinedVarcharAsStringLength := UndefinedVarcharAsStringLength;
   FFirstRow := True;
   FResetCallBack := ResetCallBack;
+  FSQLiteIntAffinity := SQLiteIntAffinity;
 
   Open;
 end;
@@ -551,10 +571,7 @@ var
       {$IFDEF UNICODE}
       Result := PRawToUnicode(P, ZFastCode.StrLen(P), zCP_UTF8);
       {$ELSE}
-      if (not ConSettings^.AutoEncode) or (ConSettings^.CTRL_CP = zCP_UTF8) then
-        Result := BufferToStr(P, ZFastCode.StrLen(P))
-      else
-        Result := ZUnicodeToString(PRawToUnicode(P, ZFastCode.StrLen(P), zCP_UTF8), ConSettings^.CTRL_CP);
+      Result := BufferToStr(P, ZFastCode.StrLen(P));
       {$ENDIF}
   end;
 begin
@@ -587,7 +604,7 @@ begin
         ZSetString(P, ZFastCode.StrLen(P), tmp);
       end;
       ColumnType := ConvertSQLiteTypeToSQLType(tmp, FUndefinedVarcharAsStringLength,
-        FieldPrecision, FieldDecimals);
+        FieldPrecision, FieldDecimals, FSQLiteIntAffinity);
 
       if ColumnType in [stString, stAsciiStream] then begin
         ColumnCodePage := zCP_UTF8;
@@ -1379,7 +1396,8 @@ begin
       Exit;
     ErrorCode := FPlainDriver.sqlite3_Step(Fsqlite3_stmt);
     if not (ErrorCode in [SQLITE_OK, SQLITE_ROW, SQLITE_DONE]) then
-      CheckSQLiteError(FPlainDriver, Fsqlite3_stmt, ErrorCode, lcOther, 'FETCH', ConSettings);
+      FSQLiteConnection.HandleErrorOrWarning(lcFetch, ErrorCode, 'FETCH',
+        IImmediatelyReleasable(FWeakImmediatRelPtr));
   end;
 
   if FFirstRow then begin//avoid incrementing issue on fetching since the first row is allready fetched by stmt
@@ -1402,6 +1420,8 @@ begin
   if not Result and Assigned(Fsqlite3_stmt) then begin
     FResetCallBack;
     Fsqlite3_stmt := nil;
+    if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+      DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
   end;
 end;
 
@@ -1439,7 +1459,6 @@ begin
   { Defines an index of autoincrement field. }
   FAutoColumnIndex := 0;
   for I := FirstDbcIndex to Metadata.GetColumnCount{$IFDEF GENERIC_INDEX} - 1{$ENDIF} do
-  begin
     if Metadata.IsAutoIncrement(I) and
       (Metadata.GetColumnType(I) in [stByte, stShort, stSmall, stLongWord,
         stInteger, stUlong, stLong]) then
@@ -1447,7 +1466,6 @@ begin
       FAutoColumnIndex := I;
       Break;
     end;
-  end;
 end;
 
 {**

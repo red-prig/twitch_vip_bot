@@ -58,30 +58,19 @@ interface
 {$IFNDEF ZEOS_DISABLE_SQLITE} //if set we have an empty unit
 uses
   Classes, SysUtils,
-  ZSysUtils, ZDbcIntfs, ZPlainSqLiteDriver, ZDbcLogging, ZCompatibility;
+  ZSysUtils, ZDbcIntfs, ZDbcLogging, ZCompatibility;
 
 {**
   Convert string SQLite field type to SQLType
   @param string field type value
   @param Precision the column precision or size
   @param Decimals the column position after decimal point
+  @param SQLiteIntAffinity the column position after decimal point
   @result the SQLType field type value
 }
 function ConvertSQLiteTypeToSQLType(var TypeName: RawByteString;
   UndefinedVarcharAsStringLength: Integer; out Precision: Integer;
-  out Decimals: Integer): TZSQLType;
-
-{**
-  Checks for possible sql errors.
-  @param PlainDriver a SQLite plain driver.
-  @param ErrorCode an error code.
-  @param ErrorMessage an error message.
-  @param LogCategory a logging category.
-  @param LogMessage a logging message.
-}
-procedure CheckSQLiteError(const PlainDriver: TZSQLitePlainDriver;
-  Handle: PSqlite; ErrorCode: Integer; LogCategory: TZLoggingCategory;
-  const LogMessage: RawByteString; ConSettings: PZConSettings);
+  out Decimals: Integer; SQLiteIntAffinity: Boolean = False): TZSQLType;
 
 {**
   Decodes a SQLite Version Value and Encodes it to a Zeos SQL Version format:
@@ -108,7 +97,7 @@ uses {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings, {$ENDIF}
 }
 function ConvertSQLiteTypeToSQLType(var TypeName: RawByteString;
   UndefinedVarcharAsStringLength: Integer; out Precision: Integer;
-  out Decimals: Integer): TZSQLType;
+  out Decimals: Integer; SQLiteIntAffinity: Boolean = False): TZSQLType;
 var
   pBL, pBR, pC: Integer;
   P: PAnsiChar;
@@ -146,15 +135,21 @@ begin
     (* EH: This is a hack to use integer affinity for Currency type ranges *)
     if (Decimals > 0) and (Decimals <= 4) and (Precision >= Decimals) and (Precision <= zDbcUtils.sAlignCurrencyScale2Precision[Decimals]) then
       Result := stCurrency
-    else if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('TINY')) then
-      Result := stShort
-    else if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('SMALL')) then
-      Result := stSmall
-    else if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('BIG')) or
-             (TypeName = 'INTEGER') then //http://www.sqlite.org/autoinc.html
+    else if SQLiteIntAffinity then
       Result := stLong
-    else //includes 'INT' / 'MEDIUMINT'
-      Result := stInteger
+    else begin
+      if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('TINY')) or StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('INT8')) then
+        Result := stShort
+      else if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('SMALL')) or StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('INT16'))  then
+        Result := stSmall
+      else if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('BIG')) or
+               (TypeName = 'INTEGER') then //http://www.sqlite.org/autoinc.html
+        Result := stLong
+      else //includes 'INT' / 'MEDIUMINT' /INT32
+        Result := stInteger;
+      if PosEx({$IFDEF UNICODE}RawByteString{$ENDIF}('UNSIGEND'), TypeName) > 0 then
+        Result := TZSQLType(Ord(stLongWord)-1);
+    end
   else if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('REAL')) then
     Result := stDouble
   else if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('FLOAT')) then
@@ -189,7 +184,6 @@ begin
   else if ZFastCode.Pos({$IFDEF UNICODE}RawByteString{$ENDIF}('TEXT'), TypeName) > 0 then
     Result := stAsciiStream;
   if (Result = stInteger) and (Precision <> 0) then
-  begin
     if Precision <= 2 then
       Result := stByte
     else if Precision <= 4 then
@@ -198,7 +192,6 @@ begin
       Result := stInteger
     else
       Result := stLong;
-  end;
 
   if (Result = stString) and (Precision = 0) then
     if (UndefinedVarcharAsStringLength = 0) then
@@ -206,70 +199,6 @@ begin
     else
       Precision := UndefinedVarcharAsStringLength;
 end;
-
-{**
-  Checks for possible sql errors.
-  @param PlainDriver a SQLite plain driver.
-  @param ErrorCode an error code.
-  @param ErrorMessage an error message.
-  @param LogCategory a logging category.
-  @param LogMessage a logging message.
-}
-procedure CheckSQLiteError(const PlainDriver: TZSQLitePlainDriver;
-  Handle: PSqlite; ErrorCode: Integer; LogCategory: TZLoggingCategory;
-  const LogMessage: RawByteString; ConSettings: PZConSettings);
-var
-  ErrorStr, ErrorMsg: RawByteString;
-begin
-  if not (ErrorCode in [SQLITE_OK, SQLITE_ROW, SQLITE_DONE]) then begin
-    ErrorMsg := '';
-    if Assigned(PlainDriver.sqlite3_extended_errcode) then
-      ErrorCode := PlainDriver.sqlite3_extended_errcode(Handle);
-    if ( Handle <> nil ) and ( Assigned(PlainDriver.sqlite3_errstr) ) then
-      ErrorStr := {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings.{$ENDIF}Trim(PLainDriver.sqlite3_errstr(ErrorCode));
-    if ErrorStr = '' then
-      case ErrorCode of
-        SQLITE_OK:          ErrorStr := 'not an error';
-        SQLITE_ERROR:       ErrorStr := 'SQL logic error or missing database';
-        SQLITE_INTERNAL:    ErrorStr := 'internal SQLite implementation flaw';
-        SQLITE_PERM:        ErrorStr := 'access permission denied';
-        SQLITE_ABORT:       ErrorStr := 'callback requested query abort';
-        SQLITE_BUSY:        ErrorStr := 'database is locked';
-        SQLITE_LOCKED:      ErrorStr := 'database table is locked';
-        SQLITE_NOMEM:       ErrorStr := 'out of memory';
-        SQLITE_READONLY:    ErrorStr := 'attempt to write a readonly database';
-        SQLITE_INTERRUPT:   ErrorStr := 'interrupted';
-        SQLITE_IOERR:       ErrorStr := 'disk I/O error';
-        SQLITE_CORRUPT:     ErrorStr := 'database disk image is malformed';
-        SQLITE_NOTFOUND:    ErrorStr := 'table or record not found';
-        SQLITE_FULL:        ErrorStr := 'database is full';
-        SQLITE_CANTOPEN:    ErrorStr := 'unable to open database file';
-        SQLITE_PROTOCOL:    ErrorStr := 'database locking protocol failure';
-        SQLITE_EMPTY:       ErrorStr := 'table contains no data';
-        SQLITE_SCHEMA:      ErrorStr := 'database schema has changed';
-        SQLITE_TOOBIG:      ErrorStr := 'too much data for one table row';
-        SQLITE_CONSTRAINT:  ErrorStr := 'constraint failed';
-        SQLITE_MISMATCH:    ErrorStr := 'datatype mismatch';
-        SQLITE_MISUSE:      ErrorStr := 'library routine called out of sequence';
-        SQLITE_NOLFS:       ErrorStr := 'kernel lacks large file support';
-        SQLITE_AUTH:        ErrorStr := 'authorization denied';
-        SQLITE_FORMAT:      ErrorStr := 'auxiliary database format error';
-        SQLITE_RANGE:       ErrorStr := 'bind index out of range';
-        SQLITE_NOTADB:      ErrorStr := 'file is encrypted or is not a database';
-        else                ErrorStr := 'unknown error';
-      end
-    else if ( Handle <> nil ) and ( Assigned(PlainDriver.sqlite3_errmsg) ) then
-      ErrorMsg := {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings.{$ENDIF}Trim(PLainDriver.sqlite3_errmsg(Handle));
-    if ErrorMsg <> '' then
-      ErrorStr := 'Error: '+ErrorStr+LineEnding+'Message: '+ErrorMsg;
-    DriverManager.LogError(LogCategory, ConSettings^.Protocol, LogMessage,
-      ErrorCode, ErrorStr);
-    raise EZSQLException.CreateWithCode(ErrorCode, Format(SSQLError1,
-      [ConSettings.ConvFuncs.ZRawToString(ErrorStr, ConSettings^.ClientCodePage^.CP, ConSettings^.CTRL_CP)]));
-  end;
-end;
-
-
 
 {**
   Decodes a SQLite Version Value and Encodes it to a Zeos SQL Version format:

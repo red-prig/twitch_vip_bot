@@ -70,7 +70,6 @@ type
   {** Implements Ado ResultSet. }
   TZAbstractOleDBResultSet = class(TZAbstractReadOnlyResultSet, IZResultSet)
   private
-    FChunkSize: Integer;
     FRowSet: IRowSet;
     FZBufferSize: Integer;
     FDBBindingArray: TDBBindingDynArray;
@@ -85,7 +84,7 @@ type
     FRowStates: TDBROWSTATUSDynArray;
     fpcColumns: DBORDINAL;
     fTempBlob: IZBlob;
-    fClientCP, fCtrlCP: Word;
+    fClientCP: Word;
     FOleDBConnection: IZOleDBConnection;
     FByteBuffer: PByteBuffer;
   private
@@ -133,7 +132,7 @@ type
     procedure Open; override;
   public
     constructor Create(const Statement: IZStatement; const SQL: string;
-      const RowSet: IRowSet; ZBufferSize, ChunkSize: Integer;
+      const RowSet: IRowSet; ZBufferSize: Integer;
       const {%H-}EnhancedColInfo: Boolean = True);
     procedure ResetCursor; override;
     function Next: Boolean; override;
@@ -250,8 +249,9 @@ uses
   Variants, Math, DateUtils,
   {$IFDEF WITH_UNIT_NAMESPACES}System.Win.ComObj{$ELSE}ComObj{$ENDIF},
   {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings, {$ENDIF} //need for inlined FloatToRaw
-  ZDbcOleDBStatement, ZMessages, ZEncoding, ZFastCode,
-  ZDbcMetaData, ZDbcUtils, ZDbcLogging;
+  ZMessages, ZEncoding, ZFastCode, ZTokenizer,
+  ZSelectSchema, ZGenericSqlAnalyser,
+  ZDbcOleDBStatement, ZDbcMetaData, ZDbcUtils, ZDbcLogging;
 
 var
   LobReadObj: TDBObject;
@@ -804,7 +804,7 @@ set_from_buf:           Len := Result - PAnsiChar(fByteBuffer);
                       end;
     DBTYPE_WSTR:    if FColBind.cbMaxLen = 0 then begin
                       fTempBlob := GetBlob(ColumnIndex);
-                      Result := fTempBlob.GetPAnsiChar(fCtrlCP, fRawTemp, Len);
+                      Result := fTempBlob.GetPAnsiChar(GetW2A2WConversionCodePage(ConSettings), fRawTemp, Len);
                       fTempBlob := nil;
                     end else begin
                       Result := FData;
@@ -812,7 +812,7 @@ set_from_buf:           Len := Result - PAnsiChar(fByteBuffer);
                       if FColBind.dwFlags and DBCOLUMNFLAGS_ISFIXEDLENGTH <> 0
                       then Len := GetAbsorbedTrailingSpacesLen(PWideChar(Result), FLength)
                       else Len := FLength;
-                      FRawTemp := PUnicodeToRaw(PWideChar(Result), Len, fCtrlCP);
+                      FRawTemp := PUnicodeToRaw(PWideChar(Result), Len, GetW2A2WConversionCodePage(ConSettings));
 set_from_tmp:         Len := Length(FRawTemp);
                       if Len = 0
                       then Result := PEmptyAnsiString
@@ -1501,7 +1501,6 @@ label Fail;
 begin
   if not IsNull(ColumnIndex) then //Sets LastWasNull, FData, FLength!!
     case FwType of
-      //DBTYPE_NUMERIC	= 131;
       //DBTYPE_DECIMAL	= 14;
       DBTYPE_I2:        ScaledOrdinal2Bcd(PSmallInt(FData)^, 0, Result);
       DBTYPE_I4:        ScaledOrdinal2Bcd(PInteger(FData)^, 0, Result);
@@ -1554,6 +1553,7 @@ end;
     value returned is <code>0</code>
 }
 function TZAbstractOleDBResultSet.GetCurrency(ColumnIndex: Integer): Currency;
+label jmpFail;
 begin
   if not IsNull(ColumnIndex) then //Sets LastWasNull, FData, FLength!!
     case FwType of
@@ -1575,7 +1575,10 @@ begin
       DBTYPE_UI8:       Result := PUInt64(FData)^;
       DBTYPE_STR:       SQLStrToFloatDef(PAnsiChar(FData), 0, Result, FLength);
       DBTYPE_WSTR:      SQLStrToFloatDef(PWideChar(FData), 0, Result, FLength shr 1);
-      //DBTYPE_NUMERIC	= 131;
+      DBTYPE_NUMERIC,
+      DBTYPE_VARNUMERIC:if PDB_NUMERIC(FData).precision < 19
+                        then Result := DBNumeric2Curr_LE(FData, 0)
+                        else goto jmpFail;
       //DBTYPE_UDT	= 132;
       //DBTYPE_DBDATE	= 133;
       //DBTYPE_DBTIME	= 134;
@@ -1583,8 +1586,8 @@ begin
       DBTYPE_HCHAPTER:  Result := PCHAPTER(FData)^;
       //DBTYPE_FILETIME	= 64;
       //DBTYPE_PROPVARIANT	= 138;
-      //DBTYPE_VARNUMERIC	= 139;
-      else raise CreateOleDbConvertError(ColumnIndex, stCurrency);
+      else
+jmpFail:raise CreateOleDbConvertError(ColumnIndex, stCurrency);
     end
   else Result := 0;
 end;
@@ -2065,34 +2068,46 @@ begin
 end;
 
 procedure TZOleDBMSSQLResultSetMetadata.LoadColumns;
-{$IFNDEF ZEOS_TEST_ONLY}
 var
   Current: TZColumnInfo;
   I: Integer;
   TableColumns: IZResultSet;
-{$ENDIF}
+  Connection: IZConnection;
+  Driver: IZDriver;
+  IdentifierConvertor: IZIdentifierConvertor;
+  Analyser: IZStatementAnalyser;
+  Tokenizer: IZTokenizer;
 begin
-  {$IFDEF ZEOS_TEST_ONLY}
-  inherited LoadColumns;
-  {$ELSE}
-  if Metadata.GetConnection.GetDriver.GetStatementAnalyser.DefineSelectSchemaFromQuery(Metadata.GetConnection.GetDriver.GetTokenizer, SQL) <> nil then
-    for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
-      Current := TZColumnInfo(ResultSet.ColumnsInfo[i]);
-      ClearColumn(Current);
-      if Current.TableName = '' then
-        continue;
-      TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(Metadata.GetIdentifierConvertor.Quote(Current.TableName)),'');
-      if TableColumns <> nil then begin
-        TableColumns.BeforeFirst;
-        while TableColumns.Next do
-          if TableColumns.GetString(ColumnNameIndex) = Current.ColumnName then begin
-            FillColumInfoFromGetColumnsRS(Current, TableColumns, Current.ColumnName);
-            Break;
-          end;
+  Connection := Metadata.GetConnection;
+  Driver := Connection.GetDriver;
+  Analyser := Driver.GetStatementAnalyser;
+  Tokenizer := Driver.GetTokenizer;
+  IdentifierConvertor := Metadata.GetIdentifierConvertor;
+  try
+    if Analyser.DefineSelectSchemaFromQuery(Tokenizer, SQL) <> nil then
+      for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
+        Current := TZColumnInfo(ResultSet.ColumnsInfo[i]);
+        ClearColumn(Current);
+        if Current.TableName = '' then
+          continue;
+        TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConvertor.Quote(Current.TableName)),'');
+        if TableColumns <> nil then begin
+          TableColumns.BeforeFirst;
+          while TableColumns.Next do
+            if TableColumns.GetString(ColumnNameIndex) = Current.ColumnName then begin
+              FillColumInfoFromGetColumnsRS(Current, TableColumns, Current.ColumnName);
+              Break;
+            end;
+        end;
       end;
-    end;
+  finally
+    Driver := nil;
+    Connection := nil;
+    Analyser := nil;
+    Tokenizer := nil;
+    IdentifierConvertor := nil;
+  end;
   Loaded := True;
-  {$ENDIF}
 end;
 
 { TZOleDBParamResultSet }
@@ -2110,7 +2125,6 @@ begin
   FOleDBConnection := (Statement.GetConnection as IZOleDBConnection);
   FByteBuffer := FOleDBConnection.GetByteBufferAddress;
   inherited Create(Statement, Statement.GetSQL, nil, FOleDBConnection.GetConSettings);
-  fCtrlCP := ConSettings.CTRL_CP;
   fClientCP := ConSettings.ClientCodePage.CP;
   FColBuffer := ParamBuffer;
   J := 0;
@@ -2176,7 +2190,7 @@ end;
   @param AdoRecordSet a ADO recordset object, the source of the ResultSet.
 }
 constructor TZOleDBResultSet.Create(const Statement: IZStatement;
-  const SQL: string; const RowSet: IRowSet; ZBufferSize, ChunkSize: Integer;
+  const SQL: string; const RowSet: IRowSet; ZBufferSize: Integer;
   const EnhancedColInfo: Boolean);
 begin
   FOleDBConnection := Statement.GetConnection as IZOleDBConnection;
@@ -2192,8 +2206,6 @@ begin
   FCurrentBufRowNo := 0;
   FRowsObtained := 0;
   FHROWS := nil;
-  FChunkSize := ChunkSize;
-  fCtrlCP := ConSettings.CTRL_CP;
   fClientCP := ConSettings.ClientCodePage.CP;
   Open;
 end;
@@ -2269,14 +2281,16 @@ fetch_data:
   end;
 
 Success:
-    RowNo := RowNo + 1;
-    if LastRowNo < RowNo then
-      LastRowNo := RowNo;
-    Result := True;
-    Exit;
+  RowNo := RowNo + 1;
+  if LastRowNo < RowNo then
+    LastRowNo := RowNo;
+  Result := True;
+  Exit;
 NoSuccess:
-    if RowNo <= LastRowNo then
-      RowNo := LastRowNo + 1;
+  if RowNo <= LastRowNo then
+    RowNo := LastRowNo + 1;
+  if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
 end;
 
 {**
@@ -2317,7 +2331,11 @@ begin
     begin
       ColumnInfo := TZColumnInfo.Create;
       if (prgInfo.pwszName<>nil) and (prgInfo.pwszName^<>#0) then
-        ColumnInfo.ColumnLabel := String(prgInfo^.pwszName);
+        {$IFDEF UNICODE}
+        System.SetString(ColumnInfo.ColumnLabel, prgInfo^.pwszName, {$IFDEF WITH_PWIDECHAR_STRLEN}SysUtils.StrLen{$ELSE}Length{$ENDIF}(prgInfo^.pwszName));
+        {$ELSE}
+        ColumnInfo.ColumnLabel := PUnicodeToRaw(prgInfo^.pwszName, {$IFDEF WITH_PWIDECHAR_STRLEN}SysUtils.StrLen{$ELSE}Length{$ENDIF}(prgInfo^.pwszName), zCP_UTF8);
+        {$ENDIF}
       ColumnInfo.ColumnType := ConvertOleDBTypeToSQLType(prgInfo^.wType,
         prgInfo.dwFlags and DBCOLUMNFLAGS_ISLONG <> 0,
         prgInfo.bScale, prgInfo.bPrecision);

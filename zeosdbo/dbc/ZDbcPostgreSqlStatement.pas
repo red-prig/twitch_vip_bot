@@ -126,7 +126,7 @@ type
     constructor Create(const Connection: IZPostgreSQLConnection;
       const SQL: string; Info: TStrings);
   public
-    function GetRawEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): RawByteString; override;
+    function GetRawEncodedSQL(const SQL: SQLString): RawByteString; override;
 
     function ExecuteQueryPrepared: IZResultSet; override;
     function ExecuteUpdatePrepared: Integer; override;
@@ -152,7 +152,7 @@ type
   protected
     procedure PrepareInParameters; override;
     procedure UnPrepareInParameters; override;
-    procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZRawSQLStringWriter; Var Result: RawByteString); override;
+    procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZSQLStringWriter; Var Result: SQLString); override;
   public
     procedure ClearParameters; reintroduce;
 
@@ -220,7 +220,8 @@ uses
   {$IF defined(NO_INLINE_SIZE_CHECK) and not defined(UNICODE) and defined(MSWINDOWS)},Windows{$IFEND}
   {$IFDEF NO_INLINE_SIZE_CHECK}, Math{$ENDIF};
 
-
+const
+   cLoggingType: array[Boolean] of TZLoggingCategory = (lcExecPrepStmt,lcExecute);
 var
   PGPreparableTokens: TPreparablePrefixTokens;
 
@@ -292,7 +293,7 @@ var
         if BindList.SQLTypes[Index] in [stUnicodeStream, stAsciiStream] then begin
           if TempBlob.IsClob
           then TempBlob.SetCodePageTo(FClientCP)
-          else TInterfaceDynArray(Dyn)[j] := CreateRawCLobFromBlob(TempBlob, ConSettings, FOpenLobStreams);
+          else raise CreateConversionError(Index, stBinaryStream, stAsciiStream);
           goto LenOfBuf;
         end else if FOidAsBlob then begin
           if not Supports(TempBlob, IZPostgreSQLOidBlob, WriteTempBlob) then begin
@@ -382,10 +383,6 @@ LenOfBuf: PA := TempBlob.GetBuffer(FRawTemp, L);
     {$IFDEF WITH_VAR_INIT_WARNING}FTempRaws := nil;{$ENDIF}
     SetLength(FTempRaws, DynArrayLen);
     case Arr.VArrayVariantType of
-      {$IFNDEF UNICODE}
-      vtString:   for J := 0 to DynArrayLen -1 do
-                    FTempRaws[j] := ConSettings.ConvFuncs.ZStringToRaw(TStringDynArray(Dyn)[j], ConSettings.CTRL_CP, CP);
-      {$ENDIF}
       {$IFNDEF NO_ANSISTRING}
       vtAnsiString: for J := 0 to DynArrayLen -1 do begin
                       FUniTemp := PRawToUnicode(Pointer(TRawByteStringDynArray(Dyn)[j]), Length(TRawByteStringDynArray(Dyn)[j]), zOSCodePage);
@@ -802,9 +799,8 @@ begin
                           then BindDequotedStrings;
           {$IFEND}
           {$IFNDEF UNICODE}
-          vtString:       if (not ConSettings^.AutoEncode and (CP = ConSettings^.CTRL_CP))
-                          then BindRawStrings
-                          else BindConvertedStrings;
+
+          vtString:       BindRawStrings;
           {$ENDIF}
           {$IFNDEF NO_ANSISTRING}
           vtAnsiString:   if (CP= ZOSCodePage)
@@ -859,9 +855,10 @@ begin
   if not Prepared then
     Prepare;
   if (BindList.Capacity < Value+1) then
-    if fRawPlanname <> ''
-    then raise EZSQLException.Create(SInvalidInputParameterCount)
-    else inherited CheckParameterIndex(Value);
+    if fRawPlanname <> '' then begin
+      {$IFDEF UNICODE}FUniTemp{$ELSE}FRawTemp{$ENDIF} := Format(SBindVarOutOfRange, [Value]);
+      raise EZSQLException.Create({$IFDEF UNICODE}FUniTemp{$ELSE}FRawTemp{$ENDIF});
+    end else inherited CheckParameterIndex(Value);
   { now change the index to the !in!-param ordinal index }
   if BindList.HasOutOrInOutOrResultParam then
     for I := 0 to Value do
@@ -903,7 +900,7 @@ begin
   else FPQResultFormat := ParamFormatStr;
   fPrepareCnt := 0;
   //JDBC prepares after 4th execution
-  if not FUseEmulatedStmtsOnly
+  if not FUseEmulatedStmtsOnly //and not StrToBoolEx(DefineStatementParameter(Self, DSProps_PreferPrepared, 'False'))
   then FMinExecCount2Prepare := {$IFDEF UNICODE}UnicodeToIntDef{$ELSE}RawToIntDef{$ENDIF}(DefineStatementParameter(Self, DSProps_MinExecCntBeforePrepare, '2'), 2)
   else FMinExecCount2Prepare := -1;
   fAsyncQueries := StrToBoolEx(ZDbcUtils.DefineStatementParameter(Self, DSProps_ExecAsync, 'FALSE'))
@@ -920,15 +917,18 @@ var
   CachedResultSet: TZPostgresCachedResultSet;
   Resolver: TZPostgreSQLCachedResolver;
   Metadata: IZResultSetMetadata;
+  ServerMajorVersion: Integer;
 begin
   NativeResultSet := TZPostgreSQLResultSet.Create(Self, Self.SQL, FPostgreSQLConnection,
     @Fres, @FPQResultFormat, fServerCursor, FUndefinedVarcharAsStringLength);
   if (GetResultSetConcurrency = rcUpdatable) or (ServerCursor and (GetResultSetType <> rtForwardOnly)) then begin
     Metadata := NativeResultSet.GetMetaData;
-    if (FPostgreSQLConnection.GetServerMajorVersion > 7) then
+    ServerMajorVersion := FPostgreSQLConnection.GetServerMajorVersion;
+    if (ServerMajorVersion >= 10) then
+      Resolver := TZPostgreSQLCachedResolverV10up.Create(Self, Metadata)
+    else if (ServerMajorVersion > 7) then
       Resolver := TZPostgreSQLCachedResolverV8up.Create(Self, Metadata)
-    else if ((FPostgreSQLConnection.GetServerMajorVersion = 7) and
-        (FPostgreSQLConnection.GetServerMinorVersion >= 4))
+    else if ((ServerMajorVersion = 7) and (FPostgreSQLConnection.GetServerMinorVersion >= 4))
     then Resolver := TZPostgreSQLCachedResolverV74up.Create(Self, Metadata)
     else Resolver := TZPostgreSQLCachedResolver.Create(Self, Metadata);
     CachedResultSet := TZPostgresCachedResultSet.Create(NativeResultSet, Self.SQL, Resolver, ConSettings);
@@ -1104,7 +1104,7 @@ begin
   Result := Stmt.PGExecutePrepared;
   Stmt.BindList.ClearValues; //free allocated mem
   if not PGSucceeded(FPlainDriver.PQerrorMessage(FconnAddress^)) then
-    FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecPrepStmt, Stmt.ASQL, Self, Result);
+    FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecPrepStmt, Stmt.SQL, Self, Result);
 end;
 
 function TZAbstractPostgreSQLPreparedStatementV3.PGExecute: TPGresult;
@@ -1217,26 +1217,27 @@ var
     else Result := FPlainDriver.PQExec(FconnAddress^, Pointer(TmpSQL));
   end;
 begin
+  { logs the values }
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcBindPrepStmt,Self);
+  RestartTimer;
   Result := nil;
   if not Assigned(FconnAddress^) then
     Exit;
-  { Logging Execution }
-  if DriverManager.HasLoggingListener then
-    DriverManager.LogMessage(lcExecute,Self);
   if fAsyncQueries then begin
     if (FPQResultFormat = ParamFormatBin) or (BindList.Capacity > 0) then begin
       if FplainDriver.PQsendQueryParams(FconnAddress^,
          Pointer(FASQL), BindList.Count-FOutParamCount, Pointer(FPQParamOIDs), Pointer(FPQparamValues),
          Pointer(FPQparamLengths), Pointer(FPQparamFormats), FPQResultFormat) <> Ord(PGRES_COMMAND_OK) then
-        FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecute, fASQL, Self, nil);
+        FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecute, SQL, Self, nil);
     end else begin
       if FplainDriver.PQsendQuery(FconnAddress^, Pointer(FASQL)) <> Ord(PGRES_COMMAND_OK) then
-        FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecute, fASQL, Self, nil);
+        FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecute, SQL, Self, nil);
     end;
     if FServerCursor then
       FPlainDriver.PQsetSingleRowMode(FconnAddress^);
     if FplainDriver.PQconsumeInput(FconnAddress^) <> Ord(PGRES_COMMAND_OK) then
-      FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecute, fASQL, Self, nil);
+      FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecute, SQL, Self, nil);
     Result := FPlainDriver.PQgetResult(FconnAddress^); //obtain the first result
   end else begin
     if (BindList.Capacity > 0) then begin
@@ -1274,8 +1275,10 @@ ExecWithParams:
       else goto ExecWithParams;
     Status := FPlainDriver.PQresultStatus(Result);
     if (Status = PGRES_BAD_RESPONSE) or (Status = PGRES_NONFATAL_ERROR) or (Status = PGRES_FATAL_ERROR) then
-      FPostgreSQLConnection.HandleErrorOrWarning(Status, lcExecute, fASQL, Self, Result);
+      FPostgreSQLConnection.HandleErrorOrWarning(Status, lcExecute, SQL, Self, Result);
   end;
+  if DriverManager.HasLoggingListener then
+     DriverManager.LogMessage(lcExecute,Self);
 end;
 
 {**
@@ -1289,10 +1292,9 @@ end;
 function TZAbstractPostgreSQLPreparedStatementV3.ExecutePrepared: Boolean;
 var Status: TZPostgreSQLExecStatusType;
 begin
+  LastUpdatecount := -1;
   Prepare;
   PrepareLastResultSetForReUse;
-  if (DriverManager <> nil) and DriverManager.HasLoggingListener then
-    DriverManager.LogMessage(lcBindPrepStmt,Self);
   if Findeterminate_datatype or (FRawPlanName = '')
   then Fres := PGExecute
   else Fres := PGExecutePrepared;
@@ -1307,10 +1309,12 @@ begin
       FOutParamResultSet := LastResultSet;
   end else begin
     Result := False;
-    LastUpdateCount := RawToIntDef(
-      FPlainDriver.PQcmdTuples(Fres), 0);
+    LastUpdateCount := RawToIntDef(FPlainDriver.PQcmdTuples(Fres), 0);
     FPlainDriver.PQclear(Fres);
   end;
+  { Logging Execution }
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(cLoggingType[Findeterminate_datatype or (FRawPlanName = '')],Self);
 end;
 
 {**
@@ -1323,10 +1327,9 @@ end;
 function TZAbstractPostgreSQLPreparedStatementV3.ExecuteQueryPrepared: IZResultSet;
 var Status: TZPostgreSQLExecStatusType;
 begin
+  LastUpdateCount := -1;
   PrepareOpenResultSetForReUse;
   Prepare;
-  if (DriverManager <> nil) and DriverManager.HasLoggingListener then
-    DriverManager.LogMessage(lcBindPrepStmt,Self);
   if Findeterminate_datatype or (FRawPlanName = '')
   then Fres := PGExecute
   else Fres := PGExecutePrepared;
@@ -1339,6 +1342,9 @@ begin
       FOutParamResultSet := Result;
   end else
     Result := nil;
+  { Logging Execution }
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(cLoggingType[Findeterminate_datatype or (FRawPlanName = '')],Self);
 end;
 
 {**
@@ -1357,8 +1363,6 @@ var
 begin
   PrepareLastResultSetForReuse;
   Prepare;
-  if DriverManager.HasLoggingListener then
-    DriverManager.LogMessage(lcBindPrepStmt,Self);
   if BatchDMLArrayCount > 0
   then FRes := ExecuteDMLBatchWithUnnestVarlenaArrays
   else if (FRawPlanName = '') or Findeterminate_datatype
@@ -1366,17 +1370,19 @@ begin
     else Fres := PGExecutePrepared;
   if Fres <> nil then begin
     Status := FPlainDriver.PQresultStatus(Fres);
-    if ((Status = PGRES_TUPLES_OK) or (Status = PGRES_SINGLE_TUPLE)) and
-       (BindList.HasOutOrInOutOrResultParam) then begin
-      if not Assigned(LastResultSet) then
-        FOutParamResultSet := CreateResultSet(fServerCursor);
-      LastUpdateCount := RawToIntDef(FPlainDriver.PQcmdTuples(Fres), 0);
-    end else begin
-      LastUpdateCount := RawToIntDef(FPlainDriver.PQcmdTuples(Fres), 0);
+    LastUpdateCount := RawToIntDef(FPlainDriver.PQcmdTuples(Fres), 0);
+    if ((Status = PGRES_TUPLES_OK) or (Status = PGRES_SINGLE_TUPLE)) then begin
+      if LastResultSet = nil then
+        LastResultSet := CreateResultSet(fServerCursor);
+      if (BindList.HasOutOrInOutOrResultParam) then
+          FOutParamResultSet := CreateResultSet(fServerCursor);
+    end else
       FPlainDriver.PQclear(Fres);
-    end;
   end;
   Result := LastUpdateCount;
+  { Logging Execution }
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(cLoggingType[Findeterminate_datatype or (FRawPlanName = '')],Self);
 end;
 
 procedure TZAbstractPostgreSQLPreparedStatementV3.FlushPendingResults;
@@ -1399,13 +1405,13 @@ end;
 
 const cFrom: PChar = 'FROM';
 function TZAbstractPostgreSQLPreparedStatementV3.GetRawEncodedSQL(
-  const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): RawByteString;
+  const SQL: SQLString): RawByteString;
 var
   I, C, FirstComposePos, BracketCnt, J: Integer;
   ParamsCnt: Cardinal;
   Tokens: TZTokenList;
   Token: PZToken;
-  tmp{$IFNDEF UNICODE}, Fraction{$ENDIF}: RawByteString;
+  tmp: RawByteString;
   SQLWriter, ParamWriter: TZRawSQLStringWriter;
   ComparePrefixTokens: TPreparablePrefixTokens;
   procedure Add(const Value: RawByteString; const Param: Boolean);
@@ -1467,9 +1473,7 @@ begin
           {$IFDEF UNICODE}
           Tmp := PUnicodeToRaw(Tokens[FirstComposePos].P, Tokens[I-1].P-Tokens[FirstComposePos].P+Tokens[I-1].L, FClientCP);
           {$ELSE}
-          if Consettings.AutoEncode
-          then ParamWriter.Finalize(Tmp)
-          else Tmp := Tokens.AsString(FirstComposePos, I-1);
+          Tmp := Tokens.AsString(FirstComposePos, I-1);
           {$ENDIF}
           Add(Tmp, False);
           if (Token.P^ = '?') then begin
@@ -1490,25 +1494,14 @@ begin
           end;
           Add(Tmp, True);
           Tmp := '';
-        end {$IFNDEF UNICODE} else if (FirstComposePos <= I) and ConSettings.AutoEncode then
-          case (Token.TokenType) of
-            ttQuoted, ttComment,
-            ttWord, ttQuotedIdentifier: begin
-                Fraction := ConSettings^.ConvFuncs.ZStringToRaw(TokenAsString(Token^), ConSettings^.CTRL_CP, FClientCP);
-                ParamWriter.AddText(Fraction, Tmp);
-              end;
-            else ParamWriter.AddText(Token.P, Token.L, tmp);
-          end
-        {$ENDIF};
+        end;
       end;
       I := Tokens.Count -1;
       if (FirstComposePos <= I) then begin
         {$IFDEF UNICODE}
         Tmp := PUnicodeToRaw(Tokens[FirstComposePos].P, Tokens[I].P-Tokens[FirstComposePos].P+Tokens[I].L, FClientCP);
         {$ELSE}
-        if ConSettings.AutoEncode
-        then ParamWriter.Finalize(Tmp)
-        else Tmp := Tokens.AsString(FirstComposePos, I);
+        Tmp := Tokens.AsString(FirstComposePos, I);
         {$ENDIF}
         Add(Tmp, False);
       end;
@@ -1596,7 +1589,7 @@ begin
     else if SQLType in [stBytes, stString, stUnicodeString, stAsciistream, stUnicodeStream, stBinaryStream] then
       Result := SQLType
     else
-      Result := stUnknown; //indicate unsupport the types as Fallback to String format
+      Result := stUnknown; //indicate unsupport types as fallback to String format
   end;
 end;
 
@@ -1608,29 +1601,39 @@ procedure TZAbstractPostgreSQLPreparedStatementV3.PGExecutePrepare;
 var PError: PAnsiChar;
   Res: TPGresult;
   Status: TZPostgreSQLExecStatusType;
+  AC: Boolean;
 begin
+  AC := Connection.GetAutoCommit;
+  RestartTimer;
+  if not AC then
+    Connection.StartTransaction;
+  try
+    Res := FPlainDriver.PQprepare(FconnAddress^, Pointer(FRawPlanName),
+      Pointer(ASQL), BindList.Count-FOutParamCount, nil{Pointer(FPQParamOIDs)});
+    Status := FPlainDriver.PQresultStatus(Res);
+    if (Ord(Status) > ord(PGRES_TUPLES_OK)) then begin
+      if Assigned(FPlainDriver.PQresultErrorField)
+      then PError := FPlainDriver.PQresultErrorField(Res,Ord(PG_DIAG_SQLSTATE))
+      else PError := FPLainDriver.PQerrorMessage(FconnAddress^);
+      if (PError <> nil) and (PError^ <> #0) then
+        { check for indermine datatype error}
+        if Assigned(FPlainDriver.PQresultErrorField) and (ZSysUtils.ZMemLComp(PError, indeterminate_datatype, 5) <> 0) then
+          FPostgreSQLConnection.HandleErrorOrWarning(Status, lcPrepStmt, SQL, Self, Res)
+        else begin
+          FPlainDriver.PQclear(Res);
+          Findeterminate_datatype := True
+        end
+    end else begin
+      FPlainDriver.PQclear(Res);
+      PrepareInParameters;
+    end;
+  finally
+    if not AC then
+      Connection.Rollback;
+  end;
   { Logging Execution }
   if DriverManager.HasLoggingListener then
     DriverManager.LogMessage(lcPrepStmt,Self);
-  Res := FPlainDriver.PQprepare(FconnAddress^, Pointer(FRawPlanName),
-    Pointer(ASQL), BindList.Count-FOutParamCount, nil{Pointer(FPQParamOIDs)});
-  Status := FPlainDriver.PQresultStatus(Res);
-  if (Ord(Status) > ord(PGRES_TUPLES_OK)) then begin
-    if Assigned(FPlainDriver.PQresultErrorField)
-    then PError := FPlainDriver.PQresultErrorField(Res,Ord(PG_DIAG_SQLSTATE))
-    else PError := FPLainDriver.PQerrorMessage(FconnAddress^);
-    if (PError <> nil) and (PError^ <> #0) then
-      { check for indermine datatype error}
-      if Assigned(FPlainDriver.PQresultErrorField) and (ZSysUtils.ZMemLComp(PError, indeterminate_datatype, 5) <> 0) then
-        FPostgreSQLConnection.HandleErrorOrWarning(Status, lcPrepStmt, fASQL, Self, Res)
-      else begin
-        FPlainDriver.PQclear(Res);
-        Findeterminate_datatype := True
-      end
-  end else begin
-    FPlainDriver.PQclear(Res);
-    PrepareInParameters;
-  end;
 end;
 
 function TZAbstractPostgreSQLPreparedStatementV3.PGExecutePrepared: TPGresult;
@@ -1638,20 +1641,21 @@ var PError: PAnsiChar;
   Status: TZPostgreSQLExecStatusType;
 label ReExecuteStr;
 begin
-  { Logging Execution }
+  { logs the values }
   if DriverManager.HasLoggingListener then
-    DriverManager.LogMessage(lcExecPrepStmt,Self);
+    DriverManager.LogMessage(lcBindPrepStmt,Self);
+  RestartTimer;
   if fAsyncQueries then begin
     Result := nil; //satisfy compiler
     if FPlainDriver.PQsendQueryPrepared(FconnAddress^,
        Pointer(FRawPlanName), BindList.Count-FOutParamCount, Pointer(FPQparamValues),
        Pointer(FPQparamLengths), Pointer(FPQparamFormats), FPQResultFormat) <> Ord(PGRES_COMMAND_OK) then
-      FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecPrepStmt, fASQL, Self, nil)
+      FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecPrepStmt, SQL, Self, nil)
     else begin
       if FServerCursor then
         FPlainDriver.PQsetSingleRowMode(FconnAddress^);
       if FplainDriver.PQconsumeInput(FconnAddress^) <> Ord(PGRES_COMMAND_OK) then
-        FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecPrepStmt, fASQL, Self, nil);
+        FPostgreSQLConnection.HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecPrepStmt, SQL, Self, nil);
       Result := FPlainDriver.PQgetResult(FconnAddress^); //obtain the first result
     end
   end else begin
@@ -1671,9 +1675,11 @@ ReExecuteStr:
         FPQResultFormat := ParamFormatStr; //fall back to string format
         goto ReExecuteStr;
       end else
-        FPostgreSQLConnection.HandleErrorOrWarning(Status, lcExecPrepStmt, fASQL, Self, Result)
+        FPostgreSQLConnection.HandleErrorOrWarning(Status, lcExecPrepStmt, SQL, Self, Result)
     end;
   end;
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcExecPrepStmt,Self);
 end;
 
 procedure TZAbstractPostgreSQLPreparedStatementV3.PGExecuteUnPrepare;
@@ -1687,9 +1693,6 @@ var
   end;
 begin
   fRawTemp := 'DEALLOCATE "'+FRawPlanName+'"';
-  { Logging Execution }
-  if DriverManager.HasLoggingListener then
-    DriverManager.LogMessage(lcUnprepStmt,Self);
   Res := FPlainDriver.PQExec(FconnAddress^, Pointer(fRawTemp));
   Status := FPlainDriver.PQresultStatus(Res);
   if Status <> PGRES_COMMAND_OK then begin
@@ -1698,11 +1701,19 @@ begin
     else PError := FPLainDriver.PQerrorMessage(FconnAddress^);
     if (PError <> nil) and (PError^ <> #0) then
       { check for current transaction is aborted error}
-      if Assigned(FPlainDriver.PQresultErrorField) and (ZSysUtils.ZMemLComp(PError, current_transaction_is_aborted, 5) <> 0) then
-        FPostgreSQLConnection.HandleErrorOrWarning(status, lcUnprepStmt, fASQL, Self, Res)
-      else
+      if Assigned(FPlainDriver.PQresultErrorField) and (ZSysUtils.ZMemLComp(PError, current_transaction_is_aborted, 5) <> 0) then begin
+        {$IFDEF UNICODE}
+        FUniTemp := ASCII7ToUnicodeString(fRawTemp);
+        FPostgreSQLConnection.HandleErrorOrWarning(status, lcUnprepStmt, FUniTemp, Self, Res);
+        {$ELSE}
+        FPostgreSQLConnection.HandleErrorOrWarning(status, lcUnprepStmt, fRawTemp, Self, Res)
+        {$ENDIF}
+      end else
         DoOnFail
   end else FPlainDriver.PQclear(Res);
+  { Logging Execution }
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcUnprepStmt,Self);
 end;
 
 {**
@@ -1863,7 +1874,7 @@ begin
   if (Value <> nil) and (SQLType in [stAsciiStream, stUnicodeStream]) then begin
     if Value.IsClob
     then Value.SetCodePageTo(FClientCP)
-    else RefCntLob := CreateRawCLobFromBlob(Value, ConSettings, FOpenLobStreams);
+    else raise CreateConversionError(Index, stBinaryStream, stAsciiStream);
     SQLType := stAsciiStream;
   end;
   BindList.Put(Index, SQLType, RefCntLob);
@@ -2145,7 +2156,11 @@ begin
   CheckParameterIndex(I);
   BindList.SetParamTypes(ParameterIndex , SQLType, ParamType);
   if Name <> '' then
-    FParamNames[ParameterIndex] := ConSettings.ConvFuncs.ZStringToRaw(Name, ConSettings.CTRL_CP, FClientCP);
+    {$IFDEF UNICODE}
+    FParamNames[ParameterIndex] := ZUnicodeToRaw(Name, FClientCP);
+    {$ELSE}
+    FParamNames[ParameterIndex] := Name;
+    {$ENDIF}
 
   if ParamType in [pctOut, pctReturn] then begin
     FOutParamCount := 0;
@@ -2389,11 +2404,14 @@ end;
   @param x the parameter value
 }
 procedure TZPostgreSQLPreparedStatementV3.AddParamLogValue(
-  ParamIndex: Integer; SQLWriter: TZRawSQLStringWriter;
-  var Result: RawByteString);
+  ParamIndex: Integer; SQLWriter: TZSQLStringWriter; var Result: SQLString);
 var P: Pointer;
   BindValue: PZBindValue;
   BCD: TBCD;
+{$IFDEF UNICODE}
+  CP: Word;
+label jmpMov;
+{$ENDIF}
 begin
   CheckParameterIndex(ParamIndex);
   BindValue := BindList[ParamIndex];
@@ -2426,15 +2444,33 @@ begin
                     else SQLWriter.AddDateTime(PG2DateTime(PDouble(P)^), ConSettings^.WriteFormatSettings.DateTimeFormat, Result);
         end;
       end;
+    {$IFDEF UNICODE}
+    zbtRawString, zbtUTF8String {$IFNDEF NEXTGEN}, zbtAnsiString{$ENDIF}: begin
+            if BindValue.BindType = zbtRawString then
+              CP := FClientCP
+            else if BindValue.BindType = zbtUTF8String then
+              CP := zCP_UTF8
+            else CP := ZOSCodePage;
+            FUniTemp := ZRawToUnicode(RawByteString(BindValue.Value), CP);
+            goto jmpMov;
+          end;
+    {$ELSE}
     zbtRawString, zbtUTF8String {$IFNDEF NEXTGEN}, zbtAnsiString{$ENDIF}: SQLWriter.AddTextQuoted(RawByteString(BindValue.Value), AnsiChar(#39), Result);
-    zbtCharByRef: SQLWriter.AddTextQuoted(PAnsiChar(PZCharRec(BindValue.Value)^.P), PZCharRec(BindValue.Value)^.Len, AnsiChar(#39), Result);
+    {$ENDIF}
+    zbtCharByRef: {$IFDEF UNICODE} begin
+                  FUniTemp := PRawToUnicode(PZCharRec(BindValue.Value)^.P, PZCharRec(BindValue.Value)^.Len, PZCharRec(BindValue.Value).CP);
+jmpMov:           SQLWriter.AddTextQuoted(FUniTemp, #39, Result);
+                  FUniTemp := '';
+                  end; {$ELSE}
+                  SQLWriter.AddTextQuoted(PAnsiChar(PZCharRec(BindValue.Value)^.P), PZCharRec(BindValue.Value)^.Len, AnsiChar(#39), Result);
+                  {$ENDIF}
     zbtBinByRef: SQLWriter.AddHexBinary(PZBufRec(BindValue.Value).Buf, PZBufRec(BindValue.Value).Len, False, Result);
     zbtGUID:     SQLWriter.AddGUID(PGUID(BindValue.Value)^, [guidWithBrackets, guidQuoted], Result);
     zbtBytes:    SQLWriter.AddHexBinary(TBytes(BindValue.Value), False, Result);
     zbtLob: if BindValue.SQLType = stBinaryStream
             then SQLWriter.AddText('(BLOB)', Result)
             else SQLWriter.AddText('(CLOB)', Result);
-    zbtPointer: Result := BoolStrIntsRaw[BindValue.Value <> nil];
+    zbtPointer: Result := BoolStrInts[BindValue.Value <> nil];
     zbtCustom: if BindValue.SQLType = stArray
                 then SQLWriter.AddText('(ARRAY)', Result)
                 else if BindValue.SQLType = stCurrency
@@ -2512,7 +2548,7 @@ procedure TZPostgreSQLPreparedStatementV3.SetNull(Index: Integer;
   SQLType: TZSQLType);
 var InParamIdx: Integer;
 begin
-  InParamIdx := {$IFNDEF GENERIC_INDEX}Index -1{$ENDIF};
+  InParamIdx := Index{$IFNDEF GENERIC_INDEX} -1{$ENDIF};
   SQLType := OIDToSQLType(InParamIdx, SQLType);
   BindList.SetNull(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SQLType);
   FPQparamFormats[InParamIdx] := ParamFormatStr;

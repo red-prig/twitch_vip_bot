@@ -298,6 +298,7 @@ implementation
 
 uses
   Math, {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF}
+  {$IFDEF UNICODE}ZEncoding,{$ENDIF}
   ZFastCode, ZMessages, ZDbcMySqlUtils, ZDbcUtils, ZCollections,
   ZDbcProperties, ZDbcMySql;
 
@@ -1127,6 +1128,7 @@ function TZMySQLDatabaseMetadata.UncachedGetTables(const Catalog: string;
 var
   Len: NativeUInt;
   LCatalog, LTableNamePattern: string;
+  RS: IZResultSet;
 begin
   Result := inherited UncachedGetTables(Catalog, SchemaPattern, TableNamePattern, Types);
 
@@ -1152,16 +1154,19 @@ begin
     if not Result.First and (LTableNamePattern <> '%') then begin
       SetSilentError(true);
       try
-        if CreateStatementWithParams(FInfo).ExecuteQuery(
+        RS := CreateStatementWithParams(FInfo).ExecuteQuery(
           Format('SHOW COLUMNS FROM %s.%s',
           [IC.Quote(LCatalog),
-           IC.Quote(LTableNamePattern)])).Next then
-        begin
-          Result.MoveToInsertRow;
-          Result.UpdateString(CatalogNameIndex, LCatalog);
-          Result.UpdateString(TableNameIndex, LTableNamePattern);
-          Result.UpdateString(TableColumnsSQLType, 'TABLE');
-          Result.InsertRow;
+           IC.Quote(LTableNamePattern)]));
+        if (RS <> nil) then begin
+          if RS.Next then begin
+            Result.MoveToInsertRow;
+            Result.UpdateString(CatalogNameIndex, LCatalog);
+            Result.UpdateString(TableNameIndex, LTableNamePattern);
+            Result.UpdateString(TableColumnsSQLType, 'TABLE');
+            Result.InsertRow;
+          end;
+          Rs.Close;
         end;
       finally
         SetSilentError(False);
@@ -2710,7 +2715,11 @@ begin
           Result.UpdateRawByteString(CatalogNameIndex, 'def');
           Result.UpdatePAnsiChar(SchemaNameIndex, GetPAnsiChar(PROCEDURE_SCHEM_index, Len), Len); //PROCEDURE_SCHEM
           Result.UpdatePAnsiChar(ProcColProcedureNameIndex, GetPAnsiChar(PROCEDURE_NAME_Index, Len), Len); //PROCEDURE_NAME
-          TypeName := ConSettings^.ConvFuncs.ZStringToRaw(Params[2], ConSettings^.CTRL_CP, ConSettings^.ClientCodePage^.CP);
+          {$IFDEF UNICODE}
+          TypeName := ZUnicodeToRaw(Params[2], ConSettings^.ClientCodePage^.CP);
+          {$ELSE}
+          TypeName := Params[2];
+          {$ENDIF}
           ConvertMySQLColumnInfoFromString(TypeName, Temp, FieldType, ColumnSize, Scale,
             fMySQL_FieldType_Bit_1_IsBoolean);
           { process COLUMN_NAME }

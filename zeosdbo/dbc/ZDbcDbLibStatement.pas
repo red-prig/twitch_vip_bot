@@ -107,7 +107,7 @@ type
   private
     function GetRawSQL: RawByteString; override;
   protected
-    procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZRawSQLStringWriter; Var Result: RawByteString); override;
+    procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZSQLStringWriter; Var Result: SQLString); override;
   public
     procedure SetNull(ParameterIndex: Integer; SQLType: TZSQLType);
     procedure SetBoolean(ParameterIndex: Integer; Value: Boolean);
@@ -125,7 +125,7 @@ type
     procedure SetBigDecimal(ParameterIndex: Integer; const Value: TBCD);
     procedure SetCharRec(ParameterIndex: Integer; const Value: TZCharRec);reintroduce;
     procedure SetString(ParameterIndex: Integer; const Value: String);reintroduce;
-    procedure SetUnicodeString(ParameterIndex: Integer; const Value: ZWideString); reintroduce;
+    procedure SetUnicodeString(ParameterIndex: Integer; const Value: UnicodeString); reintroduce;
     procedure SetBytes(ParameterIndex: Integer; const Value: TBytes); reintroduce; overload;
     procedure SetGuid(ParameterIndex: Integer; const Value: TGUID); reintroduce;
     procedure SetBytes(ParameterIndex: Integer; Value: PByte; Len: NativeUInt); reintroduce; overload;
@@ -170,7 +170,7 @@ type
     procedure SetBigDecimal(ParameterIndex: Integer; const Value: TBCD);
     procedure SetCharRec(ParameterIndex: Integer; const Value: TZCharRec);reintroduce;
     procedure SetString(ParameterIndex: Integer; const Value: String);reintroduce;
-    procedure SetUnicodeString(ParameterIndex: Integer; const Value: ZWideString); reintroduce;
+    procedure SetUnicodeString(ParameterIndex: Integer; const Value: UnicodeString); reintroduce;
     procedure SetBytes(ParameterIndex: Integer; const Value: TBytes); reintroduce; overload;
     procedure SetBytes(ParameterIndex: Integer; Value: PByte; Len: NativeUInt); reintroduce; overload;
     procedure SetGuid(ParameterIndex: Integer; const Value: TGUID); reintroduce;
@@ -186,9 +186,9 @@ type
     procedure SetTimestamp(ParameterIndex: Integer; const Value: TZTimeStamp); reintroduce; overload;
     procedure SetBlob(Index: Integer; SQLType: TZSQLType; const Value: IZBlob); override{keep it virtual because of (set)ascii/uniocde/binary streams};
   public
-    function ExecuteQuery(const {%H-}SQL: ZWideString): IZResultSet; override;
-    function ExecuteUpdate(const {%H-}SQL: ZWideString): Integer; override;
-    function Execute(const {%H-}SQL: ZWideString): Boolean; override;
+    function ExecuteQuery(const {%H-}SQL: UnicodeString): IZResultSet; override;
+    function ExecuteUpdate(const {%H-}SQL: UnicodeString): Integer; override;
+    function Execute(const {%H-}SQL: UnicodeString): Boolean; override;
 
     function ExecuteQuery(const {%H-}SQL: RawByteString): IZResultSet; override;
     function ExecuteUpdate(const {%H-}SQL: RawByteString): Integer; override;
@@ -383,7 +383,7 @@ begin
   repeat
     ResultsRETCODE := FPlainDriver.dbresults(FHandle);
     if ResultsRETCODE = DBFAIL then
-      FDBLibConnection.CheckDBLibError(lcOther, 'FETCHRESULTS/dbresults');
+      FDBLibConnection.CheckDBLibError(lcFetch, 'FETCHRESULTS/dbresults', IImmediatelyReleasable(FWeakImmediatRelPtr));
     cmdRowRETCODE := FPlainDriver.dbcmdrow(FHandle);
     //EH: if NO_MORE_RESULTS there might be a final update count see TestSF380(a/b)
     if (cmdRowRETCODE = DBSUCCEED) and (ResultsRETCODE <> NO_MORE_RESULTS) then begin
@@ -426,10 +426,14 @@ end;
 procedure TZAbstracDBLibSQLStatement.InternalExecute;
 var Raw: RawByteString;
 begin
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcBindPrepStmt,Self);
+  LastUpdateCount := -1;
+  RestartTimer;
   Raw := GetRawSQL;
   if FDBLibConnection.GetProvider = dpMsSQL then
     //This one is to avoid a bug in dblib interface as it drops a single backslash before line end
-    Raw := {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings.{$ENDIF}StringReplace(Raw, '\'#13, '\\'#13, [rfReplaceAll])
+    Raw := StringReplaceAll_CS_GToEQ(Raw, RawByteString('\'#13), RawByteString('\\'#13))
   else
     //This one is to avoid sybase error: Invalid operator for datatype op: is null type: VOID TYPE
     Raw := StringReplaceAll_CS_LToEQ(Raw, RawByteString(' AND NULL IS NULL'), EmptyRaw);
@@ -441,11 +445,12 @@ begin
   //  FDBLibConnection.CheckDBLibError(lcExecute, SQL);
 
   if FPlainDriver.dbcmd(FHandle, Pointer(Raw)) <> DBSUCCEED then
-    FDBLibConnection.CheckDBLibError(lcExecute, Raw);
+    FDBLibConnection.CheckDBLibError(lcExecute, SQL, IImmediatelyReleasable(FWeakImmediatRelPtr));
 
   if FPlainDriver.dbsqlexec(FHandle) <> DBSUCCEED then
-    FDBLibConnection.CheckDBLibError(lcExecute, Raw);
-  DriverManager.LogMessage(lcExecute, ConSettings^.Protocol, Raw);
+    FDBLibConnection.CheckDBLibError(lcExecute, SQL, IImmediatelyReleasable(FWeakImmediatRelPtr));
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcExecute, Self);
 end;
 
 { TZDBLibPreparedStatementEmulated }
@@ -530,11 +535,7 @@ begin
       if Value.IsClob then begin
         P := RefCntLob.GetPAnsiChar(CP, R, Len);
         FRawTemp := SQLQuotedStr(P, Len, AnsiChar(#39))
-      end else begin
-        P := Value.GetBuffer(R, Len);
-        FRawTemp := GetValidatedAnsiStringFromBuffer(P, Len, ConSettings, CP);
-        FRawTemp := SQLQuotedStr(FRawTemp, AnsiChar(#39));
-      end;
+      end else raise CreateConversionError(Index, stBinaryStream, stAsciiStream);
       BindList.Put(Index, stAsciiStream, FRawTemp, CP);
     end else begin
       P := RefCntLob.GetBuffer(R, Len);
@@ -672,9 +673,11 @@ begin
 end;
 
 procedure TZDBLibPreparedStatementEmulated.AddParamLogValue(
-  ParamIndex: Integer; SQLWriter: TZRawSQLStringWriter;
-  var Result: RawByteString);
+  ParamIndex: Integer; SQLWriter: TZSQLStringWriter; var Result: SQLString);
 var Bind: PZBindValue;
+  {$IFDEF UNICODE}
+  CP: Word;
+  {$ENDIF}
 begin
   Bind := BindList[ParamIndex];
   if Bind.BindType = zbtNull then
@@ -687,7 +690,19 @@ begin
                     else SQLWriter.AddText('(TRUE)', Result);
     stAsciiStream:  SQLWriter.AddText('(CLOB)', Result);
     stBinaryStream: SQLWriter.AddText('(BLOB)', Result);
+    {$IFDEF UNICODE}
+    stString: begin
+        if (FClientCP = zCP_UTF8) or FIsNCharIndex[ParamIndex]
+        then CP := zCP_UTF8
+        else CP := FClientCP;
+        fUniTemp := ZRawToUnicode(RawByteString(Bind.Value), CP);
+        SQLWriter.AddTextQuoted(fUniTemp, #39, Result);
+        fUniTemp := '';
+      end;
+    else            SQLWriter.AddAscii7Text(Pointer(RawByteString(Bind.Value)), Length(RawByteString(Bind.Value)), Result);
+    {$ELSE}
     else            SQLWriter.AddText(RawByteString(Bind.Value), Result);
+    {$ENDIF}
   end;
 end;
 
@@ -755,14 +770,8 @@ begin
   if (FClientCP = zCP_UTF8) or FIsNCharIndex[ParameterIndex]
   then CP := zCP_UTF8
   else CP := FClientCP;
-  if ConSettings.AutoEncode then begin
-    FRawTemp := ConSettings.ConvFuncs.ZStringToRaw(Value, ConSettings.CTRL_CP, CP);
-    P := Pointer(FRawTemp);
-    L := Length(FRawTemp);
-  end else begin
-    P := Pointer(Value);
-    L := Length(Value);
-  end;
+  P := Pointer(Value);
+  L := Length(Value);
   FRawTemp := SQLQuotedStr(P, L, #39);
   BindList.Put(ParameterIndex, stString, FRawTemp, CP);
   {$ENDIF}
@@ -809,7 +818,7 @@ begin
 end;
 
 procedure TZDBLibPreparedStatementEmulated.SetUnicodeString(ParameterIndex: Integer;
-  const Value: ZWideString);
+  const Value: UnicodeString);
 var CP: Word;
 begin
   {$IFNDEF GENERIC_INDEX}ParameterIndex := ParameterIndex-1;{$ENDIF}
@@ -878,7 +887,7 @@ var I: Integer;
   Bind: PZBindValue;
 begin
   if FPLainDriver.dbRPCInit(FHandle, Pointer(fASQL), 0) <> DBSUCCEED then
-    FDBLibConnection.CheckDBLibError(lcOther, 'EXECUTEPREPARED:dbRPCInit');
+    FDBLibConnection.CheckDBLibError(lcOther, 'EXECUTEPREPARED:dbRPCInit', IImmediatelyReleasable(FWeakImmediatRelPtr));
   for i := 1 to BindList.Count -1 do begin //skip the returnparam
     Bind := BindList[I];
     case Bind.BindType of
@@ -952,8 +961,8 @@ begin
         {$IFDEF UNICODE}
         ColumnInfo.ColumnLabel := PRawToUnicode(Data, StrLen(Data), FClientCP);
         {$ELSE}
-        ZSetString(PAnsiChar(Data), StrLen(Data), fRawTemp);
-        ColumnInfo.ColumnLabel := ConSettings.ConvFuncs.ZRawToString(fRawTemp, FClientCP, ConSettings.CTRL_CP);
+        ZSetString(PAnsiChar(Data), StrLen(Data), fRawTemp{$IFDEF WITH_RAWBYTESTRING}, fClientCP{$ENDIF});
+        ColumnInfo.ColumnLabel := fRawTemp;
         {$ENDIF}
         RetType := FPLainDriver.dbRetType(FHandle, N);
         Data := FPlainDriver.dbRetData(FHandle, N);
@@ -1108,13 +1117,13 @@ begin
   Prepare;
   BindInParameters;
   if FPLainDriver.dbRpcExec(FHandle) <> DBSUCCEED then
-    FDBLibConnection.CheckDBLibError(lcOther, 'EXECUTEPREPARED:dbRPCExec');
+    FDBLibConnection.CheckDBLibError(lcExecute, 'EXECUTEPREPARED:dbRPCExec', IImmediatelyReleasable(FWeakImmediatRelPtr));
   FetchResults;
   Result := (FResults.Count > 0) and Supports(FResults[0], IZResultSet, FLastResultSet);
 end;
 
 {$IFDEF FPC} {$PUSH} {$WARN 5033 off : Function result does not seem to be set} {$ENDIF}
-function TZDBLIBPreparedRPCStatement.Execute(const SQL: ZWideString): Boolean;
+function TZDBLIBPreparedRPCStatement.Execute(const SQL: UnicodeString): Boolean;
 begin
   Raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
@@ -1138,7 +1147,7 @@ end;
 
 {$IFDEF FPC} {$PUSH} {$WARN 5033 off : Function result does not seem to be set} {$ENDIF}
 function TZDBLIBPreparedRPCStatement.ExecuteQuery(
-  const SQL: ZWideString): IZResultSet;
+  const SQL: UnicodeString): IZResultSet;
 begin
   Raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
@@ -1146,7 +1155,7 @@ end;
 
 {$IFDEF FPC} {$PUSH} {$WARN 5033 off : Function result does not seem to be set} {$ENDIF}
 function TZDBLIBPreparedRPCStatement.ExecuteUpdate(
-  const SQL: ZWideString): Integer;
+  const SQL: UnicodeString): Integer;
 begin
   Raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
@@ -1169,8 +1178,12 @@ end;
 
 procedure TZDBLIBPreparedRPCStatement.InternalExecute;
 begin
+  if DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcBindPrepStmt,Self);
+  RestartTimer;
+  LastUpdateCount := -1;
   if FPLainDriver.dbRpcExec(FHandle) <> DBSUCCEED then
-    FDBLibConnection.CheckDBLibError(lcOther, 'EXECUTEPREPARED:dbRPCExec');
+    FDBLibConnection.CheckDBLibError(lcExecute, SQL, IImmediatelyReleasable(FWeakImmediatRelPtr));
 end;
 
 procedure TZDBLIBPreparedRPCStatement.RegisterParameter(ParameterIndex: Integer;
@@ -1178,7 +1191,11 @@ procedure TZDBLIBPreparedRPCStatement.RegisterParameter(ParameterIndex: Integer;
   PrecisionOrSize, Scale: LengthInt);
 begin
   inherited;
-  FParamNames[ParameterIndex] := ConSettings.ConvFuncs.ZStringToRaw(Name, ConSettings.CTRL_CP, FClientCP);
+  {$IFDEF UNICODE}
+  FParamNames[ParameterIndex] := ZUnicodeToRaw(Name, FClientCP);
+  {$ELSE}
+  FParamNames[ParameterIndex] := Name;
+  {$ENDIF}
 end;
 
 {$IFNDEF NO_ANSISTRING}
@@ -1371,9 +1388,7 @@ begin
   {$IFDEF UNICODE}
   SetUnicodeString(ParameterIndex, Value);
   {$ELSE}
-  if ConSettings.AutoEncode
-  then SetRawByteString(ParameterIndex, ConSettings^.ConvFuncs.ZStringToRaw(Value, ConSettings.CTRL_CP, FClientCP))
-  else SetRawByteString(ParameterIndex, Value)
+  SetRawByteString(ParameterIndex, Value)
   {$ENDIF}
 end;
 
@@ -1418,7 +1433,7 @@ begin
 end;
 
 procedure TZDBLIBPreparedRPCStatement.SetUnicodeString(ParameterIndex: Integer;
-  const Value: ZWideString);
+  const Value: UnicodeString);
 begin
   SetRawByteString(ParameterIndex, PUnicodeToRaw(Pointer(Value), Length(Value), FClientCP));
 end;

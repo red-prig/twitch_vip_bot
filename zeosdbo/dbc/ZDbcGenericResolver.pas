@@ -78,11 +78,10 @@ type
   TZGenerateSQLCachedResolver = class (TZAbstractCachedResolver, IZCachedResolver)
   private
     FStatement : IZStatement;
-    FTransactions: array[Boolean] of IZTransaction;
+    FTransaction: IZTransaction;
     FDatabaseMetadata: IZDatabaseMetadata;
     FIdentifierConvertor: IZIdentifierConvertor;
 
-    FInsertColumns: TZIndexPairList;
     FUpdateColumns: TZIndexPairList;
     FWhereColumns: TZIndexPairList;
     FCurrentWhereColumns: TZIndexPairList;
@@ -94,6 +93,8 @@ type
     FUpdateStatements: TZHashMap;
     FDeleteStatements: TZHashMap;
   protected
+    FInsertColumns: TZIndexPairList;
+    FInsertStatements: TZHashMap;
     InsertStatement: IZPreparedStatement;
 
     function ComposeFullTableName(const Catalog, Schema, Table: SQLString;
@@ -104,7 +105,7 @@ type
     procedure SetResolverStatementParamters(const Statement: IZStatement;
       {$IFDEF AUTOREFCOUNT}const {$ENDIF}Params: TStrings); virtual;
 
-    procedure FillInsertColumnsPairList;
+    procedure FillInsertColumnsPairList(NewRowAccessor: TZRowAccessor);
     procedure FillUpdateColumns(const OldRowAccessor,NewRowAccessor: TZRowAccessor);
     procedure FillWhereKeyColumns(IncrementDestIndexBy: Integer);
     procedure FillWhereAllColumns(IncrementDestIndexBy: Integer;
@@ -115,6 +116,7 @@ type
       write FDatabaseMetadata;
     property IdentifierConvertor: IZIdentifierConvertor
       read FIdentifierConvertor write FIdentifierConvertor;
+    property Statement: IZStatement read FStatement;
 
     property UpdateColumnsLookup: TZIndexPairList read FUpdateColumns;
     { all determined WhereColumns cached }
@@ -131,15 +133,14 @@ type
 
     procedure FormWhereClause(const SQLWriter: TZSQLStringWriter;
       const OldRowAccessor: TZRowAccessor; var Result: SQLString); virtual;
-    function FormInsertStatement: SQLString;
+    function FormInsertStatement(NewRowAccessor: TZRowAccessor): SQLString; virtual;
     function FormUpdateStatement(
       const OldRowAccessor, NewRowAccessor: TZRowAccessor): SQLString;
     function FormDeleteStatement(const OldRowAccessor: TZRowAccessor): SQLString;
     function FormCalculateStatement(const RowAccessor: TZRowAccessor;
       const ColumnsLookup: TZIndexPairList): SQLString; virtual;
   public //implement IZCachedResolver
-    procedure SetReadOnlyTransaction(const Value: IZTransaction);
-    procedure SetReadWriteTransaction(const Value: IZTransaction);
+    procedure SetTransaction(const Value: IZTransaction); virtual;
 
     procedure CalculateDefaults(const Sender: IZCachedResultSet; const RowAccessor: TZRowAccessor);
     procedure PostUpdates(const Sender: IZCachedResultSet;
@@ -153,32 +154,6 @@ type
   end;
   //just an alias for compatibility
   TZGenericCachedResolver = TZGenerateSQLCachedResolver;
-  (*
-  TZUserDefinedSQLCachedResolver = class(TInterfacedObject, IZCachedResolver)
-  private
-    //EH: Stmt cache for performance boost using prepareds
-    FStmts: Array[utModified..utDeleted] of IZCollection;
-    FRefreshRS: IZResultSet;
-    FRefreshStmt: IZPreparedStatement;
-    FDeleteSQL: TStrings;
-    FInsertSQL: TStrings;
-    FModifySQL: TStrings;
-    //FOSPATCH
-    FRefreshSQL: TStrings;
-    //FOSPATCH
-    FMetadata: IZResultSetMetadata;
-  public
-    procedure CalculateDefaults(const Sender: IZCachedResultSet;
-      RowAccessor: TZRowAccessor);
-    procedure PostUpdates(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
-      OldRowAccessor, NewRowAccessor: TZRowAccessor);
-    {BEGIN of PATCH [1185969]: Do tasks after posting updates. ie: Updating AutoInc fields in MySQL }
-    procedure UpdateAutoIncrementFields(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
-      OldRowAccessor, NewRowAccessor: TZRowAccessor; const Resolver: IZCachedResolver);
-    {END of PATCH [1185969]: Do tasks after posting updates. ie: Updating AutoInc fields in MySQL }
-    procedure RefreshCurrentRow(const Sender: IZCachedResultSet; RowAccessor: TZRowAccessor); //FOS+ 07112006
-  end;
-  //*)
 
 implementation
 
@@ -214,6 +189,7 @@ begin
     DSProps_Where, 'keyonly')) = 'ALL';
   FUpdateStatements := TZHashMap.Create;
   FDeleteStatements := TZHashMap.Create;
+  FInsertStatements := TZHashMap.Create;
 end;
 
 {**
@@ -240,6 +216,7 @@ begin
 
   FreeAndNil(FDeleteStatements);
   FreeAndNil(FUpdateStatements);
+  FreeAndNil(FInsertStatements);
 
   FlustStmt(InsertStatement);
   if RefreshResultSet <> nil then
@@ -311,8 +288,8 @@ begin
   Result := nil;
   try
     SetResolverStatementParamters(FStatement, Temp);
-    if FTransactions[False] <> nil
-    then Result := FTransactions[False].GetConnection.PrepareStatementWithParams(SQL, Temp)
+    if FTransaction <> nil
+    then Result := FTransaction.GetConnection.PrepareStatementWithParams(SQL, Temp)
     else Result := Connection.PrepareStatementWithParams(SQL, Temp);
   finally
     Temp.Free;
@@ -328,21 +305,23 @@ end;
 procedure TZGenerateSQLCachedResolver.FillUpdateColumns(
   const OldRowAccessor, NewRowAccessor: TZRowAccessor);
 var I, j: Integer;
+  IP: PZIndexPair;
 begin
   FUpdateColumns.Clear;
   { Use precached parameters. }
   if FInsertColumns.Count = 0 then
-    FillInsertColumnsPairList;
+    FillInsertColumnsPairList(NewRowAccessor);
   { Defines parameters for UpdateAll mode. }
   if UpdateAll then
     FUpdateColumns.Assign(FInsertColumns)
   else begin
     FUpdateColumns.Capacity := FInsertColumns.Count;
     J := FirstDbcIndex;
-    for I := FirstDbcIndex to FUpdateColumns.Capacity{$IFDEF GENERIC_INDEX}-1{$ENDIF} do begin
+    for I := 0 to FUpdateColumns.Capacity-1 do begin
+      IP := PZIndexPair(FInsertColumns[i]);
       if (OldRowAccessor.CompareBuffer(OldRowAccessor.RowBuffer,
-         NewRowAccessor.RowBuffer, I, NewRowAccessor.GetCompareFunc(I, ckEquals))  <> 0) then begin
-        FUpdateColumns.Add(J, I);
+         NewRowAccessor.RowBuffer, IP.ColumnIndex, NewRowAccessor.GetCompareFunc(IP.ColumnIndex, ckEquals))  <> 0) then begin
+        FUpdateColumns.Add(J, IP.ColumnIndex);
         Inc(J);
       end;
     end;
@@ -513,7 +492,8 @@ end;
   Forms a INSERT statements.
   @return the composed insert SQL
 }
-function TZGenerateSQLCachedResolver.FormInsertStatement: SQLString;
+function TZGenerateSQLCachedResolver.FormInsertStatement(
+  NewRowAccessor: TZRowAccessor): SQLString;
 var
   I, ColumnIndex: Integer;
   Tmp: SQLString;
@@ -533,8 +513,10 @@ begin
     SQLWriter.AddChar(' ', Result);
     SQLWriter.AddChar('(', Result);
     if FInsertColumns.Count = 0 then
-      FillInsertColumnsPairList;
-    if FInsertColumns.Count = 0 then begin
+      FillInsertColumnsPairList(NewRowAccessor);
+    if (FInsertColumns.Count = 0) and not
+       {test for generated always cols }
+       ((Metadata.GetColumnCount > 0) and Metadata.IsAutoIncrement(FirstDbcIndex)) then begin
       Result := '';
       Exit;
     end;
@@ -640,7 +622,7 @@ begin
   end;
 end;
 
-procedure TZGenerateSQLCachedResolver.FillInsertColumnsPairList;
+procedure TZGenerateSQLCachedResolver.FillInsertColumnsPairList(NewRowAccessor: TZRowAccessor);
 var I, J: Integer;
   Tmp: String;
 begin
@@ -649,7 +631,7 @@ begin
   J := FirstDbcIndex;
   for I := FirstDbcIndex to FInsertColumns.Capacity{$IFDEF GENERIC_INDEX}-1{$ENDIF} do begin
     Tmp := Metadata.GetTableName(I);
-    if (Tmp = '') or not Metadata.IsWritable(I) then continue;
+    if (Tmp = '') or not Metadata.IsWritable(I) or (Metadata.IsAutoIncrement(I) and NewRowAccessor.IsNull(I)) then continue;
     Tmp := Metadata.GetColumnName(I);
     if Tmp <> '' then begin
       FInsertColumns.Add(J, I);
@@ -704,6 +686,7 @@ var
   lValidateUpdateCount : Boolean;
   TempKey              : IZAnyValue;
   SenderStatement      : IZStatement;
+  Val                  : IZInterface;
   {$IFDEF WITH_VALIDATE_UPDATE_COUNT}
   function CreateInvalidUpdateCountException: EZSQLException; //suppress _U/LStrArrClear
   begin
@@ -718,9 +701,16 @@ begin
     utInserted:
       begin
         if (InsertStatement = nil) or InsertStatement.IsClosed then begin
-          SQL := FormInsertStatement;
-          InsertStatement := CreateResolverStatement(SQL);
-          Statement := InsertStatement;
+          InsertStatement := nil;
+          SQL := FormInsertStatement(NewRowAccessor);
+          TempKey := TZAnyValue.CreateWithInteger(Hash(SQL));
+          Val := FInsertStatements.Get(TempKey);
+          If (Val = nil) or (Val.QueryInterface(IZPreparedStatement, InsertStatement) <> S_OK) or InsertStatement.IsClosed then begin
+            if (Val <> nil) then
+              FInsertStatements.Remove(TempKey);
+            InsertStatement := CreateResolverStatement(SQL);
+            FInsertStatements.Put(TempKey, InsertStatement);
+          end;
         end;
         Statement := InsertStatement;
         NewRowAccessor.FillStatement(Statement, FInsertColumns, Metadata);
@@ -801,7 +791,7 @@ var Stmt: IZPreparedStatement;
     SQL := 'SELECT ';
     try
       if FInsertColumns.Count = 0 then
-        FillInsertColumnsPairList;
+        FillInsertColumnsPairList(RowAccessor);
       if FInsertColumns.Count = 0 then
         Exit;
       for I := 0 to FInsertColumns.Count-1 do begin
@@ -841,16 +831,32 @@ begin
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
-procedure TZGenerateSQLCachedResolver.SetReadOnlyTransaction(
+procedure TZGenerateSQLCachedResolver.SetTransaction(
   const Value: IZTransaction);
+var Stmt: IZStatement;
+  Col: IZCollection;
 begin
-  FTransactions[True] := Value;
-end;
-
-procedure TZGenerateSQLCachedResolver.SetReadWriteTransaction(
-  const Value: IZTransaction);
-begin
-  FTransactions[False] := Value;
+  if FTransaction <> Value then begin
+    FTransaction := Value;
+    if InsertStatement <> nil
+    then Stmt := InsertStatement
+    else begin
+      Col := nil;
+      if (FUpdateStatements.Count > 0) then
+        Col := FUpdateStatements.GetValues
+      else if (FDeleteStatements.Count > 0) then
+        Col := FDeleteStatements.GetValues;
+      if (Col <> nil) then
+        Col[0].QueryInterface(IZStatement, Stmt);
+    end;
+    { test if statement is part of session -> FB always all others will fail}
+    if (Stmt <> nil) and ((Value = nil) or (Stmt.GetConnection <> Value.GetConnection)) then begin
+      Stmt.Close;
+      InsertStatement := nil;
+      FUpdateStatements.Clear;
+      FDeleteStatements.Clear;
+    end;
+  end;
 end;
 
 procedure TZGenerateSQLCachedResolver.SetResolverStatementParamters(
@@ -859,7 +865,7 @@ begin
   Params.Assign(Statement.GetParameters);
 end;
 
-{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "$1" not used} {$ENDIF}
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Sender" not used} {$ENDIF}
  {**
   Calculate default values for the fields.
   @param Sender a cached result set object.
@@ -891,7 +897,6 @@ begin
     SQL := FormCalculateStatement(RowAccessor, DefaultColumnsLookup);
     if SQL = '' then
        Exit;
-
     { Executes statement and fills default fields. }
     Statement := Connection.CreateStatement;
     ResultSet := Statement.ExecuteQuery(SQL);

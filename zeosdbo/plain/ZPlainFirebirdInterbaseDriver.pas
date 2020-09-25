@@ -114,11 +114,10 @@ const
   SQL_BOOLEAN                    = 590; // IB7
   SQL_TIMESTAMP_TZ_EX_FB         = 32748; //FB4+
   SQL_TIME_TZ_EX_FB              = 32756; //FB4+
-  SQL_INT128_FB                  = 32752; //FB4+
+  SQL_DEC_FIXED                  = 32758; //FB4+
   SQL_TIMESTAMP_TZ_FB            = 32754; //FB4+
-  SQL_TIME_TZ_FB                 = 32756; //FB4+
-  SQL_DEC16_FB                   = 32760; //FB4+
-  SQL_DEC34_FB                   = 32762; //FB4+
+  SQL_DEC16                      = 32760; //FB4+
+  SQL_DEC34                      = 32762; //FB4+
   SQL_BOOLEAN_FB                 = 32764; //FB3+
   SQL_NULL                       = 32766; //FB25+
 
@@ -2286,6 +2285,7 @@ type
 
   { TZFirebirdBaseDriver }
 
+  {$IFNDEF ZEOS_DISABLE_INTERBASE}
   TZInterbasePlainDriver = class (TZInterbaseFirebirdPlainDriver,
     IZInterbasePlainDriver)
   protected
@@ -2304,6 +2304,7 @@ type
     function GetProtocol: string; override;
     function GetDescription: string; override;
   end;
+  {$ENDIF ZEOS_DISABLE_INTERBASE}
 
   {** Implements a native driver for Firebird }
   TZFirebirdPlainDriver = class (TZInterbasePlainDriver)
@@ -2319,16 +2320,6 @@ type
     fb_get_master_interface: function: IMaster; cdecl;
   {$ENDIF ZEOS_DISABLE_FIREBIRD}
   end;
-
-  {$IFNDEF ZEOS_DISABLE_FIREBIRD}
-  TZFirebird3UpPlainDriver = class(TZFirebirdPlainDriver)
-  protected
-    function Clone: IZPlainDriver; override;
-  public
-    function GetProtocol: string; override;
-    function GetDescription: string; override;
-  end;
-  {$ENDIF ZEOS_DISABLE_FIREBIRD}
 
 {$ENDIF DISABLE_INTERBASE_AND_FIREBIRD}
 
@@ -2501,7 +2492,9 @@ begin
   AddCodePage('GB18030', CS_GB18030, ceAnsi, zCP_GB18030, '', 4); {Chinese}
 end;
 
-{ IZFirebirdPlainDriver }
+{ TZInterbasePlainDriver }
+
+{$IFNDEF ZEOS_DISABLE_INTERBASE}
 
 {$IFDEF ENABLE_INTERBASE_CRYPT}
 procedure TZInterbasePlainDriver.Initialize(const Location: String = '');
@@ -2565,7 +2558,7 @@ begin
   FPreLoader.Free;
   inherited Destroy;
 end;
-{$ENDIF}
+{$ENDIF ENABLE_INTERBASE_CRYPT}
 
 function TZInterbasePlainDriver.GetDescription: string;
 begin
@@ -2576,6 +2569,7 @@ function TZInterbasePlainDriver.GetProtocol: string;
 begin
   Result := 'interbase';
 end;
+{$ENDIF ZEOS_DISABLE_INTERBASE}
 
 { TZFirebirdPlainDriver }
 
@@ -2602,22 +2596,6 @@ begin
     @fb_get_master_interface  := GetAddress('fb_get_master_interface');
   end;
 end;
-
-function TZFirebird3UpPlainDriver.Clone: IZPlainDriver;
-begin
-  Result := TZFirebird3UpPlainDriver.Create;
-end;
-
-function TZFirebird3UpPlainDriver.GetDescription: string;
-begin
-  Result := 'Native Plain Driver for Firebird 3up';
-end;
-
-function TZFirebird3UpPlainDriver.GetProtocol: string;
-begin
-  Result := 'firebird3up';
-end;
-
 {$ENDIF ZEOS_DISABLE_FIREBIRD}
 
 {$ENDIF DISABLE_INTERBASE_AND_FIREBIRD}

@@ -57,8 +57,8 @@ interface
 uses
   {$IFDEF USE_SYNCOMMONS}SynCommons, {$ENDIF}
   Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
-  {$IFNDEF NO_UNIT_CONTNRS}Contnrs,{$ENDIF} TypInfo, FmtBcd,
-  ZCompatibility, ZDbcIntfs, ZClasses, ZTokenizer, ZVariant, ZSysUtils,
+  {$IFNDEF NO_UNIT_CONTNRS}Contnrs{$ELSE}ZClasses{$ENDIF}, TypInfo, FmtBcd,
+  ZCompatibility, ZDbcIntfs, ZTokenizer, ZVariant, ZSysUtils,
   ZDbcResultSetMetadata;
 
 const SQL_MAX_NUMERIC_LEN = 16;
@@ -170,7 +170,7 @@ function ToLikeString(const Value: string): string;
   @param ODBC a boolean if output result should be with a starting 0x...
   @returns a valid hex formated unicode-safe string
 }
-function GetSQLHexWideString(Value: PAnsiChar; Len: Integer; ODBC: Boolean = False): ZWideString;
+function GetSQLHexWideString(Value: PAnsiChar; Len: Integer; ODBC: Boolean = False): UnicodeString;
 function GetSQLHexAnsiString(Value: PAnsiChar; Len: Integer; ODBC: Boolean = False): RawByteString;
 function GetSQLHexString(Value: PAnsiChar; Len: Integer; ODBC: Boolean = False): String;
 
@@ -231,37 +231,17 @@ procedure Curr2DBNumeric_BE(const Src: Currency; Dest: PDB_NUMERIC; const Numeri
 
 procedure MoveReverseByteOrder(Dest, Src: PAnsiChar; Len: LengthInt);
 
-function TokenizeSQLQueryRaw(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}; Const ConSettings: PZConSettings;
+function TokenizeSQLQueryRaw(const SQL: SQLString; {$IFDEF UNICODE}RawCP: Word;{$ENDIF}
   const Tokenizer: IZTokenizer; var IsParamIndex: TBooleanDynArray;
   IsNCharIndex: PBooleanDynArray; ComparePrefixTokens: PPreparablePrefixTokens;
   var TokenMatchIndex: Integer): TRawByteStringDynArray;
 
-function TokenizeSQLQueryUni(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}; Const ConSettings: PZConSettings;
+function TokenizeSQLQueryUni(const SQL: SQLString; Const ConSettings: PZConSettings;
   const Tokenizer: IZTokenizer; var IsParamIndex: TBooleanDynArray;
   IsNCharIndex: PBooleanDynArray; ComparePrefixTokens: PPreparablePrefixTokens;
   var TokenMatchIndex: Integer): TUnicodeStringDynArray;
 
 function ExtractFields(const FieldNames: string; const SepChars: Array of Char): TStrings;
-
-
-{**
-  GetValidatedTextStream the incoming Stream for his given Memory and
-  returns a valid UTF8/Ansi StringStream
-  @param Stream the Stream with the unknown format and data
-  @return a valid utf8 encoded stringstram
-}
-function GetValidatedAnsiStringFromBuffer(const Buffer: Pointer; Size: Cardinal;
-  ConSettings: PZConSettings): RawByteString; overload; //deprecated;
-
-function GetValidatedAnsiStringFromBuffer(const Buffer: Pointer; Size: Cardinal;
-  ConSettings: PZConSettings; ToCP: Word): RawByteString; overload; //deprecated;
-
-{**
-  Set the string-types conversion funtion in relation to the Connection-Settings.
-  The Results should be as optimal as possible to speed up the behavior
-  @param ConSettings a Pointer to the ConnectionSetting
-}
-procedure SetConvertFunctions(ConSettings: PZConSettings);
 
 function CreateUnsupportedParameterTypeException(Index: Integer; ParamType: TZSQLType): EZSQLException;
 
@@ -299,6 +279,10 @@ function CreateReadOnlyException: EZSQLException;
 function CreateBinaryException: EZSQLException;
 function CreateNonBinaryException: EZSQLException;
 function CreateConversionError(ColumnIndex: Integer; Actual, Expected: TZSQLType): EZSQLException;
+function CreateBindVarOutOfRangeError(Index: Integer): EZSQLException;
+function CreateColumnWasNotFoundException(const ColumnName: String): EZSQLException;
+
+function GetW2A2WConversionCodePage(ConSettings: PZConSettings): Word; {$IFDEF WITH_INLINE}inline;{$ENDIF}
 
 const
   i4SpaceRaw: Integer = Ord(#32)+Ord(#32) shl 8 + Ord(#32) shl 16 +Ord(#32) shl 24;  //integer representation of the four space chars
@@ -634,7 +618,7 @@ end;
   @returns a valid hex formated unicode-safe string
 }
 
-function GetSQLHexWideString(Value: PAnsiChar; Len: Integer; ODBC: Boolean = False): ZWideString;
+function GetSQLHexWideString(Value: PAnsiChar; Len: Integer; ODBC: Boolean = False): UnicodeString;
 var P: PWideChar;
 begin
   ZSetString(nil, ((Len+1) shl 1)+Ord(not Odbc), Result{%H-});
@@ -712,8 +696,6 @@ end;
 procedure SQLNumeric2BCD(Src: PDB_NUMERIC; var Dest: TBCD; NumericLen: Integer);
 var
   Remainder, NextDigit, Precision, Scale: Word;
-  remPrecision: SmallInt absolute NextDigit;
-  signPrecision: SmallInt absolute Precision;
   NumericVal: array [0..SQL_MAX_NUMERIC_LEN - 1] of Byte;
   pDigitCopy, pNumDigit, pNibble, pFirstNibble, pLastNibble: PAnsiChar;
   ValueIsOdd: Boolean;
@@ -740,10 +722,10 @@ begin
   if Src.scale > Precision then begin
     NextDigit := Src.scale - Src.precision;
     Precision := Precision + NextDigit;
-    FillChar(Dest.Fraction, MaxFMTBcdDigits, #0);
   end;
+  FillChar(Dest.Fraction, MaxFMTBcdDigits, #0);
   ValueIsOdd := Precision and 1 = 1; //indicate how we write into the buffer
-  pLastNibble := pFirstNibble + MaxFMTBcdDigits -1;
+  pLastNibble := pFirstNibble + MaxFMTBcdDigits -1; //overflow remainder
   pNibble := pFirstNibble + ((Precision-1) shr 1); { address last bcd nibble we write in}
   if ValueIsOdd then begin
     PByte(pNibble)^ := 0; //clear last nibble
@@ -761,7 +743,7 @@ begin
     NextDigit := PByte(pNumDigit)^ + Remainder;
     PByte(pNumDigit)^ := NextDigit div 100;
     Remainder := ZBase100Byte2BcdNibbleLookup[NextDigit - (PByte(pNumDigit)^ * 100){mod 100}];
-    if PNibble <= PLastNibble then //overflow save
+    if PNibble <= pLastNibble then //overflow save
       if ValueIsOdd then begin //my new lookup version with bool algebra only
         PByte(pNibble+1)^ := PByte(pNibble+1)^ or ((Byte(Remainder) and $0F) shl 4);
         PByte(pNibble)^   := (Byte(Remainder) shr 4);
@@ -778,50 +760,12 @@ begin
     if PByte(pDigitCopy+NumericLen)^ = 0 then
       Dec(NumericLen); //as long we've no zero we've to loop again
   end;
-  Inc(pNibble, 1+Ord(ValueIsOdd));
-  pLastNibble := pFirstNibble + ((Precision+1) shr 1)-1; { address last bcd nibble }
-  Precision := (PLastNibble +1 - PNibble) shl 1 - Ord(ValueIsOdd);
-  {left pack the Bcd fraction }
-  remPrecision := Precision - Src.Scale;
-  while (signPrecision >= remPrecision) do begin
-    if ValueIsOdd and (PByte(pNibble)^ and $0F = 0) then
-      Inc(pNibble)
-    else if not (not ValueIsOdd and (PByte(pNibble)^ shr 4 = 0)) then
-      Break;
-    Dec(Precision);
-    ValueIsOdd := not ValueIsOdd;
-  end;
-  {move or left pact the fraction}
-  ValueIsOdd := (PByte(pNibble)^ shr 4 = 0);
-  if (PNibble > PNumDigit) or ValueIsOdd then begin {move nibbles foreward}
-    PNumDigit := PFirstNibble;
-    while (pNibble <= pLastNibble) do begin
-      if (PNibble > PNumDigit) then
-        PByte(PNumDigit)^ := PByte(pNibble)^;
-      if ValueIsOdd then begin
-        if PNumDigit < pLastNibble then
-          PByte(PNumDigit)^ := Byte((PByte(PNumDigit)^ and $0f) shl 4) or Byte(PByte(pNibble+1)^ shr 4);
-      end;
-      Inc(PNumDigit);
-      Inc(pNibble);
-    end;
-  end;
-  {right pack the Bcd scale fraction }
-  pLastNibble := pFirstNibble + ((Precision+1) shr 1)-1; { address last bcd nibble }
-  ValueIsOdd := Precision and 1 = 1;
-  while Scale > 0 do begin
-    if ValueIsOdd and (PByte(PLastNibble)^ shr 4 = 0) then
-      Dec(pLastNibble)
-    else if not (not ValueIsOdd and ((PByte(PLastNibble)^ and $0F) = 0)) then
-      Break;
-    Dec(Precision);
-    Dec(Scale);
-    ValueIsOdd := not ValueIsOdd;
-  end;
   Dest.Precision := Precision;
   if Src.sign = 0 then //negative ?
     Scale := Scale + (1 shl 7);
   Dest.SignSpecialPlaces := Scale;
+  if GetPacketBCDOffSets(Dest, PNibble, PLastNibble, Precision, Scale, ValueIsOdd) then
+    ZPackBCDToLeft(Dest, pNibble, pLastNibble, Precision, Scale, ValueIsOdd);
   if Pointer(pDigitCopy) <> Pointer(@NumericVal[0]) then
     FreeMem(pDigitCopy);
 end;
@@ -982,7 +926,6 @@ begin
     NumericLen := 1;
     Exit;
   end;
-
   { prepare local digit buffer }
   NumericLen := (pLastDigit - pNumDigit);
   if NumericLen >= SQL_MAX_NUMERIC_LEN
@@ -1226,21 +1169,17 @@ end;
   Splits a SQL query into a list of sections.
   @returns a list of splitted sections.
 }
-function TokenizeSQLQueryRaw(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}; Const ConSettings: PZConSettings;
+function TokenizeSQLQueryRaw(const SQL: SQLString;
+  {$IFDEF UNICODE}RawCP: Word;{$ENDIF}
   const Tokenizer: IZTokenizer; var IsParamIndex: TBooleanDynArray;
   IsNCharIndex: PBooleanDynArray; ComparePrefixTokens: PPreparablePrefixTokens;
   var TokenMatchIndex: Integer): TRawByteStringDynArray;
 var
   I, C, N, FirstComposePos: Integer;
-  CP: Word;
   NextIsNChar, ParamFound: Boolean;
   Tokens: TZTokenList;
   Token: PZToken;
   Tmp: RawByteString;
-  {$IFNDEF UNICODE}
-  SectionWriter: TZRawSQLStringWriter;
-  Fraction: RawByteString;
-  {$ENDIF}
 
   procedure Add(const Value: RawByteString; const Param: Boolean = False);
   begin
@@ -1260,14 +1199,8 @@ var
   end;
 begin
   ParamFound := (ZFastCode.{$IFDEF USE_FAST_CHARPOS}CharPos{$ELSE}Pos{$ENDIF}('?', SQL) > 0);
-  if ParamFound {$IFNDEF UNICODE}or ConSettings^.AutoEncode {$ENDIF}or Assigned(ComparePrefixTokens) then begin
+  if ParamFound or Assigned(ComparePrefixTokens) then begin
     Tokens := Tokenizer.TokenizeBufferToList(SQL, [toSkipEOF]);
-    CP := ConSettings^.ClientCodePage^.CP;
-    {$IFNDEF UNICODE}
-    if ConSettings^.AutoEncode
-    then SectionWriter := TZRawSQLStringWriter.Create(Length(SQL) shr 5)
-    else SectionWriter := nil; //satisfy compiler
-    {$ENDIF}
     try
       NextIsNChar := False;
       N := -1;
@@ -1300,15 +1233,13 @@ begin
       if ParamFound and Tokens.IsEqual(I, Char('?')) then begin
         if (FirstComposePos < Tokens.Count-1) then
           {$IFDEF UNICODE}
-          Tmp := PUnicodeToRaw(Tokens[FirstComposePos].P, Tokens[I-1].P-Tokens[FirstComposePos].P+Tokens[I-1].L, CP);
+          Tmp := PUnicodeToRaw(Tokens[FirstComposePos].P, Tokens[I-1].P-Tokens[FirstComposePos].P+Tokens[I-1].L, RawCP);
           {$ELSE}
-          if Consettings.AutoEncode
-          then SectionWriter.Finalize(Tmp)
-          else Tmp := Tokens.AsString(FirstComposePos, I-1);
+          Tmp := Tokens.AsString(FirstComposePos, I-1);
           {$ENDIF}
           Add(Tmp, False);
           {$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}
-          Add(ZUnicodeToRaw(Tokens.AsString(I, I), ConSettings^.ClientCodePage^.CP), True);
+          Add(ZUnicodeToRaw(Tokens.AsString(I, I), RawCP), True);
           {$ELSE}
           Add('?', True);
           {$ENDIF}
@@ -1316,47 +1247,36 @@ begin
           FirstComposePos := i +1;
         end else if ParamFound and (IsNCharIndex<> nil) and Tokens.IsEqual(I, Char('N')) and
             (Tokens.Count > i) and Tokens.IsEqual(i+1, Char('?')) then
-          NextIsNChar := True
-        {$IFNDEF UNICODE}
-        else if (FirstComposePos <= I) and ConSettings.AutoEncode then
-          case (Token.TokenType) of
-            ttQuoted, ttComment,
-            ttWord, ttQuotedIdentifier: begin
-                Fraction := ConSettings^.ConvFuncs.ZStringToRaw(TokenAsString(Token^), ConSettings^.CTRL_CP, CP);
-                SectionWriter.AddText(Fraction, Tmp);
-              end;
-            else SectionWriter.AddText(Token.P, Token.L, tmp);
-        end
-        {$ENDIF};
+          NextIsNChar := True;
       end;
       I := Tokens.Count -1;
       if (FirstComposePos <= Tokens.Count-1) then begin
         {$IFDEF UNICODE}
-        Tmp := PUnicodeToRaw(Tokens[FirstComposePos].P, Tokens[I].P-Tokens[FirstComposePos].P+Tokens[I].L, CP);
+        Tmp := PUnicodeToRaw(Tokens[FirstComposePos].P, Tokens[I].P-Tokens[FirstComposePos].P+Tokens[I].L, RawCP);
         {$ELSE}
-        if ConSettings.AutoEncode
-        then SectionWriter.Finalize(Tmp)
-        else Tmp := Tokens.AsString(FirstComposePos, I);
+        Tmp := Tokens.AsString(FirstComposePos, I);
         {$ENDIF}
         Add(Tmp, False);
       end;
     finally
       Tokens.Free;
-      {$IFNDEF UNICODE}
-      if ConSettings^.AutoEncode then
-        SectionWriter.Free;
-      {$ENDIF}
     end;
-  end
-  else
-    Add(ConSettings^.ConvFuncs.ZStringToRaw(SQL, ConSettings^.CTRL_CP, ConSettings^.ClientCodePage^.CP));
+  end else
+    {$IFDEF UNICODE}
+    begin
+      Tmp := ZUnicodeToRaw(SQL, RawCP);
+      Add(Tmp);
+    end;
+    {$ELSE}
+      Add(SQL);
+    {$ENDIF}
 end;
 
 {**
   Splits a SQL query into a list of sections.
   @returns a list of splitted sections.
 }
-function TokenizeSQLQueryUni(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}; Const ConSettings: PZConSettings;
+function TokenizeSQLQueryUni(const SQL: SQLString; Const ConSettings: PZConSettings;
   const Tokenizer: IZTokenizer; var IsParamIndex: TBooleanDynArray;
   IsNCharIndex: PBooleanDynArray; ComparePrefixTokens: PPreparablePrefixTokens;
   var TokenMatchIndex: Integer): TUnicodeStringDynArray;
@@ -1364,13 +1284,10 @@ var
   I, C, N: Integer;
   Tokens: TZTokenList;
   Token: PZToken;
-  Temp: ZWideString;
+  Temp: UnicodeString;
   FirstComposePos: Integer;
-  {$IFNDEF UNICODE}
-  SectionWriter: TZUnicodeSQLStringWriter;
-  {$ENDIF}
   NextIsNChar, ParamFound: Boolean;
-  procedure Add(const Value: ZWideString; Const Param: Boolean = False);
+  procedure Add(const Value: UnicodeString; Const Param: Boolean = False);
   begin
     SetLength(Result, Length(Result)+1);
     Result[High(Result)] := Value;
@@ -1387,13 +1304,8 @@ var
   end;
 begin
   ParamFound := (ZFastCode.{$IFDEF USE_FAST_CHARPOS}CharPos{$ELSe}Pos{$ENDIF}('?', SQL) > 0);
-  if ParamFound {$IFNDEF UNICODE}or ConSettings^.AutoEncode{$ENDIF} or Assigned(ComparePrefixTokens) then begin
+  if ParamFound or Assigned(ComparePrefixTokens) then begin
     Tokens := Tokenizer.TokenizeBufferToList(SQL, [toSkipEOF]);
-    {$IFNDEF UNICODE}
-    if ConSettings.AutoEncode
-    then SectionWriter := TZUnicodeSQLStringWriter.Create(Length(SQL))
-    else SectionWriter := nil;
-    {$ENDIF}
     try
       Temp := '';
       NextIsNChar := False;
@@ -1428,9 +1340,7 @@ begin
           {$IFDEF UNICODE}
           Temp := Tokens.AsString(FirstComposePos, I-1);
           {$ELSE}
-          if ConSettings.AutoEncode
-          then SectionWriter.Finalize(Temp)
-          else Temp := PRawToUnicode(Tokens[FirstComposePos].P, Tokens[I-1].P-Tokens[FirstComposePos].P+Tokens[I-1].L, ConSettings^.CTRL_CP);
+          Temp := PRawToUnicode(Tokens[FirstComposePos].P, Tokens[I-1].P-Tokens[FirstComposePos].P+Tokens[I-1].L, GetW2A2WConversionCodePage(ConSettings));
           {$ENDIF}
           Add(Temp, False);
           Add('?', True);
@@ -1438,40 +1348,25 @@ begin
           FirstComposePos := i +1;
         end else if ParamFound and (IsNCharIndex <> nil) and Tokens.IsEqual(I, Char('N')) and
           (Tokens.Count > i) and Tokens.IsEqual(I+1, Char('?')) then
-          NextIsNChar := True
-        {$IFNDEF UNICODE}
-        else if (FirstComposePos <= I) and ConSettings.AutoEncode then
-          case (Token.TokenType) of
-            ttQuoted, ttComment,
-            ttWord, ttQuotedIdentifier, ttKeyword:
-              SectionWriter.AddText(ConSettings^.ConvFuncs.ZStringToUnicode(Tokens.AsString(i), ConSettings^.CTRL_CP), Temp);
-            else SectionWriter.AddAscii7Text(Token.P, Token.L, Temp);
-          end;
-        {$ENDIF}
+            NextIsNChar := True
       end;
       I := Tokens.Count -1;
       if (FirstComposePos <= Tokens.Count-1) then begin
         {$IFDEF UNICODE}
         Temp := Tokens.AsString(FirstComposePos, I);
         {$ELSE}
-        if ConSettings.AutoEncode
-        then SectionWriter.Finalize(Temp)
-        else Temp := PRawToUnicode(Tokens[FirstComposePos].P, Tokens[I].P-Tokens[FirstComposePos].P+Tokens[I].L, ConSettings^.CTRL_CP);
+        Temp := PRawToUnicode(Tokens[FirstComposePos].P, Tokens[I].P-Tokens[FirstComposePos].P+Tokens[I].L, GetW2A2WConversionCodePage(ConSettings));
         {$ENDIF}
         Add(Temp, False);
       end;
     finally
       Tokens.Free;
-      {$IFNDEF UNICODE}
-      if ConSettings^.AutoEncode then
-        SectionWriter.Free;
-      {$ENDIF}
     end;
   end else
     {$IFDEF UNICODE}
     Add(SQL);
     {$ELSE}
-    Add(ConSettings^.ConvFuncs.ZStringToUnicode(SQL, ConSettings^.CTRL_CP));
+    Add(ZRawToUnicode(SQL, GetW2A2WConversionCodePage(ConSettings)));
     {$ENDIF}
 end;
 
@@ -1571,89 +1466,6 @@ begin
       end
     //else
       //Result := ceDefault
-end;
-
-{**
-  GetValidatedTextStream the incoming Stream for his given Memory and
-  returns a valid UTF8/Ansi StringStream
-  @param Stream the Stream with the unknown format and data
-  @return a valid utf8 encoded stringstram
-}
-function GetValidatedAnsiStringFromBuffer(const Buffer: Pointer; Size: Cardinal;
-  ConSettings: PZConSettings): RawByteString;
-var
-  US: ZWideString; //possible com base widestring -> prevent overflow
-  Bytes: TByteDynArray;
-  Encoding: TZCharEncoding;
-begin
-  if Size = 0 then
-    Result := EmptyRaw
-  else
-  begin
-    {$IFDEF WITH_VAR_INIT_WARNING}Bytes := nil;{$ENDIF}
-    SetLength(Bytes, Size +2);
-    {$IFDEF FAST_MOVE}ZFastCode{$ELSE}System{$ENDIF}.move(Buffer^, Pointer(Bytes)^, Size);
-    Encoding := TestEncoding(Bytes, Size);
-    SetLength(Bytes, 0);
-    case Encoding of
-      ceDefault: ZSetString(Buffer, Size, Result);
-      ceAnsi:
-        if ConSettings.ClientCodePage.Encoding in [ceAnsi, ceUTF16] then
-          if ( ConSettings.CTRL_CP = zCP_UTF8) or (ConSettings.CTRL_CP = ConSettings.ClientCodePage.CP) then //second test avoids encode the string twice
-            ZSetString(Buffer, Size, Result)  //should be exact
-          else
-          begin
-            US := PRawToUnicode(Buffer, Size, ConSettings.CTRL_CP);
-            Result := ZUnicodeToRaw(US, ConSettings.ClientCodePage.CP)
-          end
-        else begin  //Database expects UTF8
-          if ( ConSettings.CTRL_CP = zCP_UTF8) then
-            if ZOSCodePage = zCP_UTF8 then
-              US := ZSysUtils.ASCII7ToUnicodeString(Buffer, Size) //Can't localize the ansi CP
-            else
-              US := PRawToUnicode(Buffer, Size, ZOSCodePage)
-          else
-            US := PRawToUnicode(Buffer, Size, ConSettings.CTRL_CP);
-          Result := ZUnicodeToRaw(US, zCP_UTF8);
-        end;
-      ceUTF8:
-        if (ConSettings.ClientCodePage.Encoding in [ceAnsi, ceUTF16]) then begin//ansi expected
-          {$IFDEF WITH_LCONVENCODING}
-          ZSetString(Buffer, Size, Result);
-          Result := Consettings.PlainConvertFunc(Result);
-          {$ELSE}
-          US := PRawToUnicode(Buffer, Size, zCP_UTF8);
-          Result := ZUnicodeToRaw(US, ConSettings.ClientCodePage.CP)
-          {$ENDIF}
-         end else //UTF8 Expected
-           ZSetString(Buffer, Size, Result);  //should be exact
-      ceUTF16:
-        begin
-          SetLength(US, Size shr 1);
-          {$IFDEF FAST_MOVE}ZFastCode{$ELSE}System{$ENDIF}.Move(Buffer^, Pointer(US)^, Size);
-          if ConSettings.ClientCodePage.Encoding = ceAnsi then
-            {$IFDEF WITH_LCONVENCODING}
-            Result := Consettings.PlainConvertFunc(UTF8Encode(US))
-            {$ELSE}
-            Result := ZUnicodeToRaw(US, ConSettings.ClientCodePage.CP)
-            {$ENDIF}
-          else
-            Result := ZUnicodeToRaw(US, zCP_UTF8);
-        end;
-      else
-        Result := EmptyRaw;
-    end;
-  end;
-end;
-
-function GetValidatedAnsiStringFromBuffer(const Buffer: Pointer; Size: Cardinal;
-  ConSettings: PZConSettings; ToCP: Word): RawByteString;
-var DB_CP: Word;
-begin
-  DB_CP := ConSettings.ClientCodePage.CP;
-  ConSettings.ClientCodePage.CP := ToCP;
-  Result := GetValidatedAnsiStringFromBuffer(Buffer, Size, ConSettings);
-  ConSettings.ClientCodePage.CP := DB_CP;
 end;
 
 function CreateUnsupportedParameterTypeException(Index: Integer; ParamType: TZSQLType): EZSQLException;
@@ -2418,55 +2230,6 @@ DoRaise: raise EZSQLException.Create(IntToStr(Ord(ZArray.VArrayVariantType))+' '
   {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
 
-procedure SetConvertFunctions(ConSettings: PZConSettings);
-begin
-  FillChar(ConSettings^.ConvFuncs, SizeOf(ConSettings^.ConvFuncs), #0);
-
-  //Let's start with the AnsiTo/From types..
-  if ConSettings^.ClientCodePage^.IsStringFieldCPConsistent then begin
-    //last but not least the String to/from converters
-    //string represents the DataSet/IZResultSet Strings
-
-    {$IFDEF UNICODE}
-    Consettings^.ConvFuncs.ZStringToRaw := @ZConvertStringToRaw;
-    Consettings^.ConvFuncs.ZRawToString := @ZConvertRawToString;
-
-    ConSettings^.ConvFuncs.ZUnicodeToString := @ZConvertUnicodeToString;
-    Consettings^.ConvFuncs.ZStringToUnicode := @ZConvertStringToUnicode;
-    {$ELSE}
-    {String To/From Raw}
-    if (ConSettings^.ClientCodePage^.CP = ConSettings^.CTRL_CP) then begin
-      Consettings^.ConvFuncs.ZRawToString := @ZMoveRawToString;
-      if ConSettings^.AutoEncode
-      then Consettings^.ConvFuncs.ZStringToRaw := @ZConvertStringToRawWithAutoEncode
-      else Consettings^.ConvFuncs.ZStringToRaw := @ZMoveStringToRaw;
-    end else if ConSettings^.AutoEncode then begin
-      Consettings^.ConvFuncs.ZRawToString := @ZConvertRawToString;
-      Consettings^.ConvFuncs.ZStringToRaw := @ZConvertStringToRawWithAutoEncode;
-    end else begin
-      Consettings^.ConvFuncs.ZStringToRaw := @ZMoveStringToRaw;
-      Consettings^.ConvFuncs.ZRawToString := @ZMoveRawToString;
-    end;
-
-    {String To/From Unicode}
-    if ConSettings^.CTRL_CP = zCP_UTF8
-    then Consettings^.ConvFuncs.ZUnicodeToString := @ZConvertUnicodeToString_CPUTF8
-    else Consettings^.ConvFuncs.ZUnicodeToString := @ZConvertUnicodeToString;
-
-    if ConSettings^.AutoEncode
-    then Consettings^.ConvFuncs.ZStringToUnicode := @ZConvertStringToUnicodeWithAutoEncode
-    else if ConSettings^.CTRL_CP = zCP_UTF8
-      then Consettings^.ConvFuncs.ZStringToUnicode := @ZConvertString_CPUTF8ToUnicode
-      else Consettings^.ConvFuncs.ZStringToUnicode := @ZConvertStringToUnicode;
-    {$ENDIF}
-  end else begin //autoencode strings is allways true
-    Consettings^.ConvFuncs.ZStringToRaw := @ZConvertStringToRawWithAutoEncode;
-    Consettings^.ConvFuncs.ZRawToString := @ZConvertRawToString;
-    ConSettings^.ConvFuncs.ZUnicodeToString := @ZConvertUnicodeToString;
-    Consettings^.ConvFuncs.ZStringToUnicode := @ZConvertStringToUnicodeWithAutoEncode;
-  end;
-end;
-
 function CreateCanNotAccessBlobRecordException(ColumnIndex: Integer; SQLType: TZSQLType): EZSQLException;
 begin
   Result := EZSQLException.Create( Format(SCanNotAccessBlobRecord,
@@ -2500,6 +2263,28 @@ end;
 function CreateNonBinaryException: EZSQLException;
 begin
   Result := EZSQLException.Create(Format(SOperationIsNotAllowed3, ['NON BINARY']));
+end;
+
+function CreateBindVarOutOfRangeError(Index: Integer): EZSQLException;
+begin
+  Result := EZSQLException.Create(Format(SBindVarOutOfRange, [Index]));
+end;
+
+function CreateColumnWasNotFoundException(const ColumnName: String): EZSQLException;
+begin
+  Result := EZSQLException.Create(Format(SColumnWasNotFound, [ColumnName]));
+end;
+
+function GetW2A2WConversionCodePage(ConSettings: PZConSettings): Word; {$IFDEF WITH_INLINE}inline;{$ENDIF}
+begin
+  if (ConSettings = nil) or (ConSettings.W2A2WEncodingSource = encDefaultSystemCodePage) or (ConSettings.ClientCodePage.CP = zCP_UTF16)
+  then Result := {$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}DefaultSystemCodePage{$ELSE}
+      {$IFDEF LCL}zCP_UTF8{$ELSE}zOSCodePage{$ENDIF}{$ENDIF}
+  else if ConSettings.W2A2WEncodingSource = encDB_CP
+    then if ConSettings.ClientCodePage.Encoding = ceUTF16
+      then Result := zCP_UTF8
+      else Result := ConSettings.ClientCodePage.CP
+    else Result := zCP_UTF8;
 end;
 
 {$IF DEFINED(ENABLE_DBLIB) OR DEFINED(ENABLE_ODBC) OR DEFINED(ENABLE_OLEDB)}

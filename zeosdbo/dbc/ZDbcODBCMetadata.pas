@@ -249,7 +249,7 @@ type
     fPlainW: TODBC3UnicodePlainDriver;
   protected
     function CreateDatabaseInfo: IZDatabaseInfo; override; // technobot 2008-06-27
-    function DecomposeObjectString(const S: String): ZWideString; reintroduce;
+    function DecomposeObjectString(const S: String): UnicodeString; reintroduce;
   protected
     function UncachedGetTables(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string; const Types: TStringDynArray): IZResultSet; override;
@@ -312,7 +312,7 @@ implementation
 
 uses
   ZGenericSqlToken, ZDbcODBCUtils, ZDbcODBCResultSet, ZDbcLogging,
-  ZEncoding, ZSysUtils, ZFastCode
+  ZEncoding, ZSysUtils, ZFastCode {$IFNDEF Unicode},ZDbcUtils{$ENDIF}
   {$IF defined(NO_INLINE_SIZE_CHECK) and not defined(UNICODE) and defined(MSWINDOWS)},Windows{$IFEND}
   {$IFDEF NO_INLINE_SIZE_CHECK}, Math{$ENDIF};
 
@@ -399,7 +399,8 @@ begin
   Ret := TZODBC3PlainDriver(ODBCConnection.GetPlainDriver.GetInstance).SQLGetInfo(fPHDBC^,
     InfoType, @Result, SizeOf(SQLUINTEGER), nil);
   if Ret <> SQL_SUCCESS then
-    ODBCConnection.HandleDbcErrorOrWarning(ret, 'SQLGetInfo', lcOther, ODBCConnection);
+    ODBCConnection.HandleErrorOrWarning(ret, fPHDBC^, SQL_HANDLE_DBC,
+      'SQLGetInfo', lcOther, ODBCConnection);
 end;
 
 function TZAbstractODBCDatabaseInfo.GetUSmallDbcInfo(
@@ -413,7 +414,8 @@ begin
   Ret := TZODBC3PlainDriver(ODBCConnection.GetPlainDriver.GetInstance).SQLGetInfo(fPHDBC^,
     InfoType, @Result, SizeOf(SQLUSMALLINT), nil);
   if Ret <> SQL_SUCCESS then
-    ODBCConnection.HandleDbcErrorOrWarning(ret, 'SQLGetInfo', lcOther, ODBCConnection);
+    ODBCConnection.HandleErrorOrWarning(ret, fPHDBC^, SQL_HANDLE_DBC,
+      'SQLGetInfo', lcOther, ODBCConnection);
 end;
 
 {**
@@ -873,7 +875,8 @@ begin
     Result := ZSysUtils.StrToBoolEx(PAnsiChar(@Buf[0]), False)
   end else Ret := SQL_SUCCESS;
   if Ret <> SQL_SUCCESS then
-    ODBCConnection.HandleDbcErrorOrWarning(ret, 'SQLGetInfo', lcOther, ODBCConnection);
+    ODBCConnection.HandleErrorOrWarning(ret, fPHDBC^, SQL_HANDLE_DBC,
+      'SQLGetInfo', lcOther, ODBCConnection);
 end;
 
 {**
@@ -1600,16 +1603,29 @@ begin
   Result := TZODBCDatabaseInfoW.Create(Self, fPHDBC);
 end;
 
-function TODBCDatabaseMetadataW.DecomposeObjectString(const S: String): ZWideString;
+function TODBCDatabaseMetadataW.DecomposeObjectString(const S: String): UnicodeString;
+{$IFNDEF UNICODE}
+var tmp: String;
+    CP: Word;
+{$ENDIF}
 begin
-  if S = '' then
-    Result := ''
-  else
-    if IC.IsQuoted(S) then
-       Result := ConSettings^.ConvFuncs.ZStringToUnicode(IC.ExtractQuote(S), ConSettings^.CTRL_CP)
-    else
-      Result := ConSettings^.ConvFuncs.ZStringToUnicode(S, ConSettings^.CTRL_CP);
-
+  {$IFNDEF UNICODE}
+  CP := GetW2A2WConversionCodePage(ConSettings);
+  {$ENDIF}
+  if S = ''
+  then Result := ''
+  else if IC.IsQuoted(S) then begin
+    {$IFDEF UNICODE}
+    Result := IC.ExtractQuote(S)
+    {$ELSE}
+    tmp := IC.ExtractQuote(S);
+    Result := ZRawToUnicode(tmp, CP);
+    {$ENDIF}
+  end else {$IFDEF UNICODE}
+    Result := S;
+    {$ELSE}
+    Result := ZRawToUnicode(S, CP);
+    {$ENDIF}
 end;
 {**
   Gets a description of the stored procedures available in a
@@ -1650,7 +1666,7 @@ var
   RS: IZResultSet;
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
-  Cat, Schem, Proc: ZWideString;
+  Cat, Schem, Proc: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetProcedures(Catalog, SchemaPattern, ProcedureNamePattern);
@@ -1748,7 +1764,7 @@ var
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
   SQLType: TZSQLType;
-  Cat, Schem, Proc, Col: ZWideString;
+  Cat, Schem, Proc, Col: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetProcedureColumns(Catalog, SchemaPattern, ProcedureNamePattern, ColumnNamePattern);
@@ -1843,7 +1859,7 @@ var
   RS: IZResultSet;
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
-  Cat, Schem, Table, TableTypes: ZWideString;
+  Cat, Schem, Table, TableTypes: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetTables(Catalog, SchemaPattern, TableNamePattern, Types);
@@ -1853,11 +1869,14 @@ begin
   Table := DecomposeObjectString(TableNamePattern);
 
   TableTypes := '';
-  for I := Low(Types) to High(Types) do
-  begin
+  for I := Low(Types) to High(Types) do begin
     if Length(TableTypes) > 0 then
       TableTypes := TableTypes + ',';
-    TableTypes := TableTypes + ConSettings^.ConvFuncs.ZStringToUnicode(Types[I], ConSettings^.CTRL_CP);
+    {$IFDEF UNICODE}
+    TableTypes := TableTypes + Types[I];
+    {$ELSE}
+    TableTypes := TableTypes + ZRawToUnicode(Types[I], GetW2A2WConversionCodePage(ConSettings));
+    {$ENDIF}
   end;
   //skope of FPC !const! Connection: IZODBCConnection in methods is different to Delphi
   //we need to localize the connection
@@ -1865,21 +1884,18 @@ begin
   RS := TODBCResultSetW.CreateForMetadataCall(HSTMT, fPHDBC^, ODBCConnection);
   CheckStmtError(fPLainW.SQLTablesW(HSTMT, Pointer(Cat), Length(Cat), Pointer(Schem), Length(Schem),
     Pointer(Table), Length(Table), Pointer(TableTypes), Length(TableTypes)), HSTMT, ODBCConnection);
-  if Assigned(RS) then
-    with RS do
-    begin
-      while Next do
-      begin
-        Result.MoveToInsertRow;
-        Result.UpdatePWideChar(CatalogNameIndex, GetPWideChar(CatalogNameIndex, Len), Len);
-        Result.UpdatePWideChar(SchemaNameIndex, GetPWideChar(SchemaNameIndex, Len), Len);
-        Result.UpdatePWideChar(TableNameIndex, GetPWideChar(TableNameIndex, Len), Len);
-        Result.UpdatePWideChar(TableColumnsSQLType, GetPWideChar(TableColumnsSQLType, Len), Len);
-        Result.UpdatePWideChar(TableColumnsRemarks, GetPWideChar(TableColumnsRemarks, Len), Len);
-        Result.InsertRow;
-      end;
-      Close;
+  if Assigned(RS) then with RS do begin
+    while Next do begin
+      Result.MoveToInsertRow;
+      Result.UpdatePWideChar(CatalogNameIndex, GetPWideChar(CatalogNameIndex, Len), Len);
+      Result.UpdatePWideChar(SchemaNameIndex, GetPWideChar(SchemaNameIndex, Len), Len);
+      Result.UpdatePWideChar(TableNameIndex, GetPWideChar(TableNameIndex, Len), Len);
+      Result.UpdatePWideChar(TableColumnsSQLType, GetPWideChar(TableColumnsSQLType, Len), Len);
+      Result.UpdatePWideChar(TableColumnsRemarks, GetPWideChar(TableColumnsRemarks, Len), Len);
+      Result.InsertRow;
     end;
+    Close;
+  end;
 end;
 
 {**
@@ -1941,7 +1957,7 @@ var
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
   SQLType: TZSQLType;
-  Cat, Schem, Table, Column: ZWideString;
+  Cat, Schem, Table, Column: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetColumns(Catalog, SchemaPattern,
@@ -2044,7 +2060,7 @@ var
   RS: IZResultSet;
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
-  Cat, Schem, Tabl, Col: ZWideString;
+  Cat, Schem, Tabl, Col: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetColumnPrivileges(Catalog, Schema, Table, ColumnNamePattern);
@@ -2118,7 +2134,7 @@ var
   RS: IZResultSet;
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
-  Cat, Schem, Table: ZWideString;
+  Cat, Schem, Table: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetTablePrivileges(Catalog, SchemaPattern, TableNamePattern);
@@ -2181,7 +2197,7 @@ var
   RS: IZResultSet;
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
-  Cat, Schem, Tabl: ZWideString;
+  Cat, Schem, Tabl: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetPrimaryKeys(Catalog, Schema, Table);
@@ -2296,7 +2312,7 @@ var
   RS: IZResultSet;
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
-  PKCat, PKSchem, PKTabl, FKCat, FKSchem, FKTabl: ZWideString;
+  PKCat, PKSchem, PKTabl, FKCat, FKSchem, FKTabl: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetCrossReference(PrimaryCatalog, PrimarySchema, PrimaryTable,
@@ -2402,7 +2418,7 @@ var
   RS: IZResultSet;
   Len: NativeUInt;
   HSTMT: SQLHSTMT;
-  Cat, Schem, Tabl: ZWideString;
+  Cat, Schem, Tabl: UnicodeString;
   ODBCConnection: IZODBCConnection;
 begin
   Result:=inherited UncachedGetIndexInfo(Catalog, Schema, Table, Unique, Approximate);
@@ -2549,14 +2565,24 @@ begin
 end;
 
 function TODBCDatabaseMetadataA.DecomposeObjectString(const S: String): RawByteString;
+{$IFDEF UNICODE}
+var Tmp: String;
+{$ENDIF}
 begin
-  if S = '' then
-    Result := ''
-  else
-    if IC.IsQuoted(S) then
-       Result := ConSettings^.ConvFuncs.ZStringToRaw(IC.ExtractQuote(S), ConSettings^.CTRL_CP, ConSettings^.ClientCodePage^.CP)
-    else
-      Result := ConSettings^.ConvFuncs.ZStringToRaw(S, ConSettings^.CTRL_CP, ConSettings^.ClientCodePage^.CP);
+  if S = ''
+  then Result := ''
+  {$IFDEF UNICODE}
+  else begin
+    if IC.IsQuoted(S)
+    then Tmp := IC.ExtractQuote(S)
+    else Tmp := S;
+    Result := ZUnicodeToRaw(Tmp, ConSettings.ClientCodePage.CP);
+  end;
+  {$ELSE}
+  else if IC.IsQuoted(S)
+    then Result := IC.ExtractQuote(S)
+    else Result := S;
+  {$ENDIF}
 end;
 {**
   Gets a description of the stored procedures available in a
@@ -2801,11 +2827,14 @@ begin
   Tabl := DecomposeObjectString(TableNamePattern);
 
   TableTypes := '';
-  for I := Low(Types) to High(Types) do
-  begin
+  for I := Low(Types) to High(Types) do begin
     if Length(TableTypes) > 0 then
       TableTypes := TableTypes + ',';
-    TableTypes := TableTypes + ConSettings^.ConvFuncs.ZStringToRaw(Types[I], ConSettings^.CTRL_CP, ConSettings^.ClientCodePage^.CP);
+    {$IFDEF UNICODE}
+    TableTypes := TableTypes + ZUnicodeToRaw(Types[I], ConSettings^.ClientCodePage^.CP);
+    {$ELSE}
+    TableTypes := TableTypes + Types[I];
+    {$ENDIF}
   end;
 
   //skope of FPC !const! Connection: IZODBCConnection in methods is different to Delphi
@@ -2814,21 +2843,18 @@ begin
   RS := TODBCResultSetA.CreateForMetadataCall(HSTMT, fPHDBC^, ODBCConnection);
   CheckStmtError(fPLainA.SQLTables(HSTMT, Pointer(Cat), Length(Cat), Pointer(Schem), Length(Schem),
     Pointer(Tabl), Length(Tabl), Pointer(TableTypes), Length(TableTypes)), HSTMT, ODBCConnection);
-  if Assigned(RS) then
-    with RS do
-    begin
-      while Next do
-      begin
-        Result.MoveToInsertRow;
-        Result.UpdatePAnsiChar(CatalogNameIndex, GetPAnsiChar(CatalogNameIndex, Len), Len);
-        Result.UpdatePAnsiChar(SchemaNameIndex, GetPAnsiChar(SchemaNameIndex, Len), Len);
-        Result.UpdatePAnsiChar(TableNameIndex, GetPAnsiChar(TableNameIndex, Len), Len);
-        Result.UpdatePAnsiChar(TableColumnsSQLType, GetPAnsiChar(TableColumnsSQLType, Len), Len);
-        Result.UpdatePAnsiChar(TableColumnsRemarks, GetPAnsiChar(TableColumnsRemarks, Len), Len);
-        Result.InsertRow;
-      end;
-      Close;
+  if Assigned(RS) then with RS do begin
+    while Next do begin
+      Result.MoveToInsertRow;
+      Result.UpdatePAnsiChar(CatalogNameIndex, GetPAnsiChar(CatalogNameIndex, Len), Len);
+      Result.UpdatePAnsiChar(SchemaNameIndex, GetPAnsiChar(SchemaNameIndex, Len), Len);
+      Result.UpdatePAnsiChar(TableNameIndex, GetPAnsiChar(TableNameIndex, Len), Len);
+      Result.UpdatePAnsiChar(TableColumnsSQLType, GetPAnsiChar(TableColumnsSQLType, Len), Len);
+      Result.UpdatePAnsiChar(TableColumnsRemarks, GetPAnsiChar(TableColumnsRemarks, Len), Len);
+      Result.InsertRow;
     end;
+    Close;
+  end;
 end;
 
 {**
@@ -3483,7 +3509,7 @@ procedure TAbstractODBCDatabaseMetadata.CheckStmtError(RETCODE: SQLRETURN;
   StmtHandle: SQLHSTMT; const Connection: IZODBCConnection);
 begin
   if RetCode <> SQL_SUCCESS then
-     Connection.HandleStmtErrorOrWarning(RETCODE, StmtHandle, '', lcExecute, Connection);
+     Connection.HandleErrorOrWarning(RETCODE, StmtHandle, SQL_HANDLE_STMT, '', lcExecute, Connection);
 end;
 
 {**
@@ -3712,7 +3738,7 @@ end;
 }
 function TAbstractODBCDatabaseMetadata.UncachedGetTableTypes: IZResultSet;
 const
-  TableTypes: array[0..7] of ZWideString = (
+  TableTypes: array[0..7] of UnicodeString = (
     'ALIAS', 'TABLE', 'SYNONYM', 'SYSTEM TABLE', 'VIEW',
     'GLOBAL TEMPORARY', 'LOCAL TEMPORARY', 'SYSTEM VIEW'
   );
@@ -3742,7 +3768,8 @@ begin
   Ret := ODBCConnection.GetPlainDriver.SQLGetInfo(fPHDBC^, InfoType, @Buf[0],
     SizeOf(Buf), @PropLength);
   if Ret <> SQL_SUCCESS then
-    ODBCConnection.HandleDbcErrorOrWarning(ret, 'SQLGetInfo', lcOther, ODBCConnection);
+    ODBCConnection.HandleErrorOrWarning(ret, fPHDBC^, SQL_HANDLE_DBC,
+      'SQLGetInfo', lcOther, ODBCConnection);
   {$IFDEF UNICODE}
   SetString(Result, PWideChar(@Buf[0]), PropLength shr 1);
   {$ELSE}
@@ -3763,7 +3790,8 @@ begin
   Ret := ODBCConnection.GetPlainDriver.SQLGetInfo(fPHDBC^, InfoType, @Buf[0],
     SizeOf(Buf), @PropLength);
   if Ret <> SQL_SUCCESS then
-    ODBCConnection.HandleDbcErrorOrWarning(ret, 'SQLGetInfo', lcConnect, ODBCConnection);
+    ODBCConnection.HandleErrorOrWarning(ret,fPHDBC^, SQL_HANDLE_DBC,
+      'SQLGetInfo', lcConnect, ODBCConnection);
   {$IFDEF UNICODE}
   Result := PRawToUnicode(PAnsiChar(@Buf[0]),PropLength,ZOSCodePage);
   {$ELSE}

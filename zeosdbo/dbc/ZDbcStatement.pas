@@ -63,7 +63,7 @@ interface
 uses
   Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, FmtBCD,
   {$IF defined(UNICODE) and not defined(WITH_UNICODEFROMLOCALECHARS)}Windows,{$IFEND}
-  ZDbcIntfs, ZTokenizer, ZCompatibility, ZVariant, ZDbcLogging, ZClasses,
+  ZDbcIntfs, ZCompatibility, ZVariant, ZDbcLogging, ZClasses,
   ZDbcUtils;
 
 type
@@ -71,8 +71,8 @@ type
 
   { TZAbstractStatement }
 
-  TZAbstractStatement = class(TZImmediatelyReleasableObject, IZStatement, IZLoggingObject,
-    IImmediatelyReleasable)
+  TZAbstractStatement = class(TZImmediatelyReleasableObject, IZStatement,
+    IZLoggingObject, IImmediatelyReleasable)
   private
     FMaxFieldSize: Integer;
     FMaxRows: Integer;
@@ -88,25 +88,28 @@ type
     FBatchQueries: TStrings;
     FConnection: IZConnection;
     FInfo: TStrings;
-    FChunkSize: Integer; //size of buffer chunks for large lob's related to network settings
     FClosed: Boolean;
     FCachedLob: Boolean;
+    FStartTime: TDateTime;
     procedure SetLastResultSet(const ResultSet: IZResultSet); virtual;
   protected
     FLastResultSet: IZResultSet;
-    FCursorName: RawByteString;
-    FWSQL: ZWideString;
+    FCursorName: SQLString;
+    FWSQL: UnicodeString;
     FaSQL: RawByteString;
-    FStatementId : Integer;
+    FStatementId : NativeUint;
     FOpenResultSet: Pointer; //weak reference to avoid memory-leaks and cursor issues
     FClientCP: Word;
+    FWeakIZStatementPtr: Pointer; //weak reference to IZStatement intf of Self
+    FWeakIZLoggingObjectPtr: Pointer; //weak reference to IZLoggingObject intf of Self
     procedure PrepareOpenResultSetForReUse; virtual;
     procedure PrepareLastResultSetForReUse; virtual;
     procedure FreeOpenResultSetReference(const ResultSet: IZResultSet);
     procedure SetASQL(const Value: RawByteString); virtual;
-    procedure SetWSQL(const Value: ZWideString); virtual;
-    class function GetNextStatementId : integer;
+    procedure SetWSQL(const Value: UnicodeString); virtual;
+    class function GetNextStatementId: NativeUint;
     procedure ReleaseConnection; virtual;
+    procedure RestartTimer;
     property MaxFieldSize: Integer read FMaxFieldSize write FMaxFieldSize;
     property MaxRows: Integer read FMaxRows write FMaxRows;
     property EscapeProcessing: Boolean
@@ -123,30 +126,31 @@ type
       read FResultSetConcurrency write FResultSetConcurrency;
     property ResultSetType: TZResultSetType
       read FResultSetType write FResultSetType;
-    property CursorName: RawByteString read FCursorName write FCursorName;
+    property CursorName: String read FCursorName write FCursorName;
     property BatchQueries: TStrings read FBatchQueries;
     property Connection: IZConnection read FConnection;
     property Info: TStrings read FInfo;
     property Closed: Boolean read FClosed write FClosed;
 
     property SQL: String read {$IFDEF UNICODE}FWSQL{$ELSE}FASQL{$ENDIF};
-    property WSQL: ZWideString read FWSQL write SetWSQL;
+    property WSQL: UnicodeString read FWSQL write SetWSQL;
     property ASQL: RawByteString read FaSQL write SetASQL;
-    property ChunkSize: Integer read FChunkSize;
     property CachedLob: Boolean read FCachedLob;
     property ClientCP: word read FClientCP;
     function CreateStmtLogEvent(Category: TZLoggingCategory;
-      const Msg: RawByteString=EmptyRaw): TZLoggingEvent;
+      const Msg: SQLString = ''): TZLoggingEvent;
 
-    function GetRawEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): RawByteString; virtual;
-    function GetUnicodeEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): ZWideString; virtual;
+    function GetRawEncodedSQL(const SQL: SQLString): RawByteString; virtual;
+    function GetUnicodeEncodedSQL(const SQL: SQLString): UnicodeString; virtual;
+    property StartTime: TDateTime read FStartTime;
   public
     constructor Create(const Connection: IZConnection; {$IFDEF AUTOREFCOUNT}const{$ENDIF}Info: TStrings);
     destructor Destroy; override;
+    procedure AfterConstruction; override;
 
-    function ExecuteQuery(const SQL: ZWideString): IZResultSet; overload; virtual;
-    function ExecuteUpdate(const SQL: ZWideString): Integer; overload; virtual;
-    function Execute(const SQL: ZWideString): Boolean; overload; virtual;
+    function ExecuteQuery(const SQL: UnicodeString): IZResultSet; overload; virtual;
+    function ExecuteUpdate(const SQL: UnicodeString): Integer; overload; virtual;
+    function Execute(const SQL: UnicodeString): Boolean; overload; virtual;
 
     function ExecuteQuery(const SQL: RawByteString): IZResultSet; overload; virtual;
     function ExecuteUpdate(const SQL: RawByteString): Integer; overload; virtual;
@@ -201,6 +205,7 @@ type
     procedure ClearWarnings; virtual;
 
     function CreateLogEvent(const Category: TZLoggingCategory): TZLoggingEvent; virtual;
+    function GetStatementId: NativeUInt;
   end;
 
   TZBindType = (zbtNull, zbt8Byte, zbt4Byte,
@@ -284,7 +289,7 @@ type
     procedure Put(Index: Integer; SQLType: TZSQLType; Buf: Pointer; Len: LengthInt); overload;
     procedure Put(Index: Integer; SQLType: TZSQLType; const Value: RawByteString; CP: Word); overload;
     procedure Put(Index: Integer; SQLType: TZSQLType; Buf: Pointer; Len: LengthInt; CP: Word); overload;
-    procedure Put(Index: Integer; SQLType: TZSQLType; const Value: ZWideString); overload;
+    procedure Put(Index: Integer; SQLType: TZSQLType; const Value: UnicodeString); overload;
     procedure Put(Index: Integer; const Value: TZArray; AddArrayRef: Boolean); overload;
     procedure Put(Index: Integer; SQLType: TZSQLType; const Value: IZBLob); overload;
     procedure Put(Index: Integer; Value: PZBindValue); overload;
@@ -328,12 +333,12 @@ type
     FBindList: TZBindList;
   protected
     FOpenLobStreams: TZSortedList;
-    FUniTemp: ZWideString;
+    FUniTemp: UnicodeString;
     FRawTemp: RawByteString;
     FTokenMatchIndex, //did we match a token to indicate if Prepare makes sense?
     FCountOfQueryParams: Integer; //how many params did we found to prepvent mem-reallocs?
     FGUIDAsString: Boolean; //How should a GUID value be treaded?
-    FWeakIntfPtrOfIPrepStmt: Pointer; //EH: address of IZPreparedStatement(Self) to access non virtual methods
+    FWeakIZPreparedStatementPtr: Pointer; //EH: address of IZPreparedStatement(Self) to access non virtual methods
     FOutParamResultSet: IZResultSet;
     FClientCP: Word;
     FSupportsBidirectionalParamIO: Boolean;
@@ -352,8 +357,8 @@ type
     procedure SetParamCount(NewParamCount: Integer); virtual;
     procedure SetBindCapacity(Capacity: Integer); virtual;
 
-    procedure LogPrepStmtMessage(Category: TZLoggingCategory; const Msg: RawByteString = EmptyRaw);
-    procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZRawSQLStringWriter; Var Result: RawByteString); virtual;
+    procedure LogPrepStmtMessage(Category: TZLoggingCategory; const Msg: SQLString = '');
+    procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZSQLStringWriter; Var Result: SQLString); virtual;
     function GetCompareFirstKeywordStrings: PPreparablePrefixTokens; virtual;
     function ParamterIndex2ResultSetIndex(Value: Integer): Integer;
   protected //Properties
@@ -362,7 +367,7 @@ type
     property BindList: TZBindList read FBindList;
   protected //the sql conversions
     procedure SetASQL(const Value: RawByteString); override;
-    procedure SetWSQL(const Value: ZWideString); override;
+    procedure SetWSQL(const Value: UnicodeString); override;
   protected //binding
     procedure BindArray(Index: Integer; const Value: TZArray); virtual;
     procedure BindBinary(Index: Integer; SQLType: TZSQLType; Buf: Pointer; Len: LengthInt); virtual;
@@ -402,7 +407,7 @@ type
     function GetUTF8String(ParameterIndex: Integer): UTF8String;
     {$ENDIF}
     function GetRawByteString(ParameterIndex: Integer): RawByteString;
-    function GetUnicodeString(ParameterIndex: Integer): ZWideString;
+    function GetUnicodeString(ParameterIndex: Integer): UnicodeString;
 
     function GetBLob(ParameterIndex: Integer): IZBlob;
     function GetCLob(ParameterIndex: Integer): IZClob;
@@ -414,9 +419,9 @@ type
 
     function GetResultSet: IZResultSet; override;
 
-    function ExecuteQuery(const SQL: ZWideString): IZResultSet; override;
-    function ExecuteUpdate(const SQL: ZWideString): Integer; override;
-    function Execute(const SQL: ZWideString): Boolean; override;
+    function ExecuteQuery(const SQL: UnicodeString): IZResultSet; override;
+    function ExecuteUpdate(const SQL: UnicodeString): Integer; override;
+    function Execute(const SQL: UnicodeString): Boolean; override;
 
     function ExecuteQuery(const SQL: RawByteString): IZResultSet; override;
     function ExecuteUpdate(const SQL: RawByteString): Integer; override;
@@ -477,7 +482,7 @@ type
     procedure SetUTF8String(ParameterIndex: Integer; const Value: UTF8String);
     {$ENDIF}
     procedure SetRawByteString(ParameterIndex: Integer; const Value: RawByteString);
-    procedure SetUnicodeString(ParameterIndex: Integer; const Value: ZWideString);
+    procedure SetUnicodeString(ParameterIndex: Integer; const Value: UnicodeString);
   end;
 
   TZRawParamDetectPreparedStatement = class(TZRawPreparedStatement)
@@ -493,7 +498,7 @@ type
 
   TZUTF16PreparedStatement = class(TZAbstractPreparedStatement)
   protected
-    procedure BindUniStr(Index: Integer; const Value: ZWideString); overload; virtual;
+    procedure BindUniStr(Index: Integer; const Value: UnicodeString); overload; virtual;
     procedure BindUniStr(Index: Integer; Buf: PWideChar; CodePoints: LengthInt); overload; virtual;
   public
     procedure SetCharRec(ParameterIndex: Integer; const Value: TZCharRec);
@@ -505,7 +510,7 @@ type
     procedure SetUTF8String(ParameterIndex: Integer; const Value: UTF8String);
     {$ENDIF}
     procedure SetRawByteString(ParameterIndex: Integer; const Value: RawByteString);
-    procedure SetUnicodeString(ParameterIndex: Integer; const Value: ZWideString);
+    procedure SetUnicodeString(ParameterIndex: Integer; const Value: UnicodeString);
   end;
 
   TZUTF16ParamDetectPreparedStatement = class(TZUTF16PreparedStatement)
@@ -514,7 +519,7 @@ type
     FNCharDetected: PBooleanDynArray;
     FIsParamIndex: TBooleanDynArray;
   public
-    function GetUnicodeEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): ZWideString; override;
+    function GetUnicodeEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): UnicodeString; override;
     procedure Unprepare; override;
   end;
 
@@ -542,8 +547,6 @@ type
   public //value getter procs
     procedure GetLob(Index: Integer; out Result: IZBlob); override;
     procedure GetPChar(Index: Integer; out Buf: Pointer; out Len: LengthInt; CodePage: Word); override;
-  public //deprecated value getter methods
-    function GetPChar(ParameterIndex: Integer): PChar; overload;
   public //value getter methods
     function IsNull(ParameterIndex: Integer): Boolean; reintroduce;
     function GetBoolean(ParameterIndex: Integer): Boolean; reintroduce;
@@ -605,9 +608,9 @@ type
     function ExecuteUpdatePrepared: Integer; override;
     function ExecutePrepared: Boolean; override;
 
-    function ExecuteQuery(const SQL: ZWideString): IZResultSet; override;
-    function ExecuteUpdate(const SQL: ZWideString): Integer; override;
-    function Execute(const SQL: ZWideString): Boolean; override;
+    function ExecuteQuery(const SQL: UnicodeString): IZResultSet; override;
+    function ExecuteUpdate(const SQL: UnicodeString): Integer; override;
+    function Execute(const SQL: UnicodeString): Boolean; override;
     function ExecuteQuery(const SQL: RawByteString): IZResultSet; override;
     function ExecuteUpdate(const SQL: RawByteString): Integer; override;
     function Execute(const SQL: RawByteString): Boolean; override;
@@ -634,7 +637,7 @@ type
     procedure SetUTF8String(ParameterIndex: Integer; const Value: UTF8String);
     {$ENDIF}
     procedure SetRawByteString(ParameterIndex: Integer; const Value: RawByteString);
-    procedure SetUnicodeString(ParameterIndex: Integer; const Value: ZWideString);
+    procedure SetUnicodeString(ParameterIndex: Integer; const Value: UnicodeString);
   public //getters
     function GetString(ParameterIndex: Integer): String; reintroduce;
     {$IFNDEF NO_ANSISTRING}
@@ -644,7 +647,7 @@ type
     function GetUTF8String(ParameterIndex: Integer): UTF8String; reintroduce;
     {$ENDIF}
     function GetRawByteString(ParameterIndex: Integer): RawByteString; reintroduce;
-    function GetUnicodeString(ParameterIndex: Integer): ZWideString; reintroduce;
+    function GetUnicodeString(ParameterIndex: Integer): UnicodeString; reintroduce;
   end;
 
   TZAbstractCallableStatement_W = class(TZAbstractCallableStatement, IZPreparedStatement)
@@ -661,7 +664,7 @@ type
     procedure SetUTF8String(ParameterIndex: Integer; const Value: UTF8String); reintroduce;
     {$ENDIF}
     procedure SetRawByteString(ParameterIndex: Integer; const Value: RawByteString); reintroduce;
-    procedure SetUnicodeString(ParameterIndex: Integer; const Value: ZWideString); reintroduce;
+    procedure SetUnicodeString(ParameterIndex: Integer; const Value: UnicodeString); reintroduce;
   public //getters
     function GetString(ParameterIndex: Integer): String; reintroduce;
     {$IFNDEF NO_ANSISTRING}
@@ -671,7 +674,7 @@ type
     function GetUTF8String(ParameterIndex: Integer): UTF8String; reintroduce;
     {$ENDIF}
     function GetRawByteString(ParameterIndex: Integer): RawByteString; reintroduce;
-    function GetUnicodeString(ParameterIndex: Integer): ZWideString; reintroduce;
+    function GetUnicodeString(ParameterIndex: Integer): UnicodeString; reintroduce;
   end;
 
 implementation
@@ -686,7 +689,7 @@ var
   Holds the value of the last assigned statement ID.
   Only Accessible using TZAbstractStatement.GetNextStatementId.
 }
-  GlobalStatementIdCounter : integer;
+  GlobalStatementIdCounter : NativeUint;
 
 {**
   Constructs this class and defines the main properties.
@@ -708,7 +711,6 @@ begin
   FInfo := TStringList.Create;
   if Info <> nil then
     FInfo.AddStrings(Info);
-  FChunkSize := StrToIntDef(DefineStatementParameter(Self, DSProps_ChunkSize, '4096'), 4096);
   FCachedLob := StrToBoolEx(DefineStatementParameter(Self, DSProps_CachedLobs, 'false'));
   FStatementId := Self.GetNextStatementId;
 end;
@@ -729,7 +731,7 @@ end;
   Sets the preprepared SQL-Statement in an String and AnsiStringForm.
   @param Value: the SQL-String which has to be optional preprepared
 }
-procedure TZAbstractStatement.SetWSQL(const Value: ZWideString);
+procedure TZAbstractStatement.SetWSQL(const Value: UnicodeString);
 {$IFNDEF UNICODE}var CP: Word;{$ENDIF}
 begin
   if FWSQL <> Value then
@@ -737,7 +739,6 @@ begin
     {$IFDEF UNICODE}
     if (ConSettings^.ClientCodePage^.Encoding = ceUTF16) then begin
       FWSQL := GetUnicodeEncodedSQL(Value);
-      {$IFDEF DEBUG}FASQL := ZUnicodeToRaw(FWSQL, ConSettings^.CTRL_CP);{$ENDIF}
     end else begin
       FASQL := GetRawEncodedSQL(Value);
       FWSQL := Value;
@@ -745,7 +746,7 @@ begin
     {$ELSE !UNICODE}
     begin
       if (ConSettings^.ClientCodePage^.Encoding = ceUTF16)
-      then CP := ConSettings^.CTRL_CP
+      then CP := GetW2A2WConversionCodePage(ConSettings)
       else CP := FClientCP;
       FaSQL := GetRawEncodedSQL(ZUnicodeToRaw(Value, CP)); //required for the resultsets
       FWSQL := Value;
@@ -765,10 +766,9 @@ begin
     {$ELSE !UNICODE}
     if ConSettings^.ClientCodePage^.Encoding = ceUTF16 then begin
       FWSQL := GetUnicodeEncodedSQL(Value);
-      FASQL := ZUnicodeToRaw(FWSQL, ConSettings^.CTRL_CP);
+      FASQL := Value;
     end else
       FASQL := GetRawEncodedSQL(Value);
-      {$IFDEF DEBUG}FWSQL := ZRawToUnicode(FASQL, FClientCP);{$ENDIF}
     {$ENDIF UNICODE}
   end;
 end;
@@ -794,6 +794,13 @@ begin
        (ImmediatelyReleasable <> Sender) then
       ImmediatelyReleasable.ReleaseImmediat(Sender, AError);
   end;
+end;
+
+procedure TZAbstractStatement.RestartTimer;
+begin
+  if DriverManager.HasLoggingListener
+  then FStartTime := now
+  else FStartTime := 0;
 end;
 
 {**
@@ -844,7 +851,7 @@ begin
     FLastResultSet := nil;
 end;
 
-class function TZAbstractStatement.GetNextStatementId: integer;
+class function TZAbstractStatement.GetNextStatementId: NativeUint;
 begin
   Inc(GlobalStatementIdCounter);
   Result := GlobalStatementIdCounter;
@@ -856,7 +863,7 @@ end;
   @return a <code>ResultSet</code> object that contains the data produced by the
     given query; never <code>null</code>
 }
-function TZAbstractStatement.ExecuteQuery(const SQL: ZWideString): IZResultSet;
+function TZAbstractStatement.ExecuteQuery(const SQL: UnicodeString): IZResultSet;
 begin
   WSQL := SQL;
   Result := ExecuteQuery(ASQL);
@@ -880,7 +887,7 @@ end;
   @return either the row count for <code>INSERT</code>, <code>UPDATE</code>
     or <code>DELETE</code> statements, or 0 for SQL statements that return nothing
 }
-function TZAbstractStatement.ExecuteUpdate(const SQL: ZWideString): Integer;
+function TZAbstractStatement.ExecuteUpdate(const SQL: UnicodeString): Integer;
 begin
   WSQL := SQL;
   Result := ExecuteUpdate(ASQL);
@@ -1070,105 +1077,50 @@ procedure TZAbstractStatement.ClearWarnings;
 begin
 end;
 
-function TZAbstractStatement.GetRawEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): RawByteString;
-{$IFDEF UNICODE}
+function TZAbstractStatement.GetRawEncodedSQL(const SQL: SQLString): RawByteString;
 begin
+{$IFDEF UNICODE}
   FWSQL := SQL;
   Result := ZUnicodeToRaw(SQL, ConSettings^.ClientCodePage^.CP);
 {$ELSE}
-var
-  SQLTokens: TZTokenList;
-  i: Integer;
-  SQLWriter: TZRawSQLStringWriter;
-  Raw: RawByteString;
-begin
-  if ConSettings^.AutoEncode then begin
-    Result := EmptyRaw; //init for FPC
-    SQLTokens := GetConnection.GetDriver.GetTokenizer.TokenizeBufferToList(SQL, [toSkipEOF]); //Disassembles the Query
-    SQLWriter := TZRawSQLStringWriter.Create(Length(SQL));
-    try
-      for i := 0 to SQLTokens.Count-1 do begin //Assembles the Query
-        case SQLTokens[i].TokenType of
-          ttQuoted, ttComment, ttQuotedIdentifier,
-          ttWord: begin
-                    Raw := ConSettings^.ConvFuncs.ZStringToRaw(SQLTokens.AsString(i),
-                      ConSettings^.CTRL_CP, FClientCP);
-                    SQLWriter.AddText(Raw, Result);
-                  end
-          else SQLWriter.AddText(SQLTokens[I].P, SQLTokens[I].L, Result);
-        end;
-      end;
-    finally
-      SQLWriter.Finalize(Result);
-      FASQL := '';
-      FreeAndNil(SQLWriter);
-      SQLTokens.Free;
-    end;
-  end else begin
-    FASQL := SQL;
-    Result := SQL;
-  end;
+  FASQL := SQL;
+  Result := SQL;
 {$ENDIF !UNICODE}
 end;
 
-function TZAbstractStatement.GetUnicodeEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): ZWideString;
+function TZAbstractStatement.GetUnicodeEncodedSQL(const SQL: SQLString): UnicodeString;
+begin
 {$IFDEF UNICODE}
-begin
+  FWSQL := SQL;
   Result := SQL;
-{$ELSE}
-var
-  SQLTokens: TZTokenList;
-  i: Integer;
-  US: ZWideString;
-  SQLWriter: TZUnicodeSQLStringWriter;
-begin
-  if ConSettings^.AutoEncode then begin
-    Result := ''; //init
-    SQLTokens := GetConnection.GetDriver.GetTokenizer.TokenizeBufferToList(SQL, [toSkipEOF]); //Disassembles the Query
-    SQLWriter := TZUnicodeSQLStringWriter.Create(Length(SQL));
-    try
-      for i := 0 to SQLTokens.Count -1 do begin
-        case (SQLTokens[i].TokenType) of
-          ttQuoted, ttComment, ttQuotedIdentifier,
-          ttWord: US := ConSettings^.ConvFuncs.ZStringToUnicode(SQLTokens.AsString(I), ConSettings.CTRL_CP);
-          else    US := ASCII7ToUnicodeString(SQLTokens[i].P, SQLTokens[i].L);
-        end;
-        SQLWriter.AddText(US, Result);
-      end;
-    finally
-      SQLWriter.Finalize(Result);
-      FreeAndNil(SQLTokens);
-      FreeAndNil(SQLWriter);
-      FWSQL := '';
-    end;
-  end else
-    Result := ConSettings^.ConvFuncs.ZStringToUnicode(SQL, ConSettings.CTRL_CP);
+{$ELSE UNICODE}
+  Result := ZRawToUnicode(SQL, GetW2A2WConversionCodePage(ConSettings));
+  FWSQL := Result;
 {$ENDIF}
 end;
 
 function TZAbstractStatement.CreateStmtLogEvent(Category: TZLoggingCategory;
-  const Msg: RawByteString = EmptyRaw): TZLoggingEvent;
-var SQLWriter: TZRawSQLStringWriter;
+  const Msg: SQLString): TZLoggingEvent;
+var SQLWriter: TZSQLStringWriter;
   L: LengthInt;
-  EventMsg: RawByteString;
+  EventMsg: SQLString;
 begin
   L := Length(Msg);
   L := L + 40;
-  SQLWriter := TZRawSQLStringWriter.Create(L);
-  {$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}
-  EventMsg := EmptyRaw;
-  SQLWriter.AddText('Statement ', EventMsg);
-  {$ELSE}
   EventMsg := 'Statement ';
-  {$ENDIF}
-  SQLWriter.AddOrd(FStatementId, EventMsg);
-  if msg <> EmptyRaw then begin
-    SQLWriter.AddText(' : ', EventMsg);
-    SQLWriter.AddText(Msg, EventMsg);
+  SQLWriter := TZSQLStringWriter.Create(L);
+  try
+    SQLWriter.AddOrd(FStatementId, EventMsg);
+    if (msg <> '') then begin
+      SQLWriter.AddText(' : ', EventMsg);
+      SQLWriter.AddText(Msg, EventMsg);
+    end;
+    SQLWriter.Finalize(EventMsg);
+  finally
+    FreeAndNil(SQLWriter);
   end;
-  SQLWriter.Finalize(EventMsg);
-  FreeAndNil(SQLWriter);
-  Result := TZLoggingEvent.Create(Category, ConSettings^.Protocol, EventMsg, 0, EmptyRaw)
+  Result := TZLoggingEvent.Create(Category, FConnection.GetIZPlainDriver.GetProtocol,
+    EventMsg, FLastUpdateCount, '', FStartTime);
 end;
 
 function TZAbstractStatement.CreateLogEvent(
@@ -1176,9 +1128,9 @@ function TZAbstractStatement.CreateLogEvent(
 begin
   case Category of
     lcPrepStmt, lcExecute:
-      result := CreateStmtLogEvent(Category, ASQL);
-    lcExecPrepStmt, lcUnprepStmt:
-      result := CreateStmtLogEvent(Category);
+      result := CreateStmtLogEvent(Category, SQL);
+    lcExecPrepStmt, lcUnprepStmt, lcFetchDone:
+      result := CreateStmtLogEvent(Category, '');
   else
     result := nil;
   end;
@@ -1205,7 +1157,7 @@ end;
 }
 procedure TZAbstractStatement.SetCursorName(const Value: String);
 begin
-  FCursorName := ConSettings^.ConvFuncs.ZStringToRaw(Value, ConSettings^.CTRL_CP, ConSettings^.ClientCodePage^.CP);
+  FCursorName := Value;
 end;
 
 {**
@@ -1231,7 +1183,7 @@ end;
   @see #getUpdateCount
   @see #getMoreResults
 }
-function TZAbstractStatement.Execute(const SQL: ZWideString): Boolean;
+function TZAbstractStatement.Execute(const SQL: UnicodeString): Boolean;
 begin
   WSQL := SQL;
   Result := Execute(ASQL);
@@ -1249,6 +1201,11 @@ end;
 function TZAbstractStatement.GetSQL: String;
 begin
   Result := {$IFDEF UNICODE}FWSQL{$ELSE}FASQL{$ENDIF};
+end;
+
+function TZAbstractStatement.GetStatementId: NativeUint;
+begin
+  Result := FStatementId;
 end;
 
 {**
@@ -1479,6 +1436,21 @@ begin
 
 end;
 
+procedure TZAbstractStatement.AfterConstruction;
+var Stmt: IZStatement;
+    LogObj: IZLoggingObject;
+begin
+  Stmt := nil;
+  QueryInterface(IZStatement, Stmt);
+  FWeakIZStatementPtr := Pointer(Stmt);
+  Stmt := nil;
+  LogObj := nil;
+  QueryInterface(IZLoggingObject, LogObj);
+  FWeakIZLoggingObjectPtr := Pointer(LogObj);
+  LogObj := nil;
+  inherited AfterConstruction; //decrement constructors refcount
+end;
+
 procedure TZAbstractStatement.BeforeClose;
 begin
   if Assigned(FLastResultSet) then
@@ -1577,7 +1549,7 @@ end;
 }
 function TZAbstractStatement.GetChunkSize: Integer;
 begin
-  Result := FChunkSize;
+  Result := -1;
 end;
 
 { TZBindList }
@@ -1620,71 +1592,71 @@ var
   BindValue: PZBindValue;
   BCD: TBCD;
 begin
-  Assert(Stmt.FWeakIntfPtrOfIPrepStmt <> nil, 'Interface not supported');
+  Assert(Stmt.FWeakIZPreparedStatementPtr <> nil, 'Interface not supported');
   for i := 0 to FCount -1 do begin
     BindValue := Get(I);
     if Ord(BindValue.ParamType) < Ord(pctOut) then begin
       case BindValue.BindType of
-        zbtNull: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetNull(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.SQLType);
+        zbtNull: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetNull(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.SQLType);
         zbt4Byte: case BindValue.SQLType of
-                    stBoolean:  IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetBoolean(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCardinal(@BindValue.Value)^ <> 0);
-                    stByte:     IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetByte(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCardinal(@BindValue.Value)^);
-                    stShort:    IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetShort(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInteger(@BindValue.Value)^);
-                    stWord:     IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetWord(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCardinal(@BindValue.Value)^);
-                    stSmall:    IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetSmall(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInteger(@BindValue.Value)^);
-                    stLongWord: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetUInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCardinal(@BindValue.Value)^);
-                    stInteger:  IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInteger(@BindValue.Value)^);
-                    stFloat:    IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetFloat(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PSingle(@BindValue.Value)^);
+                    stBoolean:  IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetBoolean(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCardinal(@BindValue.Value)^ <> 0);
+                    stByte:     IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetByte(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCardinal(@BindValue.Value)^);
+                    stShort:    IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetShort(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInteger(@BindValue.Value)^);
+                    stWord:     IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetWord(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCardinal(@BindValue.Value)^);
+                    stSmall:    IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetSmall(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInteger(@BindValue.Value)^);
+                    stLongWord: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetUInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCardinal(@BindValue.Value)^);
+                    stInteger:  IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInteger(@BindValue.Value)^);
+                    stFloat:    IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetFloat(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PSingle(@BindValue.Value)^);
                     else raise ZDbcUtils.CreateUnsupportedParameterTypeException(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.SQLType);
                   end;
         zbt8Byte: case BindValue.SQLType of
-                    stBoolean:  IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetBoolean(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^ <> 0);
-                    stByte:     IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetByte(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stShort:    IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetShort(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stWord:     IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetWord(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stSmall:    IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetSmall(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stLongWord: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetUInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stInteger:  IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stULong:    IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetULong(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stLong:     IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetLong(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stFloat:    IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetFloat(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDouble({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stDouble:   IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetDouble(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDouble({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stCurrency: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetCurrency(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCurrency({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stTime:     IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetTime(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDateTime({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stDate:     IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetDate(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDateTime({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
-                    stTimeStamp:IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetTimeStamp(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDateTime({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stBoolean:  IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetBoolean(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^ <> 0);
+                    stByte:     IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetByte(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stShort:    IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetShort(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stWord:     IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetWord(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stSmall:    IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetSmall(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stLongWord: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetUInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stInteger:  IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stULong:    IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetULong(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PUInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stLong:     IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetLong(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PInt64({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stFloat:    IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetFloat(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDouble({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stDouble:   IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetDouble(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDouble({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stCurrency: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetCurrency(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PCurrency({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stTime:     IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetTime(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDateTime({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stDate:     IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetDate(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDateTime({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
+                    stTimeStamp:IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetTimeStamp(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PDateTime({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^);
                     stBigDecimal: begin
                                     ZSysUtils.Double2BCD(PDouble({$IFDEF CPU64}@{$ENDIF}BindValue.Value)^, BCD{%H-});
-                                    IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetBigDecimal(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BCD)
+                                    IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetBigDecimal(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BCD)
                                   end;
                     else raise ZDbcUtils.CreateUnsupportedParameterTypeException(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.SQLType);
                   end;
-        zbtRawString: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetRawByteString(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, RawByteString(BindValue.Value));
+        zbtRawString: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetRawByteString(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, RawByteString(BindValue.Value));
         {$IFNDEF NO_UTF8STRING}
-        zbtUTF8String: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetUTF8String(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, UTF8String(BindValue.Value));
+        zbtUTF8String: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetUTF8String(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, UTF8String(BindValue.Value));
         {$ENDIF}
         {$IFNDEF NO_ANSISTRING}
-        zbtAnsiString: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetAnsiString(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, AnsiString(BindValue.Value));
+        zbtAnsiString: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetAnsiString(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, AnsiString(BindValue.Value));
         {$ENDIF}
-        zbtUniString: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetUnicodeString(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, ZWideString(BindValue.Value));
-        zbtCharByRef: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetCharRec(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZCharRec(BindValue.Value)^);
-        zbtBinByRef:  IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetBytes(I, PZBufRec(BindValue.Value).Buf, PZBufRec(BindValue.Value).Len);
-        zbtGUID:      IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetGUID(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PGUID(BindValue.Value)^);
-        zbtBytes:     IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetBytes(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, TBytes(BindValue.Value));
+        zbtUniString: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetUnicodeString(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, UnicodeString(BindValue.Value));
+        zbtCharByRef: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetCharRec(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZCharRec(BindValue.Value)^);
+        zbtBinByRef:  IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetBytes(I, PZBufRec(BindValue.Value).Buf, PZBufRec(BindValue.Value).Len);
+        zbtGUID:      IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetGUID(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PGUID(BindValue.Value)^);
+        zbtBytes:     IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetBytes(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, TBytes(BindValue.Value));
         zbtArray,
         zbtRefArray:  begin
-                        IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetDataArray(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZArray(BindValue.Value).VArray,
+                        IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetDataArray(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZArray(BindValue.Value).VArray,
                           TZSQLType(PZArray(BindValue.Value).VArrayType), PZArray(BindValue.Value).VArrayVariantType);
                         if PZArray(BindValue.Value).VIsNullArray <> nil then
-                          IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetNullArray(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, TZSQLType(PZArray(BindValue.Value).VIsNullArrayType),
+                          IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetNullArray(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, TZSQLType(PZArray(BindValue.Value).VIsNullArrayType),
                             PZArray(BindValue.Value).VIsNullArray, PZArray(BindValue.Value).VIsNullArrayVariantType);
                       end;
-        zbtLob:       IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetBlob(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.SQLType, IZBlob(BindValue.Value));
-        zbtPointer:   IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetBoolean(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.Value <> nil);
-        zbtBCD:       IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetBigDecimal(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PBCD(BindValue.Value)^);
-        zbtDate:      IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetDate(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZDate(BindValue.Value)^);
-        zbtTime:      IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetTime(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZTime(BindValue.Value)^);
-        zbtTimeStamp: IZPreparedStatement(Stmt.FWeakIntfPtrOfIPrepStmt).SetTimeStamp(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZTimeStamp(BindValue.Value)^);
+        zbtLob:       IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetBlob(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.SQLType, IZBlob(BindValue.Value));
+        zbtPointer:   IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetBoolean(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.Value <> nil);
+        zbtBCD:       IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetBigDecimal(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PBCD(BindValue.Value)^);
+        zbtDate:      IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetDate(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZDate(BindValue.Value)^);
+        zbtTime:      IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetTime(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZTime(BindValue.Value)^);
+        zbtTimeStamp: IZPreparedStatement(Stmt.FWeakIZPreparedStatementPtr).SetTimeStamp(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZTimeStamp(BindValue.Value)^);
         else raise ZDbcUtils.CreateUnsupportedParameterTypeException(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindValue.SQLType);
       end;
     end;
@@ -1712,7 +1684,7 @@ begin
         zbtUTF8String
         {$IFNDEF NO_ANSISTRING}
         ,zbtAnsiString{$ENDIF}: RawByteString(BindValue.Value) := EmptyRaw; //dec refcnt
-        zbtUniString: ZWideString(BindValue.Value) := '';
+        zbtUniString: UnicodeString(BindValue.Value) := '';
         zbtBytes:     TBytes(BindValue.Value) := nil;
         zbtLob:       IZBlob(BindValue.Value) := nil;
         zbtCustom:    begin
@@ -1914,7 +1886,7 @@ begin
     zbtAnsiString:Result := EncodeAnsiString(AnsiString(BindValue.Value));
     {$ENDIF}
     zbtBCD:       Result := EncodeBigDecimal(PBCD(BindValue.Value)^);
-    zbtUniString: Result := EncodeUnicodeString(ZWideString(BindValue.Value));
+    zbtUniString: Result := EncodeUnicodeString(UnicodeString(BindValue.Value));
     zbtCharByRef: Result := EncodeCharRec(PZCharRec(BindValue.Value)^);
     zbtBinByRef:  Result := EncodeBytes(BufferToBytes(PZBufRec(BindValue.Value)^.Buf, PZBufRec(BindValue.Value)^.Len));
     zbtGUID:      Result := EncodeGUID(PGUID(BindValue.Value)^);
@@ -1990,9 +1962,9 @@ begin
 end;
 
 procedure TZBindList.Put(Index: Integer; SQLType: TZSQLType;
-  const Value: ZWideString);
+  const Value: UnicodeString);
 begin
-  ZWideString(AquireBuffer(Index, SQLType, zbtUniString).Value) := Value;
+  UnicodeString(AquireBuffer(Index, SQLType, zbtUniString).Value) := Value;
 end;
 
 procedure TZBindList.Put(Index: Integer; const Value: TZArray; AddArrayRef: Boolean);
@@ -2125,7 +2097,7 @@ begin
     {$IFNDEF NEXTGEN}
     zbtAnsiString:Put(Index, Value.SQLType, RawByteString(Value.Value), zOSCodePage);
     {$ENDIF NEXTGEN}
-    zbtUniString: Put(Index, Value.SQLType, ZWideString(Value.Value));
+    zbtUniString: Put(Index, Value.SQLType, UnicodeString(Value.Value));
     zbtCharByRef: Put(Index, Value.SQLType, PZCharRec(Value.Value).P, PZCharRec(Value.Value).Len, PZCharRec(Value.Value).CP);
     zbtBinByRef:  Put(Index, Value.SQLType, PZBufRec(Value.Value).Buf, PZBufRec(Value.Value).Len);
     zbtGUID:      Put(Index, stGUID, Value.Value, SizeOf(TGUID));
@@ -2399,7 +2371,7 @@ begin
   FSupportsDMLBatchArrays := Connection.GetMetadata.GetDatabaseInfo.SupportsArrayBindings;
   inherited Create(Connection, Info);
   if QueryInterface(IZPreparedStatement, iPStmt) = S_OK then begin
-    FWeakIntfPtrOfIPrepStmt := Pointer(iPStmt);
+    FWeakIZPreparedStatementPtr := Pointer(iPStmt);
     iPStmt := nil;
   end;
   FBindList := TZBindList.Create(ConSettings);
@@ -2413,16 +2385,16 @@ function TZAbstractPreparedStatement.CreateLogEvent(
   const Category: TZLoggingCategory): TZLoggingEvent;
 var
   I: integer;
-  LogString : RawByteString;
-  SQLWriter: TZRawSQLStringWriter;
+  LogString: SQLString;
+  SQLWriter: TZSQLStringWriter;
 begin
-  case Category of
-    lcBindPrepStmt:
-      if (FBindList.Count=0) then
-        result := nil
-      else begin { Prepare Log Output}
-        SQLWriter := TZRawSQLStringWriter.Create(FBindList.Count shl 5);
-        LogString := EmptyRaw;
+  if Category = lcBindPrepStmt then
+    if (FBindList.Count=0) then
+      Result := nil
+    else begin { Prepare Log Output}
+      LogString := '';
+      SQLWriter := TZSQLStringWriter.Create(FBindList.Count shl 5);
+      try
         For I := 0 to FBindList.Count - 1 do begin
           if BindList[I].ParamType = pctOut then
             SQLWriter.AddText('(OUTPARAM)', LogString)
@@ -2430,15 +2402,16 @@ begin
             SQLWriter.AddText('(RETURN_VALUE)', LogString)
           else
             AddParamLogValue(I, SQLWriter, LogString);
-          SQLWriter.AddChar(AnsiChar(','), LogString);
+          SQLWriter.AddChar(',', LogString);
         end;
         SQLWriter.CancelLastComma(LogString);
         SQLWriter.Finalize(LogString);
+      finally
         FreeAndNil(SQLWriter);
-        result := CreateStmtLogEvent(Category, Logstring);
-     end;
-    else result := inherited CreatelogEvent(Category);
-  end;
+      end;
+      Result := CreateStmtLogEvent(Category, Logstring);
+    end
+  else Result := inherited CreatelogEvent(Category);
 end;
 
 {**
@@ -2474,7 +2447,7 @@ end;
   @see #getUpdateCount
   @see #getMoreResults
 }
-function TZAbstractPreparedStatement.Execute(const SQL: ZWideString): Boolean;
+function TZAbstractPreparedStatement.Execute(const SQL: UnicodeString): Boolean;
 begin
   WSQL := SQL;
   Result := ExecutePrepared;
@@ -2533,7 +2506,7 @@ end;
     given query; never <code>null</code>
 }
 function TZAbstractPreparedStatement.ExecuteQuery(
-  const SQL: ZWideString): IZResultSet;
+  const SQL: UnicodeString): IZResultSet;
 begin
   WSQL := SQL;
   Result := ExecuteQueryPrepared;
@@ -2579,7 +2552,7 @@ end;
     or <code>DELETE</code> statements, or 0 for SQL statements that return nothing
 }
 function TZAbstractPreparedStatement.ExecuteUpdate(
-  const SQL: ZWideString): Integer;
+  const SQL: UnicodeString): Integer;
 begin
   WSQL := SQL;
   Result := ExecuteUpdatePrepared;
@@ -2629,7 +2602,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetAnsiString(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetAnsiString(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetAnsiString(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
 end;
 {$ENDIF NO_ANSISTRING}
 
@@ -2639,7 +2612,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   fOutParamResultSet.GetBigDecimal(ParamterIndex2ResultSetIndex(ParameterIndex), Result);
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBigDecimal(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBigDecimal(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
 end;
 
 function TZAbstractPreparedStatement.GetBLob(ParameterIndex: Integer): IZBlob;
@@ -2647,7 +2620,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetBlob(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBlob(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindList.SQLTypes[ParameterIndex], Result)
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBlob(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindList.SQLTypes[ParameterIndex], Result)
 end;
 
 function TZAbstractPreparedStatement.GetCLob(ParameterIndex: Integer): IZClob;
@@ -2655,7 +2628,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   fOutParamResultSet.GetBlob(ParamterIndex2ResultSetIndex(ParameterIndex)).QueryInterface(IZCLob, Result);
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBlob(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindList.SQLTypes[ParameterIndex], Result)
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBlob(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindList.SQLTypes[ParameterIndex], Result)
 end;
 
 function TZAbstractPreparedStatement.GetCompareFirstKeywordStrings: PPreparablePrefixTokens;
@@ -2669,7 +2642,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetCurrency(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetCurrency(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetCurrency(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 {$IFDEF FPC}
@@ -2681,7 +2654,7 @@ function TZAbstractPreparedStatement.GetDate(
   ParameterIndex: Integer): TDateTime;
 var D: TZDate;
 begin
-  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).GetDate(ParameterIndex, D);
+  IZPreparedStatement(FWeakIZPreparedStatementPtr).GetDate(ParameterIndex, D);
   TryDateToDateTime(D, Result);
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
@@ -2692,7 +2665,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   fOutParamResultSet.GetDate(ParamterIndex2ResultSetIndex(ParameterIndex), Result);
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetDate(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetDate(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 function TZAbstractPreparedStatement.GetDouble(ParameterIndex: Integer): Double;
@@ -2701,8 +2674,8 @@ begin
   Result := fOutParamResultSet.GetDouble(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
     if BindList.SQLTypes[ParameterIndex] = stFloat
-    then IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetFloat(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
-    else IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetDouble(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    then IZPreparedStatement(FWeakIZPreparedStatementPtr).SetFloat(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
+    else IZPreparedStatement(FWeakIZPreparedStatementPtr).SetDouble(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 function TZAbstractPreparedStatement.GetInt(ParameterIndex: Integer): Integer;
@@ -2711,10 +2684,10 @@ begin
   Result := fOutParamResultSet.GetInt(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
     case BindList.SQLTypes[ParameterIndex] of
-      stShort: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetShort(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      stSmall: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetSmall(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      stInteger: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetInt(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      else IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetLong(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stShort: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetShort(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stSmall: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetSmall(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stInteger: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetInt(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      else IZPreparedStatement(FWeakIZPreparedStatementPtr).SetLong(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
     end;
 end;
 
@@ -2741,10 +2714,10 @@ begin
   Result := fOutParamResultSet.GetLong(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
     case BindList.SQLTypes[ParameterIndex] of
-      stShort: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetShort(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      stSmall: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetSmall(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      stInteger: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetInt(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      else IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetLong(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stShort: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetShort(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stSmall: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetSmall(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stInteger: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetInt(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      else IZPreparedStatement(FWeakIZPreparedStatementPtr).SetLong(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
     end;
 end;
 
@@ -2758,7 +2731,7 @@ begin
     Buf := fOutParamResultSet.GetPWideChar(ParamterIndex2ResultSetIndex(Index), L);
     if BindList.ParamTypes[Index] = pctInOut then begin
       System.SetString(FUniTemp, PWideChar(Buf), L);
-      IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetUnicodeString(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, FUniTemp);
+      IZPreparedStatement(FWeakIZPreparedStatementPtr).SetUnicodeString(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, FUniTemp);
     end;
     if CodePage = zCP_UTF16 then begin
       Len := L;
@@ -2776,7 +2749,7 @@ begin
     Len := L;
     if BindList.ParamTypes[Index] = pctInOut then begin
       ZSetString(Buf, l, fRawTemp);
-      IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetRawByteString(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, FRawTemp);
+      IZPreparedStatement(FWeakIZPreparedStatementPtr).SetRawByteString(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, FRawTemp);
     end;
     if CodePage = zCP_UTF16 then begin
       if L = 0 then
@@ -2810,7 +2783,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetRawByteString(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetRawByteString(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetRawByteString(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
 end;
 
 function TZAbstractPreparedStatement.GetResultSet: IZResultSet;
@@ -2834,12 +2807,12 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetBoolean(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBoolean(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBoolean(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 function TZAbstractPreparedStatement.GetByte(ParameterIndex: Integer): Byte;
 begin
-  Result := IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).GetUInt(ParameterIndex);
+  Result := IZPreparedStatement(FWeakIZPreparedStatementPtr).GetUInt(ParameterIndex);
 end;
 
 function TZAbstractPreparedStatement.GetBytes(ParameterIndex: Integer): TBytes;
@@ -2847,7 +2820,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetBytes(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBytes(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBytes(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 function TZAbstractPreparedStatement.GetFloat(ParameterIndex: Integer): Single;
@@ -2855,7 +2828,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetFloat(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetFloat(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetFloat(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 procedure TZAbstractPreparedStatement.GetGUID(ParameterIndex: Integer;
@@ -2864,14 +2837,14 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   fOutParamResultSet.GetGUID(ParamterIndex2ResultSetIndex(ParameterIndex), Result);
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetGUID(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetGUID(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 function TZAbstractPreparedStatement.GetTime(
   ParameterIndex: Integer): TDateTime;
 var T: TZTime;
 begin
-  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).GetTime(ParameterIndex, T{%H-});
+  IZPreparedStatement(FWeakIZPreparedStatementPtr).GetTime(ParameterIndex, T{%H-});
   TryTimeToDateTime(T, Result{%H-});
 end;
 
@@ -2881,11 +2854,11 @@ begin
   Result := fOutParamResultSet.GetUInt(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
     case BindList.SQLTypes[ParameterIndex] of
-      stByte: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetByte(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      stWord: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetWord(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      stLongWord: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetUInt(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stByte: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetByte(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stWord: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetWord(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stLongWord: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetUInt(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 {$IF defined (RangeCheckEnabled) and defined(WITH_UINT64_C1118_ERROR)}{$R-}{$IFEND}
-      else IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetULong(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      else IZPreparedStatement(FWeakIZPreparedStatementPtr).SetULong(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 {$IF defined (RangeCheckEnabled) and defined(WITH_UINT64_C1118_ERROR)}{$R+}{$IFEND}
     end;
 end;
@@ -2896,20 +2869,20 @@ begin
   Result := fOutParamResultSet.GetULong(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
     case BindList.SQLTypes[ParameterIndex] of
-      stByte: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetByte(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      stWord: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetWord(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      stLongWord: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetUInt(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
-      else IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetULong(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stByte: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetByte(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stWord: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetWord(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      stLongWord: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetUInt(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+      else IZPreparedStatement(FWeakIZPreparedStatementPtr).SetULong(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
     end;
 end;
 
 function TZAbstractPreparedStatement.GetUnicodeString(
-  ParameterIndex: Integer): ZWideString;
+  ParameterIndex: Integer): UnicodeString;
 begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetUnicodeString(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetUnicodeString(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetUnicodeString(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
 end;
 
 {$IFNDEF NO_UTF8STRING}
@@ -2919,7 +2892,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetUTF8String(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetUTF8String(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetUTF8String(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result)
 end;
 {$ENDIF NO_UTF8STRING}
 
@@ -2929,12 +2902,12 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetValue(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetValue(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetValue(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 function TZAbstractPreparedStatement.GetWord(ParameterIndex: Integer): Word;
 begin
-  Result := IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).GetUInt(ParameterIndex);
+  Result := IZPreparedStatement(FWeakIZPreparedStatementPtr).GetUInt(ParameterIndex);
 end;
 
 {**
@@ -2943,13 +2916,13 @@ end;
 function TZAbstractPreparedStatement.GetShort(
   ParameterIndex: Integer): ShortInt;
 begin
-  Result := IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).GetInt(ParameterIndex);
+  Result := IZPreparedStatement(FWeakIZPreparedStatementPtr).GetInt(ParameterIndex);
 end;
 
 function TZAbstractPreparedStatement.GetSmall(
   ParameterIndex: Integer): SmallInt;
 begin
-  Result := IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).GetInt(ParameterIndex)
+  Result := IZPreparedStatement(FWeakIZPreparedStatementPtr).GetInt(ParameterIndex)
 end;
 
 function TZAbstractPreparedStatement.GetSQL: String;
@@ -2962,7 +2935,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.GetString(ParamterIndex2ResultSetIndex(ParameterIndex));
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetString(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetString(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 procedure TZAbstractPreparedStatement.GetTime(ParameterIndex: Integer;
@@ -2971,14 +2944,14 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   fOutParamResultSet.GetTime(ParamterIndex2ResultSetIndex(ParameterIndex), Result);
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetTime(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetTime(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 function TZAbstractPreparedStatement.GetTimeStamp(
   ParameterIndex: Integer): TDateTime;
 var TS: TZTimeStamp;
 begin
-  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).GetTimeStamp(ParameterIndex, TS{%H-});
+  IZPreparedStatement(FWeakIZPreparedStatementPtr).GetTimeStamp(ParameterIndex, TS{%H-});
   TryTimeStampToDateTime(TS, Result{%H-});
 end;
 
@@ -2988,7 +2961,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   fOutParamResultSet.GetTimestamp(ParamterIndex2ResultSetIndex(ParameterIndex), Result);
   if (BindList.ParamTypes[ParameterIndex] = pctInOut) and not FSupportsBidirectionalParamIO then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetTimestamp(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetTimestamp(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Result);
 end;
 
 {$IFDEF FPC} {$POP} {$ENDIF}
@@ -3005,7 +2978,7 @@ begin
   {$IFNDEF GENERIC_INDEX}Dec(ParameterIndex);{$ENDIF}
   Result := fOutParamResultSet.IsNull(ParamterIndex2ResultSetIndex(ParameterIndex));
   if Result and (BindList.ParamTypes[ParameterIndex] = pctInOut) then
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetNull(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindList.SQLTypes[ParameterIndex]);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetNull(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, BindList.SQLTypes[ParameterIndex]);
 end;
 
 function TZAbstractPreparedStatement.IsPrepared: Boolean;
@@ -3020,12 +2993,12 @@ end;
   @param Msg a description message.
 }
 procedure TZAbstractPreparedStatement.LogPrepStmtMessage(
-  Category: TZLoggingCategory; const Msg: RawByteString);
-var SQLWriter: TZRawSQLStringWriter;
-  LogMsg: RawByteString;
+  Category: TZLoggingCategory; const Msg: SQLString);
+var SQLWriter: TZSQLStringWriter;
+  LogMsg: SQLString;
 begin
   if DriverManager.HasLoggingListener then begin
-    SQLWriter := TZRawSQLStringWriter.Create(30+Length(Msg));
+    SQLWriter := TZSQLStringWriter.Create(30+Length(Msg));
     LogMsg := EmptyRaw;
     SQLWriter.AddText('Statement ', LogMsg);
     SQLWriter.AddOrd(FStatementId, LogMsg);
@@ -3035,7 +3008,7 @@ begin
     end;
     SQLWriter.Finalize(LogMsg);
     FreeAndNil(SQLWriter);
-    DriverManager.LogMessage(Category, ConSettings^.Protocol, LogMsg);
+    DriverManager.LogMessage(Category, FConnection.GetIZPlainDriver.GetProtocol, LogMsg);
   end;
 end;
 
@@ -3045,8 +3018,6 @@ end;
 }
 procedure TZAbstractPreparedStatement.Prepare;
 begin
-  if DriverManager.HasLoggingListener then
-    DriverManager.LogMessage(lcPrepStmt,Self);
   PrepareInParameters;
   FPrepared := True;
   FClosed := False;
@@ -3163,16 +3134,13 @@ var
   CP: Word;
 begin
   if Value = nil then begin
-    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetNull(ParameterIndex, stAsciiStream);
+    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetNull(ParameterIndex, stAsciiStream);
     Exit;
   end;
   if ConSettings^.ClientCodePage.Encoding = ceUTF16
-  then CP := ConSettings^.CTRL_CP
+  then CP := GetW2A2WConversionCodePage(ConSettings)
   else CP := ConSettings^.ClientCodePage^.CP;
   CLob := TZLocalMemCLob.Create(CP, ConSettings, FOpenLobStreams);
-
-  if ConSettings^.AutoEncode then
-     CP := zCP_NONE;
   Clob.SetStream(Value, CP);
   SetBlob(ParameterIndex, stAsciiStream, Clob);
 end;
@@ -3262,7 +3230,7 @@ procedure TZAbstractPreparedStatement.SetDate(ParameterIndex: Integer;
 var D: TZDate;
 begin
   ZSysUtils.DecodeDateTimeToDate(Value, D{%H-});
-  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetDate(ParameterIndex, D);
+  IZPreparedStatement(FWeakIZPreparedStatementPtr).SetDate(ParameterIndex, D);
 end;
 
 {**
@@ -3278,7 +3246,7 @@ begin
 end;
 
 procedure TZAbstractPreparedStatement.AddParamLogValue(ParamIndex: Integer;
-  SQLWriter: TZRawSQLStringWriter; var Result: RawByteString);
+  SQLWriter: TZSQLStringWriter; var Result: SQLString);
 var BindValue: PZBindValue;
 begin
   BindValue := FBindList[ParamIndex];
@@ -3316,19 +3284,43 @@ begin
               end;
     {$IFNDEF NO_UTF8STRING}zbtUTF8String,{$ENDIF}
     {$IFNDEF NO_ANSISTRING}zbtAnsiString,{$ENDIF}
-    zbtRawString: SQLWriter.AddText(SQLQuotedStr(RawByteString(BindValue.Value), AnsiChar(#39)), Result);
+    zbtRawString: {$IFDEF UNICODE} begin
+                  FUniTemp := ZRawToUnicode(RawByteString(BindValue.Value), FClientCP);
+                  SQLWriter.AddTextQuoted(FUniTemp, #39, Result);
+                  end; {$ELSE}
+                  SQLWriter.AddText(SQLQuotedStr(RawByteString(BindValue.Value), AnsiChar(#39)), Result);
+                  {$ENDIF}
     zbtBCD:       SQLWriter.AddDecimal(PBCD(BindValue.Value)^, Result);
-    zbtUniString: SQLWriter.AddText(SQLQuotedStr(ZUnicodeToRaw(UnicodeString(BindValue.Value), FClientCP), AnsiChar(#39)), Result);
+    zbtUniString: {$IFDEF UNICODE}
+                  SQLWriter.AddTextQuoted(UnicodeString(BindValue.Value), #39, Result);
+                  {$ELSE} begin
+                    FRawTemp := ZUnicodeToRaw(UnicodeString(BindValue.Value), zCP_UTF8);
+                    SQLWriter.AddTextQuoted(FRawTemp, AnsiChar(#39), Result);
+                  end; {$ENDIF}
     zbtCharByRef: if PZCharRec(BindValue.Value)^.CP = zCP_UTF16
-                  then SQLWriter.AddText(SQLQuotedStr(PUnicodeToRaw(PZCharRec(BindValue.Value)^.P, PZCharRec(BindValue.Value)^.Len, FClientCP), AnsiChar(#39)), Result)
-                  else SQLWriter.AddText(SQLQuotedStr(PAnsiChar(PZCharRec(BindValue.Value)^.P), PZCharRec(BindValue.Value)^.Len, AnsiChar(#39)), Result);
+                  {$IFDEF UNICODE}
+                  then SQLWriter.AddTextQuoted(PZCharRec(BindValue.Value)^.P, PZCharRec(BindValue.Value)^.Len, #39, Result)
+                  else begin
+                    FUniTemp := PRawToUnicode(PZCharRec(BindValue.Value)^.P, PZCharRec(BindValue.Value)^.Len, PZCharRec(BindValue.Value)^.CP);
+                    SQLWriter.AddTextQuoted(FUniTemp, #39, Result);
+                    FUniTemp := '';
+                  end;
+                  {$ELSE}
+                  then begin
+                    FRawTemp := PUnicodeToRaw(PZCharRec(BindValue.Value)^.P, PZCharRec(BindValue.Value)^.Len, zCP_UTF8);
+                    SQLWriter.AddTextQuoted(FRawTemp, AnsiChar(#39), Result);
+                    FRawTemp := '';
+                  end else SQLWriter.AddTextQuoted(PAnsiChar(PZCharRec(BindValue.Value)^.P), PZCharRec(BindValue.Value)^.Len, AnsiChar(#39), Result);
+                  {$ENDIF}
     zbtBinByRef:  SQLWriter.AddHexBinary(PZBufRec(BindValue.Value)^.Buf, PZBufRec(BindValue.Value)^.Len, False, Result);
     zbtGUID:      SQLWriter.AddGUID(PGUID(BindValue.Value)^, [guidWithBrackets, guidQuoted], Result);
     zbtBytes:     SQLWriter.AddHexBinary(TBytes(BindValue.Value), False, Result);
     zbtArray:     SQLWriter.AddText('(ARRAY)', Result);
     zbtLob:       if BindValue.SQLType = stbinaryStream
                   then SQLWriter.AddText('(BLOB)', Result)
-                  else SQLWriter.AddText('(CLOB)', Result);
+                  else if BindValue.SQLType = stUnicodeStream
+                    then SQLWriter.AddText('(NCLOB)', Result)
+                    else SQLWriter.AddText('(CLOB)', Result);
     zbtPointer:   SQLWriter.AddText('(POINTER)', Result);
     zbtNull:      SQLWriter.AddText('(NULL)', Result);
     zbtDate:      SQLWriter.AddDate(PZDate(BindValue.Value)^, ConSettings.WriteFormatSettings.DateFormat, Result);
@@ -3391,9 +3383,9 @@ procedure TZAbstractPreparedStatement.SetPChar(ParameterIndex: Integer;
   Value: PChar);
 begin
   {$IFDEF UNICODE}
-  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetUnicodeString(ParameterIndex, Value);
+  IZPreparedStatement(FWeakIZPreparedStatementPtr).SetUnicodeString(ParameterIndex, Value);
   {$ELSE}
-  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetRawByteString(ParameterIndex, Value);
+  IZPreparedStatement(FWeakIZPreparedStatementPtr).SetRawByteString(ParameterIndex, Value);
   {$ENDIF}
 end;
 
@@ -3448,7 +3440,7 @@ procedure TZAbstractPreparedStatement.SetTime(ParameterIndex: Integer;
 var T: TZTime;
 begin
   ZSysUtils.DecodeDateTimeToTime(Value, T{%H-});
-  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetTime(ParameterIndex, T)
+  IZPreparedStatement(FWeakIZPreparedStatementPtr).SetTime(ParameterIndex, T)
 end;
 
 {**
@@ -3464,8 +3456,8 @@ procedure TZAbstractPreparedStatement.SetTimestamp(ParameterIndex: Integer;
 var DT: TDateTime;
 begin
   if TryTimeStampToDateTime(Value, DT{%H-})
-  then IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetTimeStamp(ParameterIndex, DT)
-  else IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetNull(ParameterIndex, stTimeStamp);
+  then IZPreparedStatement(FWeakIZPreparedStatementPtr).SetTimeStamp(ParameterIndex, DT)
+  else IZPreparedStatement(FWeakIZPreparedStatementPtr).SetNull(ParameterIndex, stTimeStamp);
 end;
 
 procedure TZAbstractPreparedStatement.SetTimestamp(ParameterIndex: Integer;
@@ -3473,7 +3465,7 @@ procedure TZAbstractPreparedStatement.SetTimestamp(ParameterIndex: Integer;
 var TS: TZTimeStamp;
 begin
   ZSysUtils.DecodeDateTimeToTimeStamp(Value, TS{%H-});
-  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetTimeStamp(ParameterIndex, TS)
+  IZPreparedStatement(FWeakIZPreparedStatementPtr).SetTimeStamp(ParameterIndex, TS)
 end;
 
 {**
@@ -3498,7 +3490,7 @@ procedure TZAbstractPreparedStatement.SetUnicodeStream(ParameterIndex: Integer;
   const Value: TStream);
 begin
   if Value = nil
-  then IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetNull(ParameterIndex, stUnicodeStream)
+  then IZPreparedStatement(FWeakIZPreparedStatementPtr).SetNull(ParameterIndex, stUnicodeStream)
   else SetBlob(ParameterIndex, stUnicodeStream, TZLocalMemCLob.CreateWithStream(Value, zCP_UTF16, ConSettings, FOpenLobStreams));
 end;
 
@@ -3507,44 +3499,44 @@ procedure TZAbstractPreparedStatement.SetValue(ParameterIndex: Integer;
 var TempBlob: IZBlob;
 begin
   case Value.VType of
-    vtBoolean: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBoolean(ParameterIndex, Value.VBoolean);
-    vtInteger: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetLong(ParameterIndex, Value.VInteger);
-    vtUInteger: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetULong(ParameterIndex, Value.VUInteger);
-    vtDouble: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetDouble(ParameterIndex, Value.VCurrency);
-    vtCurrency: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetCurrency(ParameterIndex, Value.VCurrency);
-    vtBigDecimal: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBigDecimal(ParameterIndex, Value.VBigDecimal);
-    vtUnicodeString: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetUnicodeString(ParameterIndex, Value.VUnicodeString);
-    vtRawByteString: IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetRawByteString(ParameterIndex, Value.VRawByteString);
+    vtBoolean: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBoolean(ParameterIndex, Value.VBoolean);
+    vtInteger: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetLong(ParameterIndex, Value.VInteger);
+    vtUInteger: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetULong(ParameterIndex, Value.VUInteger);
+    vtDouble: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetDouble(ParameterIndex, Value.VCurrency);
+    vtCurrency: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetCurrency(ParameterIndex, Value.VCurrency);
+    vtBigDecimal: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBigDecimal(ParameterIndex, Value.VBigDecimal);
+    vtUnicodeString: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetUnicodeString(ParameterIndex, Value.VUnicodeString);
+    vtRawByteString: IZPreparedStatement(FWeakIZPreparedStatementPtr).SetRawByteString(ParameterIndex, Value.VRawByteString);
     {$IFNDEF NO_ANSISTRING}
-    vtAnsiString:    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetAnsiString(ParameterIndex, Value.VRawByteString);
+    vtAnsiString:    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetAnsiString(ParameterIndex, Value.VRawByteString);
     {$ENDIF}
     {$IFNDEF NO_UTF8STRING}
-    vtUTF8String:    IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetUTF8String(ParameterIndex, Value.VRawByteString);
+    vtUTF8String:    IZPreparedStatement(FWeakIZPreparedStatementPtr).SetUTF8String(ParameterIndex, Value.VRawByteString);
     {$ENDIF}
-    vtCharRec:       IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetCharRec(ParameterIndex, Value.VCharRec);
-    vtDate:          IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetDate(ParameterIndex, Value.VDate);
-    vtDateTime:      IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetTimestamp(ParameterIndex, Value.VDateTime);
-    vtTime:          IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetTime(ParameterIndex, Value.VTime);
-    vtTimeStamp:     IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetTimeStamp(ParameterIndex, Value.VTimeStamp);
-    vtBytes:         IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBytes(ParameterIndex, {$IFNDEF WITH_TBYTES_AS_RAWBYTESTRING}StrToBytes{$ENDIF}(Value.VRawByteString));
+    vtCharRec:       IZPreparedStatement(FWeakIZPreparedStatementPtr).SetCharRec(ParameterIndex, Value.VCharRec);
+    vtDate:          IZPreparedStatement(FWeakIZPreparedStatementPtr).SetDate(ParameterIndex, Value.VDate);
+    vtDateTime:      IZPreparedStatement(FWeakIZPreparedStatementPtr).SetTimestamp(ParameterIndex, Value.VDateTime);
+    vtTime:          IZPreparedStatement(FWeakIZPreparedStatementPtr).SetTime(ParameterIndex, Value.VTime);
+    vtTimeStamp:     IZPreparedStatement(FWeakIZPreparedStatementPtr).SetTimeStamp(ParameterIndex, Value.VTimeStamp);
+    vtBytes:         IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBytes(ParameterIndex, {$IFNDEF WITH_TBYTES_AS_RAWBYTESTRING}StrToBytes{$ENDIF}(Value.VRawByteString));
     vtArray:  begin
-                IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetDataArray(ParameterIndex, Value.VArray.VArray, TZSQLType(Value.VArray.VArrayType), Value.VArray.VArrayVariantType);
+                IZPreparedStatement(FWeakIZPreparedStatementPtr).SetDataArray(ParameterIndex, Value.VArray.VArray, TZSQLType(Value.VArray.VArrayType), Value.VArray.VArrayVariantType);
                 if Value.VArray.VIsNullArray <> nil then
-                  IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetNullArray(ParameterIndex, TZSQLType(Value.VArray.VIsNullArrayType), Value.VArray.VIsNullArray, Value.VArray.VIsNullArrayVariantType);
+                  IZPreparedStatement(FWeakIZPreparedStatementPtr).SetNullArray(ParameterIndex, TZSQLType(Value.VArray.VIsNullArrayType), Value.VArray.VIsNullArray, Value.VArray.VIsNullArrayVariantType);
               end;
     vtInterface:
       if Supports(Value.VInterface, IZBlob, TempBlob) then begin
         if TempBlob.IsClob
-        then IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBlob(ParameterIndex, stAsciiStream, TempBlob)
-        else IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetBlob(ParameterIndex, stBinaryStream, TempBlob);
+        then IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBlob(ParameterIndex, stAsciiStream, TempBlob)
+        else IZPreparedStatement(FWeakIZPreparedStatementPtr).SetBlob(ParameterIndex, stBinaryStream, TempBlob);
         TempBlob := nil;
       end else
         raise EZUnsupportedException.Create(sUnsupportedOperation);
-    else IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetNull(ParameterIndex, stUnknown);
+    else IZPreparedStatement(FWeakIZPreparedStatementPtr).SetNull(ParameterIndex, stUnknown);
   end;
 end;
 
-procedure TZAbstractPreparedStatement.SetWSQL(const Value: ZWideString);
+procedure TZAbstractPreparedStatement.SetWSQL(const Value: UnicodeString);
 begin
   if Value <> FWSQL then begin
     if Prepared then
@@ -3660,7 +3652,7 @@ begin
   if (Value <> nil) and (SQLType in [stAsciiStream, stUnicodeStream]) then begin
     if Value.IsClob
     then Value.SetCodePageTo(FClientCP)
-    else PIZLob(BindList[Index].Value)^ := CreateRawCLobFromBlob(Value, ConSettings, FOpenLobStreams);
+    else raise CreateConversionError(Index, stBinaryStream, stAsciiStream);
     BindList[Index].SQLType := stAsciiStream;
   end;
 end;
@@ -3711,7 +3703,7 @@ end;
 }
 procedure TZRawPreparedStatement.SetCharRec(ParameterIndex: Integer;
   const Value: TZCharRec);
-var UniTemp: ZWideString;
+var UniTemp: UnicodeString;
 begin
   if (Value.CP = FClientCP) then
     BindRawStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, Value.P, Value.Len)
@@ -3757,12 +3749,10 @@ procedure TZRawPreparedStatement.SetString(ParameterIndex: Integer;
   const Value: String);
 begin
   {$IFDEF UNICODE}
-  BindRawStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF},
-    ZUnicodetoRaw(Value, FClientCP));
+  FRawTemp := ZUnicodeToRaw(Value, FClientCP);
+  BindRawStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, FRawTemp);
   {$ELSE}
-  BindRawStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF},
-    ConSettings^.ConvFuncs.ZStringtoRaw(Value, ConSettings^.Ctrl_CP,
-    FClientCP));
+  BindRawStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, Value);
   {$ENDIF}
 end;
 
@@ -3778,10 +3768,10 @@ end;
   @param x the parameter value
 }
 procedure TZRawPreparedStatement.SetUnicodeString(
-  ParameterIndex: Integer; const Value: ZWideString);
+  ParameterIndex: Integer; const Value: UnicodeString);
 begin
-  BindRawStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF},
-    ZUnicodetoRaw(Value, FClientCP));
+  FRawTemp := ZUnicodeToRaw(Value, FClientCP);
+  BindRawStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, FRawTemp);
 end;
 
 {**
@@ -3811,7 +3801,7 @@ end;
 { TZUTF16PreparedStatement }
 
 procedure TZUTF16PreparedStatement.BindUniStr(Index: Integer;
-  const Value: ZWideString);
+  const Value: UnicodeString);
 begin
   CheckParameterIndex(Index);
   FBindList.Put(Index, stUnicodeString, Value);
@@ -3864,7 +3854,7 @@ begin
 end;
 
 {**
-  Sets the designated parameter to a Java <code>raw encoded string</code> value.
+  Sets the designated parameter to a Java <code>database raw encoded string</code> value.
   The driver converts this
   to an SQL <code>VARCHAR</code> or <code>LONGVARCHAR</code> value
   (depending on the argument's
@@ -3876,9 +3866,13 @@ end;
 }
 procedure TZUTF16PreparedStatement.SetRawByteString(
   ParameterIndex: Integer; const Value: RawByteString);
+var RawCP: Word;
 begin
-  BindUniStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF},
-    ZRawToUnicode(Value, ConSettings^.ClientCodePage.CP));
+  if ConSettings^.ClientCodePage.CP = zCP_UTF16
+  then RawCP := GetW2A2WConversionCodePage(ConSettings)
+  else RawCP := ConSettings^.ClientCodePage.CP;
+  FUniTemp := ZRawToUnicode(Value, RawCP);
+  BindUniStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, FUniTemp);
 end;
 
 {**
@@ -3898,8 +3892,8 @@ begin
   {$IFDEF UNICODE}
   BindUniStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, Value);
   {$ELSE}
-  BindUniStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF},
-    ConSettings^.ConvFuncs.ZStringToUnicode(Value, ConSettings^.CTRL_CP));
+  FUniTemp := ZRawToUniCode(Value, GetW2A2WConversionCodePage(ConSettings));
+  BindUniStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, FUniTemp);
   {$ENDIF}
 end;
 
@@ -3915,7 +3909,7 @@ end;
   @param x the parameter value
 }
 procedure TZUTF16PreparedStatement.SetUnicodeString(
-  ParameterIndex: Integer; const Value: ZWideString);
+  ParameterIndex: Integer; const Value: UnicodeString);
 begin
   BindUniStr(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, Value);
 end;
@@ -3947,7 +3941,7 @@ var I: Integer;
   SQLWriter: TZRawSQLStringWriter;
 begin
   if FCachedQueryRaw = nil then begin
-    FCachedQueryRaw := ZDbcUtils.TokenizeSQLQueryRaw(SQL, ConSettings,
+    FCachedQueryRaw := ZDbcUtils.TokenizeSQLQueryRaw(SQL,{$IFDEF UNICODE} ConSettings.ClientCodePage.CP,{$ENDIF}
       Connection.GetDriver.GetTokenizer, FIsParamIndex, FNCharDetected,
       GetCompareFirstKeywordStrings, FTokenMatchIndex);
     FCountOfQueryParams := 0;
@@ -3976,7 +3970,7 @@ end;
 { TZUTF16ParamDetectPreparedStatement }
 
 function TZUTF16ParamDetectPreparedStatement.GetUnicodeEncodedSQL(const SQL:
-  {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): ZWideString;
+  {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): UnicodeString;
 var I: Integer;
   SQLWriter: TZUnicodeSQLStringWriter;
 begin
@@ -4163,7 +4157,7 @@ end;
   {$WARN 5024 off : Parameter "$1" not used}
   {$WARN 5033 off : Function result does not seem to be set}
 {$ENDIF} // abstract base class - parameters not used intentionally
-function TZAbstractCallableStatement.Execute(const SQL: ZWideString): Boolean;
+function TZAbstractCallableStatement.Execute(const SQL: UnicodeString): Boolean;
 begin
   Raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
@@ -4203,7 +4197,7 @@ begin
 end;
 
 function TZAbstractCallableStatement.ExecuteQuery(
-  const SQL: ZWideString): IZResultSet;
+  const SQL: UnicodeString): IZResultSet;
 begin
   Raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
@@ -4245,7 +4239,7 @@ begin
 end;
 
 function TZAbstractCallableStatement.ExecuteUpdate(
-  const SQL: ZWideString): Integer;
+  const SQL: UnicodeString): Integer;
 begin
   Raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
@@ -4482,22 +4476,11 @@ end;
   database, including any padding added by the database.
   @param parameterIndex the first parameter is 1, the second is 2,
   and so on
-  @return the parameter value. If the value is SQL <code>NULL</code>, the result
-  is <code>null</code>.
-  @exception SQLException if a database access error occurs
+  @param Buf return a Pointer to a character value,
+  @param Len return the length of the value. If CodePage is UTF16 it's
+    then count of words, otherwise it's the count of bytes
+  @param CodePage, the aquired codepage of a charater value
 }
-function TZAbstractCallableStatement.GetPChar(ParameterIndex: Integer): PChar;
-var
-  L: LengthInt;
-begin
-  {$IFNDEF GENERIC_INDEX}ParameterIndex := ParameterIndex-1;{$ENDIF}
-  {$IFDEF UNICODE}
-  FExecStatement.GetPChar(ParameterIndex, Pointer(Result), L, zCP_UTF16);
-  {$ELSE}
-  FExecStatement.GetPChar(ParameterIndex, Pointer(Result), L, ConSettings.CTRL_CP);
-  {$ENDIF}
-end;
-
 procedure TZAbstractCallableStatement.GetPChar(Index: Integer;
   out Buf: Pointer; out Len: LengthInt; CodePage: Word);
 begin
@@ -4911,7 +4894,7 @@ end;
 procedure TZAbstractCallableStatement.SetDouble(ParameterIndex: Integer;
   const Value: Double);
 begin
-  BindDouble({$IFNDEF GENERIC_INDEX}ParameterIndex-1{$ENDIF}, stDouble, Value);
+  BindDouble(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stDouble, Value);
 end;
 
 {**
@@ -4925,7 +4908,7 @@ end;
 procedure TZAbstractCallableStatement.SetFloat(ParameterIndex: Integer;
   Value: Single);
 begin
-  BindDouble({$IFNDEF GENERIC_INDEX}ParameterIndex-1{$ENDIF}, stFloat, Value);
+  BindDouble(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stFloat, Value);
 end;
 
 {**
@@ -5247,15 +5230,7 @@ begin
   {$IFDEF UNICODE}
   Result := GetUnicodeString(ParameterIndex);
   {$ELSE}
-  if ConSettings.AutoEncode then
-    if (FClientCP = ConSettings.CTRL_CP) then
-      Result := GetRawByteString(ParameterIndex)
-    else begin
-      FUniTemp := GetUnicodeString(ParameterIndex);
-      Result := ConSettings.ConvFuncs.ZUnicodeToString(FUniTemp, ConSettings.CTRL_CP);
-    end
-  else
-    Result := GetRawByteString(ParameterIndex)
+  Result := GetRawByteString(ParameterIndex)
   {$ENDIF}
 end;
 
@@ -5265,7 +5240,7 @@ end;
   the Java programming language.
   <p>
   For the fixed-length type JDBC <code>CHAR</code>,
-  the <code>ZWideString</code> object
+  the <code>UnicodeString</code> object
   returned has exactly the same value the JDBC
   <code>CHAR</code> value had in the
   database, including any padding added by the database.
@@ -5276,7 +5251,7 @@ end;
   @exception SQLException if a database access error occurs
 }
 function TZAbstractCallableStatement_A.GetUnicodeString(
-  ParameterIndex: Integer): ZWideString;
+  ParameterIndex: Integer): UnicodeString;
 var
   L: LengthInt;
 begin
@@ -5341,7 +5316,7 @@ procedure TZAbstractCallableStatement_A.SetAnsiString(ParameterIndex: Integer;
   const Value: AnsiString);
 begin
   if (zOSCodePage = FClientCP)
-  then IZPreparedStatement(FWeakIntfPtrOfIPrepStmt).SetRawByteString(ParameterIndex, Value)
+  then IZPreparedStatement(FWeakIZPreparedStatementPtr).SetRawByteString(ParameterIndex, Value)
   else begin
     fUniTemp := PRawToUnicode(Pointer(Value), Length(Value), ZOSCodePage);
     fRawTemp := PUnicodeToRaw(Pointer(FUniTemp), Length(fUniTemp), FClientCP);
@@ -5378,12 +5353,12 @@ begin
   {$IFDEF UNICODE}
   SetRawByteString(ParameterIndex, ZUnicodeToRaw(Value, FClientCP));
   {$ELSE}
-  SetRawByteString(ParameterIndex, ConSettings^.ConvFuncs.ZStringToRaw(Value, ConSettings^.CTRL_CP, FClientCP));
+  SetRawByteString(ParameterIndex, Value);
   {$ENDIF}
 end;
 
 procedure TZAbstractCallableStatement_A.SetUnicodeString(
-  ParameterIndex: Integer; const Value: ZWideString);
+  ParameterIndex: Integer; const Value: UnicodeString);
 begin
   SetRawByteString(ParameterIndex, ZUnicodeToRaw(Value, FClientCP));
 end;
@@ -5440,15 +5415,7 @@ begin
   {$IFDEF UNICODE}
   Result := GetUnicodeString(ParameterIndex);
   {$ELSE}
-  if ConSettings.AutoEncode then
-    if (ConSettings.ClientCodePage.CP = ConSettings.CTRL_CP) then
-      Result := GetRawByteString(ParameterIndex)
-    else begin
-      FUniTemp := GetUnicodeString(ParameterIndex);
-      Result := ConSettings.ConvFuncs.ZUnicodeToString(FUniTemp, ConSettings.CTRL_CP);
-    end
-  else
-    Result := GetRawByteString(ParameterIndex)
+  Result := GetUTF8String(ParameterIndex)
   {$ENDIF}
 end;
 
@@ -5458,7 +5425,7 @@ end;
   the Java programming language.
   <p>
   For the fixed-length type JDBC <code>CHAR</code>,
-  the <code>ZWideString</code> object
+  the <code>UnicodeString</code> object
   returned has exactly the same value the JDBC
   <code>CHAR</code> value had in the
   database, including any padding added by the database.
@@ -5469,7 +5436,7 @@ end;
   @exception SQLException if a database access error occurs
 }
 function TZAbstractCallableStatement_W.GetUnicodeString(
-  ParameterIndex: Integer): ZWideString;
+  ParameterIndex: Integer): UnicodeString;
 var L: LengthInt;
 begin
   FillAndBindCharRec(ParameterIndex, L);
@@ -5514,13 +5481,13 @@ procedure TZAbstractCallableStatement_W.SetString(ParameterIndex: Integer;
   const Value: String);
 begin
   {$IFNDEF UNICODE}
-  FUniTemp := ConSettings.ConvFuncs.ZStringToUnicode(Value, ConSettings.CTRL_CP);
+  FUniTemp := ZRawToUnicode(Value, GetW2A2WConversionCodePage(ConSettings));
   {$ENDIF}
   SetUnicodeString(ParameterIndex, {$IFDEF UNICODE}Value{$ELSE}FUniTemp{$ENDIF});
 end;
 
 {**
-  Sets the designated parameter to a Object Pascal <code>ZWideString</code>
+  Sets the designated parameter to a Object Pascal <code>UnicodeString</code>
   value. The driver converts this
   to an SQL <code>VARCHAR</code> or <code>LONGVARCHAR</code> value
   (depending on the argument's
@@ -5531,7 +5498,7 @@ end;
   @param x the parameter value
 }
 procedure TZAbstractCallableStatement_W.SetUnicodeString(
-  ParameterIndex: Integer; const Value: ZWideString);
+  ParameterIndex: Integer; const Value: UnicodeString);
 begin
   {$IFNDEF GENERIC_INDEX}ParameterIndex := ParameterIndex -1;{$ENDIF}
   CheckParameterIndex(ParameterIndex);

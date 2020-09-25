@@ -96,15 +96,13 @@ type
     FHandle: TISC_DB_HANDLE;
     FStatusVector: TARRAY_ISC_STATUS;
     FPlainDriver: TZInterbasePlainDriver;
-    function ConstructConnectionString: String;
   protected
-    procedure BeforeUrlAssign; override;
-    procedure InternalCreate; override;
     procedure InternalClose; override;
   public
     procedure ExecuteImmediat(const SQL: RawByteString; LoggingCategory: TZLoggingCategory); overload; override;
     procedure ExecuteImmediat(const SQL: RawByteString; ISC_TR_HANDLE: PISC_TR_HANDLE; LoggingCategory: TZLoggingCategory); overload;
-
+  public
+    procedure AfterConstruction; override;
   public
     function IsFirebirdLib: Boolean; override;
     function IsInterbaseLib: Boolean; override;
@@ -144,16 +142,15 @@ type
     function TestCachedResultsAndForceFetchAll: Boolean; override;
   public { IZTransaction }
     procedure Commit;
+    procedure Close;
+    function GetConnection: IZConnection;
+    function IsClosed: Boolean;
     procedure Rollback;
     function StartTransaction: Integer;
-    function GetConnection: IZConnection;
   public { IZIBTransaction }
     procedure DoStartTransaction;
     function GetTrHandle: PISC_TR_HANDLE;
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost); override;
-  public
-    constructor Create(const Owner: TZInterbaseFirebirdConnection; AutoCommit, ReadOnly: Boolean;
-      const TPB: RawByteString);
   end;
 
 var
@@ -207,22 +204,23 @@ constructor TZInterbase6Driver.Create;
 begin
   inherited Create;
   AddSupportedProtocol(AddPlainDriverToCache(TZInterbasePlainDriver.Create));
-  AddSupportedProtocol(AddPlainDriverToCache(TZFirebirdPlainDriver.Create));
+  {$IFDEF ZEOS_DISABLE_FIREBIRD}
+  AddSupportedProtocol(AddPlainDriverToCache( TZFirebirdPlainDriver.Create));
+  {$ENDIF}
 end;
 
 { TZInterbase6Connection }
 
 Function TZInterbase6Connection.AbortOperation: Integer;
 Begin
- {$MESSAGE '.AbortOperation with Firebird is untested and might cause unexpected results!'}
- // https://github.com/Alexpux/firebird-git-svn/blob/master/doc/README.fb_cancel_operation
+ // https://github.com/FirebirdSQL/firebird/blob/master/doc/README.fb_cancel_operation
  if assigned(FPlainDriver.fb_cancel_operation) then begin
    Result := 0;
-   If FPlainDriver.fb_cancel_operation(@FStatusVector, @FHandle, fb_cancel_raise) <> 0 Then
-     HandleErrorOrWarning(lcOther, @FStatusVector, 'cancel operation', Self);
- end else begin
-   Result := 1 //abort opertion is not supported by the current client library
- end;
+   {If  }FPlainDriver.fb_cancel_operation(@FStatusVector, @FHandle, fb_cancel_raise){ <> 0 Then
+     commented by EH: if nothing was cancel, propably because FB is ready
+     inbetween we receive an exception...
+     HandleErrorOrWarning(lcOther, @FStatusVector, 'cancel operation', Self);}
+ end else Result := 1 //abort opertion is not supported by the current client library
 End;
 
 {**
@@ -235,33 +233,21 @@ End;
   Connection.
 }
 procedure TZInterbase6Connection.InternalClose;
-var LogMsg: RawByteString;
-  Status: ISC_Status;
+var Status: ISC_Status;
 begin
-  LogMsg := 'DISCONNECT FROM "'+ConSettings^.DataBase+'"';
+  FLogMessage := 'DISCONNECT FROM "'+URL.DataBase+'"';
   try
     inherited InternalClose;
   finally
     if Assigned(DriverManager) and DriverManager.HasLoggingListener then
-      DriverManager.LogMessage(lcConnect, ConSettings^.Protocol, LogMsg);
+      DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
     if FHandle <> 0 then begin
       Status := FPlainDriver.isc_detach_database(@FStatusVector, @FHandle);
       FHandle := 0;
       if Status <> 0 then
-        HandleErrorOrWarning(lcDisconnect, @FStatusVector, LogMsg, Self);
+        HandleErrorOrWarning(lcDisconnect, @FStatusVector, FLogMessage, Self);
     end;
   end;
-end;
-
-{**
-  Constructs this object and assignes the main properties.
-}
-procedure TZInterbase6Connection.InternalCreate;
-begin
-  FPlainDriver := TZInterbasePlainDriver(PlainDriver.GetInstance);
-  FHandle := 0;
-  inherited InternalCreate;
-  FXSQLDAMaxSize := 64*1024; //64KB by default
 end;
 
 function TZInterbase6Connection.GetPlainDriver: TZInterbasePlainDriver;
@@ -278,9 +264,13 @@ begin
   Status := FPlainDriver.isc_dsql_execute_immediate(@FStatusVector, @FHandle,
       ISC_TR_HANDLE, Length(SQL){$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}-1{$ENDIF},
       Pointer(SQL), GetDialect, nil);
+  {$IFDEF UNCICODE}
+  if (Status <> 0) or (FStatusVector[2] = isc_arg_warning) or DriverManager.HasLoggingListener then
+    FLogMessage := ZRawToUnicode(SQL, ConSettings.ClientCodePage.CP);
+  {$ENDIF}
     if (Status <> 0) or (FStatusVector[2] = isc_arg_warning) then
-      HandleErrorOrWarning(LoggingCategory, @FStatusVector, SQL, Self);
-  DriverManager.LogMessage(LoggingCategory, ConSettings^.Protocol, SQL);
+      HandleErrorOrWarning(LoggingCategory, @FStatusVector, {$IFDEF UNICODE}FLogMessage{$ELSE}SQL{$ENDIF}, Self);
+  DriverManager.LogMessage(LoggingCategory, URL.Protocol, {$IFDEF UNICODE}FLogMessage{$ELSE}SQL{$ENDIF});
 end;
 
 procedure TZInterbase6Connection.ExecuteImmediat(const SQL: RawByteString;
@@ -365,7 +355,8 @@ begin
       5..N  - string
       N+1   - #1 }
   if FByteBuffer[0] = isc_info
-  then Result := ConvertConnRawToString(ConSettings, @FByteBuffer[5], Integer(FByteBuffer[4]))
+  then Result := ConvertConnRawToString({$IFDEF UNICODE}
+    ConSettings, {$ENDIF}@FByteBuffer[5], Integer(FByteBuffer[4]))
   else Result := '';
 end;
 
@@ -380,71 +371,11 @@ begin
   else Result := nil;
 end;
 
-procedure TZInterbase6Connection.BeforeUrlAssign;
+procedure TZInterbase6Connection.AfterConstruction;
 begin
-  inherited;
-  FIsFirebirdLib := false;
-  FIsInterbaseLib := false;
-end;
-
-{**
-  Constructs the connection string for the current connection
-}
-function TZInterbase6Connection.ConstructConnectionString: String;
-var
-  Protocol: String;
-  ConnectionString: String;
-begin
-  Protocol := LowerCase(Info.Values[ConnProps_FBProtocol]);
-
-  if ((Protocol = 'inet') or (Protocol = 'wnet') or (Protocol = 'xnet') or (Protocol = 'local')) then begin
-    if (GetClientVersion >= 3000000) and IsFirebirdLib then begin
-      if protocol = 'inet' then begin
-        if Port <> 0
-        then ConnectionString := 'inet://' + HostName + ':' + ZFastCode.IntToStr(Port) + '/' + Database
-        else ConnectionString := 'inet://' + HostName + '/' + Database;
-      end else if Protocol = 'wnet' then begin
-        if HostName <> ''
-        then ConnectionString := 'wnet://' + HostName + '/' + Database
-        else ConnectionString := 'wnet://' + Database
-      end else if Protocol = 'xnet' then begin
-        ConnectionString := 'xnet://' + Database;
-      end else begin
-        ConnectionString := Database;
-      end;
-    end else begin
-      if protocol = 'inet' then begin
-        if HostName = ''
-        then ConnectionString := 'localhost'
-        else ConnectionString := HostName;
-        if Port <> 0 then begin
-          ConnectionString := ConnectionString + '/' + ZFastCode.IntToStr(Port);
-        end;
-        ConnectionString := ConnectionString + ':';
-        ConnectionString := ConnectionString + Database;
-      end else if Protocol = 'wnet' then begin
-        if HostName = ''
-        then ConnectionString := '\\.'
-        else ConnectionString := '\\' + HostName;
-        if Port <> 0 then begin
-          ConnectionString := ConnectionString + '@' + ZFastCode.IntToStr(Port);
-        end;
-        ConnectionString := ConnectionString + '\' + Database;
-      end else begin
-        ConnectionString := Database;
-      end;
-    end;
-  end else begin
-    if HostName <> '' then
-      if Port <> 0 then
-        ConnectionString := HostName + '/' + ZFastCode.IntToStr(Port) + ':' + Database
-      else
-        ConnectionString := HostName + ':' + Database
-    else
-      ConnectionString := Database;
-  end;
-
-  Result := ConnectionString;
+  FPlainDriver := PlainDriver.GetInstance as TZInterbasePlainDriver;
+  FXSQLDAMaxSize := 64*1024; //64KB by default
+  inherited AfterConstruction;
 end;
 
 {**
@@ -452,12 +383,13 @@ end;
 }
 procedure TZInterbase6Connection.Open;
 var
-  DPB, LogMsg: RawByteString;
-  DBName: array[0..512] of AnsiChar;
-  ConnectionString, CSNoneCP, DBCP, CreateDB: String;
+  DPB: RawByteString;
+  CSNoneCP, DBCP, CreateDB: String;
+  ConnectionString: SQLString;
   ti: IZIBTransaction;
   Statement: IZStatement;
   I: Integer;
+  db_name_len: Smallint;
   P, PEnd: PChar;
   TrHandle: TISC_TR_HANDLE;
   DBCreated: Boolean;
@@ -465,23 +397,24 @@ var
   var
     R: RawByteString;
     P: PAnsiChar;
-    L: LengthInt;
+    {$IFDEF UNICODE}
     CP: Word;
+    {$ENDIF}
   begin
+    {$IFDEF UNICODE}
     if (Info.IndexOf('isc_dpb_utf8_filename') = -1)
     then CP := zOSCodePage
     else CP := zCP_UTF8;
-    {$IFDEF UNICODE}
     R := ZUnicodeToRaw(ConnectionString, CP);
     {$ELSE}
-    R := ZConvertStringToRawWithAutoEncode(ConnectionString, ConSettings^.CTRL_CP, CP);
+    R := ConnectionString;
     {$ENDIF}
-    DPB := GenerateDPB(FPlainDriver, Info, ConSettings, CP);
+    DPB := GenerateDPB(FPlainDriver, Info{$IFDEF UNICODE},CP{$ENDIF});
     P := Pointer(R);
-    L := Min(SizeOf(DBName)-1, Length(R){$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}-1{$ENDIF});
+    db_name_len := Min(512, Length(R){$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}-1{$ENDIF});
     if P <> nil then
-      Move(P^, DBName[0], L);
-    AnsiChar((PAnsiChar(@DBName[0])+L)^) := AnsiChar(#0);
+      Move(P^, FByteBuffer[0], db_name_len);
+    PByte(PAnsiChar(@FByteBuffer[0])+db_name_len)^ := 0;
   end;
 label reconnect;
 begin
@@ -495,7 +428,7 @@ begin
 
   AssignISC_Parameters;
   ConnectionString := ConstructConnectionString;
-  CSNoneCP := Info.Values[DSProps_ResetCodePage];
+  CSNoneCP := Info.Values[ConnProps_Charset_NONE_Alias];
 
   FHandle := 0;
   DBCreated := False;
@@ -503,16 +436,16 @@ begin
   if (Info.Values[ConnProps_CreateNewDatabase] <> '') then begin
     CreateDB := Info.Values[ConnProps_CreateNewDatabase];
     if (GetClientVersion >= 2005000) and IsFirebirdLib and (Length(CreateDB)<=4) and StrToBoolEx(CreateDB, False) then begin
-      if (Info.Values['isc_dpb_lc_ctype'] <> '') and (Info.Values['isc_dpb_set_db_charset'] = '') then
-        Info.Values['isc_dpb_set_db_charset'] := Info.Values['isc_dpb_lc_ctype'];
-      DBCP := Info.Values['isc_dpb_set_db_charset'];
+      if (Info.Values[ConnProps_isc_dpb_lc_ctype] <> '') and (Info.Values[ConnProps_isc_dpb_set_db_charset] = '') then
+        Info.Values[ConnProps_isc_dpb_set_db_charset] := Info.Values[ConnProps_isc_dpb_lc_ctype];
+      DBCP := Info.Values[ConnProps_isc_dpb_set_db_charset];
       PrepareDPB;
-      LogMsg := 'CREATE DATABASE "'+ConSettings.Database+'" AS USER "'+ ConSettings^.User+'"';
-      if FPlainDriver.isc_create_database(@FStatusVector, SmallInt(StrLen(@DBName[0])),
-          @DBName[0], @FHandle, Smallint(Length(DPB)),Pointer(DPB), 0) <> 0 then
-        Self.HandleErrorOrWarning(lcOther, @FStatusVector, LogMsg, Self);
+      FLogMessage := 'CREATE DATABASE "'+URL.Database+'" AS USER "'+ URL.UserName+'"';
+      if FPlainDriver.isc_create_database(@FStatusVector, db_name_len,
+          @FByteBuffer[0], @FHandle, Smallint(Length(DPB)),Pointer(DPB), 0) <> 0 then
+        Self.HandleErrorOrWarning(lcOther, @FStatusVector, FLogMessage, Self);
       if DriverManager.HasLoggingListener then
-        DriverManager.LogMessage(lcConnect, ConSettings^.Protocol, LogMsg);
+        DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
     end else begin
       {$IFDEF UNICODE}
       DPB := ZUnicodeToRaw(CreateDB, zOSCodePage);
@@ -536,18 +469,19 @@ begin
       end else DBCP := sCS_NONE;
       if FPlainDriver.isc_dsql_execute_immediate(@FStatusVector, @FHandle, @TrHandle,
           Length(DPB), Pointer(DPB), FDialect, nil) <> 0 then
-        HandleErrorOrWarning(lcOther, @FStatusVector, DPB, Self);
+        HandleErrorOrWarning(lcOther, @FStatusVector, CreateDB, Self);
       { Logging connection action }
       if DriverManager.HasLoggingListener then
-        DriverManager.LogMessage(lcConnect, ConSettings^.Protocol, DPB);
+        DriverManager.LogMessage(lcConnect, URL.Protocol, CreateDB);
       //we did create the db and are connected now.
       //we have no dpb so we connect with 'NONE' which is not a problem for the UTF8/NONE charsets
       //because the metainformations are retrieved in UTF8 encoding
       if (DBCP <> FClientCodePage) or ((DBCP = sCS_NONE) and (FClientCodePage <> '') and
          ((FClientCodePage <> 'UTF8') and (FClientCodePage <> sCS_NONE))) then begin
+        FLogMessage := 'DISCONNECT FROM "'+URL.DataBase+'"';
         //we need a reconnect with a valid dpb
         if FPlainDriver.isc_detach_database(@FStatusVector, @FHandle) <> 0 then
-          HandleErrorOrWarning(lcDisconnect, @FStatusVector, DPB, Self);
+          HandleErrorOrWarning(lcDisconnect, @FStatusVector, FLogMessage, Self);
         TrHandle := 0;
         FHandle := 0;
       end;
@@ -558,11 +492,11 @@ begin
 reconnect:
   if FHandle = 0 then begin
     PrepareDPB;
-    LogMsg := 'CONNECT TO "'+ConSettings^.DataBase+'" AS USER "'+ConSettings^.User+'"';
+    FLogMessage := Format(SConnect2AsUser, [ConnectionString, URL.UserName]);
     { Connect to Interbase6 database. }
-    if FPlainDriver.isc_attach_database(@FStatusVector,
-        ZFastCode.StrLen(@DBName[0]), @DBName[0], @FHandle, Length(DPB), Pointer(DPB)) <> 0 then
-      HandleErrorOrWarning(lcConnect, @FStatusVector, DPB, Self);
+    if FPlainDriver.isc_attach_database(@FStatusVector, db_name_len,
+       @FByteBuffer[0], @FHandle, Length(DPB), Pointer(DPB)) <> 0 then
+      HandleErrorOrWarning(lcConnect, @FStatusVector, FLogMessage, Self);
 
     { Dialect could have changed by isc_dpb_set_db_SQL_dialect command }
     I := GetDBIntegerInfo(isc_info_db_SQL_Dialect, Self);
@@ -571,10 +505,10 @@ reconnect:
     else FDialect := Word(I);
     { Logging connection action }
     if DriverManager.HasLoggingListener then
-      DriverManager.LogMessage(lcConnect, ConSettings^.Protocol, LogMsg);
+      DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
   end;
 
-  inherited SetAutoCommit(AutoCommit or (Info.IndexOf('isc_tpb_autocommit') <> -1));
+  inherited SetAutoCommit(AutoCommit or (Info.IndexOf(TxnProps_isc_tpb_autocommit) <> -1));
   FRestartTransaction := not AutoCommit;
 
   FHardCommit := StrToBoolEx(Info.Values[ConnProps_HardCommit]);
@@ -604,8 +538,7 @@ reconnect:
     end;
     ti := GetActiveTransaction;
     try
-      ti.CloseTransaction;
-      ReleaseTransaction(ti);
+      ti.Close;
     finally
       ti := nil;
     end;
@@ -635,15 +568,15 @@ reconnect:
     then CSNoneCP := FClientCodePage
     else if FCLientCodePage <> ''
       then CSNoneCP := FCLientCodePage
-      else CSNoneCP := 'WIN1252'; {WIN1252 would be optimal propably}
+      else CSNoneCP := 'WIN1252'; {WIN1252 would be optimal propably, each byte is shifted to a word..}
     ResetCurrentClientCodePage(CSNoneCP, False);
     ConSettings^.ClientCodePage^.ID := 0;
     //Now notify our metadata object all fields are retrieved in utf8 encoding
     (FMetadata as TZInterbase6DatabaseMetadata).SetUTF8CodePageInfo;
     if (FCLientCodePage <> DBCP) then begin
-      Info.Values['isc_dpb_lc_ctype'] := DBCP;
+      Info.Values[ConnProps_isc_dpb_lc_ctype] := DBCP;
       InternalClose;
-      goto reconnect; //build new TDB and reopen in SC_NONE mode
+      goto reconnect; //build new TDB and reopen in CS_NONE mode
     end;
   end else if FClientCodePage = '' then
     CheckCharEncoding(DBCP);
@@ -658,14 +591,12 @@ end;
 procedure TZInterbase6Connection.ReleaseImmediat(
   const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
 var ImmediatelyReleasable: IImmediatelyReleasable;
-  B: Boolean;
 begin
   FHandle := 0;
-  for B := False to True do
-    if (fActiveTransaction[b] <> nil) and
-       (fActiveTransaction[b].QueryInterface(IImmediatelyReleasable, ImmediatelyReleasable) = S_OK) and
-        (ImmediatelyReleasable <> Sender) then
-        ImmediatelyReleasable.ReleaseImmediat(Sender, AError);
+  if (fActiveTransaction <> nil) and
+     (fActiveTransaction.QueryInterface(IImmediatelyReleasable, ImmediatelyReleasable) = S_OK) and
+      (ImmediatelyReleasable <> Sender) then
+      ImmediatelyReleasable.ReleaseImmediat(Sender, AError);
   while fTransactions.Count > 0 do begin
     fTransactions[0].QueryInterface(IImmediatelyReleasable, ImmediatelyReleasable);
     if ImmediatelyReleasable <> Sender then
@@ -774,12 +705,11 @@ function TZInterbase6Connection.GetActiveTransaction: IZIBTransaction;
 var TA: IZTransaction;
 begin
   if FHandle <> 0 then begin
-    if fActiveTransaction[ReadOnly] = nil then begin
+    if fActiveTransaction = nil then begin
       TA := CreateTransaction(AutoCommit, ReadOnly, TransactIsolationLevel, Info);
-      TA.QueryInterface(IZInterbaseFirebirdTransaction, fActiveTransaction[ReadOnly]);
-      fTransactions.Add(TA);
+      TA.QueryInterface(IZInterbaseFirebirdTransaction, fActiveTransaction);
     end;
-    fActiveTransaction[ReadOnly].QueryInterface(IZIBTransaction, Result);
+    fActiveTransaction.QueryInterface(IZIBTransaction, Result);
   end else
     Result := nil;
 end;
@@ -812,12 +742,26 @@ function TZInterbase6Connection.CreateTransaction(AutoCommit, ReadOnly: Boolean;
 begin
   if Params = nil then
     Params := Info;
-  if FTPBs[AutoCommit][ReadOnly][TransactIsolationLevel] = EmptyRaw then
-    FTPBs[AutoCommit][ReadOnly][TransactIsolationLevel] := GenerateTPB(AutoCommit, ReadOnly, TransactIsolationLevel, Params);
-  Result := TZIBTransaction.Create(Self, AutoCommit, ReadOnly, FTPBs[AutoCommit][ReadOnly][TransactIsolationLevel]);
+  Result := TZIBTransaction.Create(Self, AutoCommit, ReadOnly, TransactIsolationLevel, Params);
+  fTransactions.Add(Result);
 end;
 
 { TZIBTransaction }
+
+procedure TZIBTransaction.Close;
+var Status: ISC_STATUS;
+begin
+  if FTrHandle > 0 then with TZInterbase6Connection(FOwner) do begin
+    if fDoCommit
+    then Status := FPlainDriver.isc_commit_transaction(@FStatusVector, @FTrHandle)
+    else Status := FPlainDriver.isc_rollback_transaction(@FStatusVector, @FTrHandle);
+    FTrHandle := 0;
+    fSavepoints.Clear;
+    if Status <> 0 then
+      FOwner.HandleErrorOrWarning(lcTransaction, @FStatusVector, sCommitMsg, Self);
+    FOwner.ReleaseTransaction(IZTransaction(FWeakIZTransactionPtr));
+  end;
+end;
 
 {**
   Makes all changes made since the previous
@@ -831,35 +775,28 @@ var Status: ISC_STATUS;
   S: RawByteString;
 begin
   with TZInterbase6Connection(FOwner) do
-  if fSavepoints.Count > 0 then begin
-    S := 'RELEASE SAVEPOINT '+ {$IFDEF UNICODE}UnicodeStringToAscii7{$ENDIF}(FSavePoints[FSavePoints.Count-1]);
-    ExecuteImmediat(S, lcTransaction);
-    FSavePoints.Delete(FSavePoints.Count-1);
-  end else if FTrHandle <> 0 then try
-    if FHardCommit or
-      ((FOpenCursors.Count = 0) and (FOpenUncachedLobs.Count = 0)) or
-      ((FOpenUncachedLobs.Count = 0) and TestCachedResultsAndForceFetchAll)
-    then Status := FPlainDriver.isc_commit_transaction(@FStatusVector, @FTrHandle)
-    else begin
-      fDoCommit := True;
-      fDoLog := False;
-      Status := FPlainDriver.isc_commit_retaining(@FStatusVector, @FTrHandle);
-      ReleaseTransaction(Self);
+    if fSavepoints.Count > 0 then begin
+      S := 'RELEASE SAVEPOINT '+ {$IFDEF UNICODE}UnicodeStringToAscii7{$ENDIF}(FSavePoints[FSavePoints.Count-1]);
+      ExecuteImmediat(S, lcTransaction);
+      FSavePoints.Delete(FSavePoints.Count-1);
+    end else if FTrHandle <> 0 then try
+      if FHardCommit or
+        ((FOpenCursors.Count = 0) and (FOpenUncachedLobs.Count = 0)) or
+        ((FOpenUncachedLobs.Count = 0) and TestCachedResultsAndForceFetchAll)
+      then Status := FPlainDriver.isc_commit_transaction(@FStatusVector, @FTrHandle)
+      else begin
+        fDoCommit := True;
+        fDoLog := False;
+        Status := FPlainDriver.isc_commit_retaining(@FStatusVector, @FTrHandle);
+        ReleaseTransaction(IZTransaction(FWeakIZTransactionPtr));
+      end;
+      if Status <> 0 then
+        FOwner.HandleErrorOrWarning(lcTransaction, @FStatusVector, sCommitMsg,
+          IImmediatelyReleasable(FWeakImmediatRelPtr));
+    finally
+      if fDoLog and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcTransaction, URL.Protocol, sCommitMsg);
     end;
-    if Status <> 0 then
-      FOwner.HandleErrorOrWarning(lcTransaction, @FStatusVector, sCommitMsg, Self);
-  finally
-    if fDoLog and DriverManager.HasLoggingListener then
-      DriverManager.LogMessage(lcTransaction, ConSettings^.Protocol, sCommitMsg);
-  end;
-end;
-
-constructor TZIBTransaction.Create(const Owner: TZInterbaseFirebirdConnection;
-  AutoCommit, ReadOnly: Boolean; const TPB: RawByteString);
-begin
-  inherited;
-  fTEB.tpb_length := Length(fTPB){$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}-1{$ENDIF};
-  fTEB.tpb_address := Pointer(fTPB);
 end;
 
 procedure TZIBTransaction.DoStartTransaction;
@@ -878,6 +815,11 @@ begin
   if FTrHandle = 0 then
     StartTransaction;
   Result := @FTrHandle
+end;
+
+function TZIBTransaction.IsClosed: Boolean;
+begin
+  Result := FTrHandle = 0;
 end;
 
 procedure TZIBTransaction.ReleaseImmediat(const Sender: IImmediatelyReleasable;
@@ -912,13 +854,13 @@ begin
       fDoCommit := False;
       fDoLog := False;
       Status := FPlainDriver.isc_rollback_retaining(@FStatusVector, @FTrHandle);
-      ReleaseTransaction(Self);
+      ReleaseTransaction(IZTransaction(FWeakIZTransactionPtr));
     end;
     if Status <> 0 then
       FOwner.HandleErrorOrWarning(lcTransaction, @FStatusVector, sRollbackMsg, Self);
   finally
     if fDoLog and DriverManager.HasLoggingListener then
-      DriverManager.LogMessage(lcTransaction, ConSettings^.Protocol, sRollbackMsg);
+      DriverManager.LogMessage(lcTransaction, URL.Protocol, sRollbackMsg);
   end;
 end;
 
@@ -937,18 +879,24 @@ end;
 function TZIBTransaction.StartTransaction: Integer;
 var S: String;
 begin
-  with TZInterbase6Connection(FOwner) do
-  if FTrHandle = 0 then begin
-    Result := Ord(not AutoCommit);
-    fTEB.db_handle := @FHandle;
-    if FPlainDriver.isc_start_multiple(@FStatusVector, @FTrHandle, 1, @fTEB) <> 0 then
-      FOwner.HandleErrorOrWarning(lcTransaction, @FStatusVector, sStartTxn, Self);
-    DriverManager.LogMessage(lcTransaction, ConSettings^.Protocol, sStartTxn);
-  end else begin
-    Result := FSavePoints.Count+2;
-    S := 'SP'+ZFastcode.IntToStr(NativeUInt(Self))+'_'+ZFastCode.IntToStr(Result);
-    ExecuteImmediat('SAVEPOINT '+{$IFDEF UNICODE}UnicodeStringToAscii7{$ENDIF}(S), lcTransaction);
-    Result := FSavePoints.Add(S)+2;
+  with TZInterbase6Connection(FOwner) do begin
+    if FTrHandle = 0 then begin
+      if FTPB = EmptyRaw then begin
+        FTPB := FOwner.GenerateTPB(FAutoCommit, FReadOnly, FTransactionIsolation, FProperties);
+        fTEB.tpb_length := Length(FTPB){$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}-1{$ENDIF};
+        fTEB.tpb_address := Pointer(FTPB);
+      end;
+      Result := Ord(not Self.FAutoCommit);
+      fTEB.db_handle := @FHandle;
+      if FPlainDriver.isc_start_multiple(@FStatusVector, @FTrHandle, 1, @fTEB) <> 0 then
+        FOwner.HandleErrorOrWarning(lcTransaction, @FStatusVector, sStartTxn, Self);
+      DriverManager.LogMessage(lcTransaction, URL.Protocol, sStartTxn);
+    end else begin
+      Result := FSavePoints.Count+2;
+      S := 'SP'+ZFastcode.IntToStr(NativeUInt(Self))+'_'+ZFastCode.IntToStr(Result);
+      ExecuteImmediat('SAVEPOINT '+{$IFDEF UNICODE}UnicodeStringToAscii7{$ENDIF}(S), lcTransaction);
+      Result := FSavePoints.Add(S)+2;
+    end;
   end;
 end;
 

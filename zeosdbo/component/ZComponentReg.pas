@@ -82,6 +82,7 @@ uses
   ToolsAPI,                                     //
 {$ENDIF}
 {$ENDIF}
+  ZPropertiesEditor,
   Classes, ZConnection, ZAbstractConnection, ZDataset, ZSqlUpdate, ZSqlProcessor,
   ZStoredProcedure, ZGroupedConnection, ZConnectionGroup,
   ZSqlMonitor, ZSqlMetadata, ZSequence, ZAbstractRODataset
@@ -99,8 +100,8 @@ var                                             //
 {$IFEND}                                        //
 {$ENDIF}                                        // **** Pitfiend addition end
 begin
-  RegisterComponents(ZEOS_DB_PALETTE, [
-    TZConnection, TZReadOnlyQuery, TZQuery, TZTable, TZUpdateSQL,
+  RegisterComponents(ZEOS_DB_PALETTE, [TZConnection,
+    TZTransaction, TZReadOnlyQuery, TZQuery, TZTable, TZUpdateSQL,
     TZConnectionGroup, TZGroupedConnection,
     TZStoredProc, TZSQLMetadata, TZSQLProcessor, TZSQLMonitor, TZSequence
     {$IFDEF ENABLE_INTERBASE}, TZIBEventAlerter {$ENDIF}
@@ -129,6 +130,7 @@ begin
   RegisterPropertyEditor(TypeInfo(string), TZConnection, 'Database', TZDatabasePropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZConnection, 'Catalog', TZCatalogPropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZConnection, 'LibraryLocation', TZLibLocationPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TStrings), TZConnection, 'Properties', TZProperitesEditor);
 
   RegisterPropertyEditor(TypeInfo(string), TZConnectionGroup, 'Protocol', TZProtocolPropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZConnectionGroup, 'Database', TZConnectionGroupPropertyEditor);
@@ -139,22 +141,26 @@ begin
   RegisterPropertyEditor(TypeInfo(string), TZQuery, 'MasterFields', TZMasterFieldPropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZQuery, 'SortedFields', TZDataFieldPropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZQuery, 'SequenceField', TZDataFieldPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TStrings), TZQuery, 'Properties', TZProperitesEditor);
 
   RegisterPropertyEditor(TypeInfo(string), TZReadOnlyQuery, 'LinkedFields', TZDataFieldPropertyEditor); {renamed by bangfauzan}
   RegisterPropertyEditor(TypeInfo(string), TZReadOnlyQuery, 'MasterFields', TZMasterFieldPropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZReadOnlyQuery, 'SortedFields', TZDataFieldPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TStrings), TZReadOnlyQuery, 'Properties', TZProperitesEditor);
 
   RegisterPropertyEditor(TypeInfo(string), TZTable, 'TableName', TZTableNamePropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZTable, 'LinkedFields', TZDataFieldPropertyEditor); {renamed by bangfauzan}
   RegisterPropertyEditor(TypeInfo(string), TZTable, 'MasterFields', TZMasterFieldPropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZTable, 'SortedFields', TZDataFieldPropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZTable, 'SequenceField', TZDataFieldPropertyEditor);
+  RegisterPropertyEditor(TypeInfo(TStrings), TZTable, 'Properties', TZProperitesEditor);
 
   RegisterPropertyEditor(TypeInfo(string), TZStoredProc, 'StoredProcName', TZProcedureNamePropertyEditor);
   RegisterPropertyEditor(TypeInfo(string), TZStoredProc, 'SortedFields', TZDataFieldPropertyEditor);
 
   RegisterPropertyEditor(TypeInfo(string), TZSequence, 'SequenceName', TZSequenceNamePropertyEditor);
 
+  RegisterPropertyEditor(TypeInfo(TStrings), TZTransaction, 'Properties', TZProperitesEditor);
 {$IFDEF USE_METADATA}
   RegisterPropertyEditor(TypeInfo(string), TZSQLMetadata, 'Catalog', TZCatalogProperty);
   RegisterPropertyEditor(TypeInfo(string), TZSQLMetadata, 'ColumnName', TZColumnNamePropertyEditor);

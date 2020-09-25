@@ -377,7 +377,7 @@ type
   public //IImmediatelyReleasable
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost); virtual;
     function GetConSettings: PZConSettings;
-    procedure HandleAttributError(Status: SWord; WasGet: Boolean); virtual; abstract;
+    procedure HandleAttributError(Status: SWord; WasGet: Boolean);
   protected //implement fakes IInterface
     function QueryInterface({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} IID: TGUID; out Obj): HResult; {$IF not defined(MSWINDOWS) and defined(FPC)}cdecl{$ELSE}stdcall{$IFEND};
     function _AddRef: Integer; {$IF not defined(MSWINDOWS) and defined(FPC)}cdecl{$ELSE}stdcall{$IFEND};
@@ -418,17 +418,14 @@ type
     SQLType: TZSQLType;
   end;
 
-  TZOracleAttributeA = class(TZOraProcDescriptor)
-  public
-    procedure HandleAttributError(Status: SWord; WasGet: Boolean); override;
-  end;
-
   { oracle loves it's recursion ... so we need a recursive obj model }
-  TZOraProcDescriptor_A = class(TZOracleAttributeA)
+  TZOraProcDescriptor_A = class(TZOraProcDescriptor)
   private
     FParent: TZOraProcDescriptor_A;
     FConnection: IZOracleConnection;
+    {$IFDEF UNICODE}
     FRawCP: Word;
+    {$ENDIF}
 
     procedure InternalDescribeObject(Obj: POCIHandle);
     function InternalDescribe(const Name: RawByteString; _Type: UB4;
@@ -439,24 +436,20 @@ type
     procedure ConcatParentName(NotArgName: Boolean; {$IFDEF AUTOREFCOUNT}const{$ENDIF}
       SQLWriter: TZRawSQLStringWriter; var Result: RawByteString; const IC: IZIdentifierConvertor);
     constructor Create({$IFDEF AUTOREFCOUNT} const {$ENDIF}Parent: TZOraProcDescriptor_A;
-      Const Connection: IZOracleConnection; RawCP: Word);
+      Const Connection: IZOracleConnection{$IFDEF UNICODE}; RawCP: Word{$ENDIF UNICODE});
     destructor Destroy; override;
   public
     SchemaName, AttributeName, TypeName: RawByteString;
     property Parent: TZOraProcDescriptor_A read FParent;
   end;
 
-  TZOracleAttributeW = class(TZOraProcDescriptor)
-  public
-    procedure HandleAttributError(Status: SWord; WasGet: Boolean); override;
-  end;
-
   { oracle loves it's recursion ... so we need a recursive obj model }
-  TZOraProcDescriptor_W = class(TZOracleAttributeW)
+  TZOraProcDescriptor_W = class(TZOraProcDescriptor)
   private
     FParent: TZOraProcDescriptor_W;
+    {$IFNDEF UNICODE}
     FRawCP: Word;
-
+    {$ENDIF UNICODE}
     procedure InternalDescribeObject(Obj: POCIHandle);
     function InternalDescribe(const Name: UnicodeString; _Type: UB4;
       Owner: POCIHandle): Sword;
@@ -468,7 +461,7 @@ type
       SQLWriter: TZUnicodeSQLStringWriter; var Result: UnicodeString; const IC: IZIdentifierConvertor);
 
     constructor Create({$IFDEF AUTOREFCOUNT} const {$ENDIF}Parent: TZOraProcDescriptor_W;
-      Const Connection: IZOracleConnection; RawCP: Word);
+      Const Connection: IZOracleConnection{$IFNDEF UNICODE}; RawCP: Word{$ENDIF});
     destructor Destroy; override;
   public
     SchemaName, AttributeName, TypeName: UnicodeString;
@@ -1729,16 +1722,18 @@ begin
 end;
 
 constructor TZOraProcDescriptor_A.Create({$IFDEF AUTOREFCOUNT} const {$ENDIF}
-  Parent: TZOraProcDescriptor_A; Const Connection: IZOracleConnection;
-  RawCP: Word);
+  Parent: TZOraProcDescriptor_A; Const Connection: IZOracleConnection{$IFDEF UNICODE};
+  RawCP: Word{$ENDIF});
 begin
   inherited Create(Connection, nil, OCI_PTYPE_UNK, Connection.GetErrorHandle);
   fParent := Parent;
+  {$IFDEF UNICODE}
   FRawCP := RawCP;
+  {$ENDIF UNICODE}
   FConnection := Connection;
 end;
 
-const OCIAttrGetA: RawByteString = 'OCIAttrGet';
+const OCIAttrGetA: String = 'OCIAttrGet';
 
 {$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "i" does not seem to be initialized} {$ENDIF}
 function TZOraProcDescriptor_A.InternalDescribe(const Name: RawByteString;
@@ -1759,7 +1754,7 @@ begin
   { get a descriptor handle for the param/obj }
   Result := FPlainDriver.OCIHandleAlloc(Owner, Descriptor, OCI_HTYPE_DESCRIBE, 0, nil);
   if Result <> OCI_SUCCESS then
-    FConnection.HandleErrorOrWarningA(FOCIError, Result, lcOther, 'OCIHandleAlloc', Self);
+    FConnection.HandleErrorOrWarning(FOCIError, Result, lcOther, 'OCIHandleAlloc', Self);
   Result := FPlainDriver.OCIDescribeAny(OCISvcCtx, FOCIError, Pointer(Name),
         Length(Name), OCI_OTYPE_NAME, 0, _Type, Descriptor);
   if Result <> OCI_SUCCESS then begin
@@ -1826,8 +1821,8 @@ begin
     { get a argument handle }
     Status := FPlainDriver.OCIParamGet(arglst, OCI_DTYPE_PARAM, FOCIError, arg, N);
     if Status <> OCI_SUCCESS then
-      FConnection.HandleErrorOrWarningA(FOCIError, Status, lcOther, OCIAttrGetA, Self);
-    Param := TZOraProcDescriptor_A.Create(Self, FConnection, CP);
+      FConnection.HandleErrorOrWarning(FOCIError, Status, lcOther, OCIAttrGetA, Self);
+    Param := TZOraProcDescriptor_A.Create(Self, FConnection{$IFDEF UNICODE}, CP{$ENDIF});
     Args.Add(Param);
     Param.SchemaName := SchemaName;
     { get the object type }
@@ -1869,7 +1864,7 @@ begin
             Param.csid := OCI_UTF16ID;
           end else if Consettings.ClientCodePage.Encoding <> ceUTF16 then begin
             Param.DataSize := Param.Precision * ConSettings.ClientCodePage.CharWidth;
-            Param.CodePage := ConSettings.ClientCodePage.CP;
+            Param.CodePage := CP;
           end else begin
             Param.DataSize := Param.Precision shl 1;
             Param.CodePage := zCP_UTF16;
@@ -1878,7 +1873,7 @@ begin
         end else if (Param.csform = SQLCS_NCHAR) or (Consettings.ClientCodePage.Encoding = ceUTF16) then begin
           Param.SQLType := stUnicodeStream;
           Param.CodePage := zCP_UTF16
-        end else Param.CodePage := ConSettings.ClientCodePage.CP;
+        end else Param.CodePage := CP;
         Param.csid := Param.GetUb2(OCI_ATTR_CHARSET_ID);
       end;
     end else
@@ -1965,7 +1960,7 @@ begin
       end;
     end;
   end else if Status <> OCI_SUCCESS then
-    FConnection.HandleErrorOrWarningA(FConnection.GetErrorHandle, Status, lcExecute, 'OCIDescribeAny', Self);
+    FConnection.HandleErrorOrWarning(FConnection.GetErrorHandle, Status, lcExecute, 'OCIDescribeAny', Self);
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
@@ -2007,12 +2002,14 @@ begin
 end;
 
 constructor TZOraProcDescriptor_W.Create({$IFDEF AUTOREFCOUNT} const {$ENDIF}
-  Parent: TZOraProcDescriptor_W; Const Connection: IZOracleConnection;
-  RawCP: Word);
+  Parent: TZOraProcDescriptor_W; Const Connection: IZOracleConnection{$IFNDEF UNICODE};
+  RawCP: Word{$ENDIF});
 begin
   inherited Create(Connection, nil, OCI_PTYPE_UNK, Connection.GetErrorHandle);
   fParent := Parent;
+  {$IFNDEF UNICODE}
   FRawCP := RawCP;
+  {$ENDIF UNICODE}
 end;
 
 procedure TZOraProcDescriptor_W.Describe(_Type: UB4;
@@ -2052,7 +2049,7 @@ begin
           tmp := '"PUBLIC".'+tmp;
           Status := InternalDescribe(tmp, _Type, OCIEnv);
           if Status <> OCI_SUCCESS then
-            FConnection.HandleErrorOrWarningW(FConnection.GetErrorHandle, Status, lcExecute, 'OCIDescribeAny', Self);
+            FConnection.HandleErrorOrWarning(FConnection.GetErrorHandle, Status, lcExecute, 'OCIDescribeAny', Self);
         end;
       end else begin
         ps2 := ZFastCode.PosEx(UnicodeString('.'), ProcSQL, ps+1);
@@ -2077,7 +2074,7 @@ begin
       end;
     end;
   end else if Status <> OCI_SUCCESS then
-    FConnection.HandleErrorOrWarningW(FConnection.GetErrorHandle, Status, lcExecute, 'OCIDescribeAny', Self);
+    FConnection.HandleErrorOrWarning(FConnection.GetErrorHandle, Status, lcExecute, 'OCIDescribeAny', Self);
 end;
 
 destructor TZOraProcDescriptor_W.Destroy;
@@ -2113,7 +2110,7 @@ begin
   { get a descriptor handle for the param/obj }
   Result := FPlainDriver.OCIHandleAlloc(Owner, Descriptor, OCI_HTYPE_DESCRIBE, 0, nil);
   if Result <> OCI_SUCCESS then
-    FConnection.HandleErrorOrWarningW(FOCIError, Result, lcOther, 'OCIHandleAlloc', Self);
+    FConnection.HandleErrorOrWarning(FOCIError, Result, lcOther, 'OCIHandleAlloc', Self);
   tmp := Name;
 jmpDescibe:
   objptr := Pointer(tmp);
@@ -2178,8 +2175,8 @@ begin
     { get a argument handle }
     Status := FPlainDriver.OCIParamGet(arglst, OCI_DTYPE_PARAM, FOCIError, arg, N);
     if Status <> OCI_SUCCESS then
-      FConnection.HandleErrorOrWarningW(FOCIError, Status, lcOther, 'OCIParamGet', Self);
-    Param := TZOraProcDescriptor_W.Create(Self, FConnection, CP);
+      FConnection.HandleErrorOrWarning(FOCIError, Status, lcOther, 'OCIParamGet', Self);
+    Param := TZOraProcDescriptor_W.Create(Self, FConnection{$IFNDEF UNICODE}, CP{$ENDIF});
     Args.Add(Param);
     Param.SchemaName := SchemaName;
     { get the object type }
@@ -2349,6 +2346,12 @@ begin
     HandleAttributError(Status, True);
 end;
 
+const OCIAttr: Array[Boolean] of String = ('OCIAttrSet', 'OCIAttrGet');
+procedure TZOracleAttribute.HandleAttributError(Status: SWord; WasGet: Boolean);
+begin
+  FConnection.HandleErrorOrWarning(FOCIError, Status, lcOther, OCIAttr[WasGet], Self);
+end;
+
 function TZOracleAttribute.QueryInterface({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} IID: TGUID; out Obj): HResult;
 begin
   if GetInterface(IID, Obj)
@@ -2427,26 +2430,6 @@ end;
 function TZOracleAttribute._Release: Integer;
 begin
   Result := -1;
-end;
-
-{ TZOracleAttributeA }
-
-const RawOCIAttr: Array[Boolean] of RawByteString = ('OCIAttrSet', 'OCIAttrGet');
-
-procedure TZOracleAttributeA.HandleAttributError(Status: SWord;
-  WasGet: Boolean);
-begin
-  FConnection.HandleErrorOrWarningA(FOCIError, Status, lcOther, RawOCIAttr[WasGet], Self);
-end;
-
-{ TZOracleAttributeW }
-
-const UniOCIAttr: Array[Boolean] of UnicodeString = ('OCIAttrSet', 'OCIAttrGet');
-
-procedure TZOracleAttributeW.HandleAttributError(Status: SWord;
-  WasGet: Boolean);
-begin
-  FConnection.HandleErrorOrWarningW(FOCIError, Status, lcOther, UniOCIAttr[WasGet], Self);
 end;
 
 initialization

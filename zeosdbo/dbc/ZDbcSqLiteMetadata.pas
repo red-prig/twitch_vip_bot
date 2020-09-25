@@ -774,7 +774,7 @@ end;
 }
 function TZSQLiteDatabaseInfo.SupportsOpenCursorsAcrossCommit: Boolean;
 begin
-  Result := False;
+  Result := True;
 end;
 
 {**
@@ -1311,11 +1311,12 @@ const
 var
   Temp_scheme, TempTableNamePattern: String;
   UndefinedVarcharAsStringLength: Integer;
+  SQLiteIntAffinity: Boolean;
   ResSet, TblRS: IZResultSet;
   TblTmp, SchemaTmp: RawByteString;
   TableTypes: TStringDynArray;
   procedure FillResult(const RS: IZResultSet; UndefinedVarcharAsStringLength: Integer; ColumnNamePattern: String;
-    Const SchemaName, TableName: RawByteString);
+    Const SchemaName, TableName: RawByteString; SQLiteIntAffinity: Boolean);
   var
     Len: NativeUInt;
     Precision, Decimals: Integer;
@@ -1367,7 +1368,11 @@ var
         ColumnNamePattern := S;
       end;
       ColumnNamePattern := NormalizePatternCase(ColumnNamePattern);
-      ColPatTemp := ConSettings.ConvFuncs.ZStringToRaw(ColumnNamePattern, ConSettings.CTRL_CP, zCP_UTF8);
+      {$IFDEF UNICODE}
+      ColPatTemp := ZUnicodeToRaw(ColumnNamePattern, zCP_UTF8);
+      {$ELSE}
+      ColPatTemp := ColumnNamePattern;
+      {$ENDIF}
     end else begin
       CompareColLike := False;
       CompareEquals := False;
@@ -1388,7 +1393,7 @@ var
         Result.UpdatePAnsiChar(ColumnNameIndex, P, Len);
         TypeTmp := GetRawByteString(type_index);
         SQLType := ConvertSQLiteTypeToSQLType(TypeTmp, UndefinedVarcharAsStringLength,
-          Precision, Decimals);
+          Precision, Decimals, SQLiteIntAffinity);
         Result.UpdateSmall(TableColColumnTypeIndex, Ord(SQLType));
 
         Len := Length(TypeTmp);
@@ -1447,16 +1452,29 @@ var
 begin
   Result:=inherited UncachedGetColumns(Catalog, SchemaPattern, TableNamePattern, ColumnNamePattern);
 
-  UndefinedVarcharAsStringLength := (GetConnection as IZSQLiteConnection).GetUndefinedVarcharAsStringLength;
+  with GetConnection as IZSQLiteConnection do begin
+    UndefinedVarcharAsStringLength := GetUndefinedVarcharAsStringLength;
+    SQLiteIntAffinity := GetSQLiteIntAffinity;
+  end;
+
   with GetStatement do begin
     if HasNoWildcards(TableNamePattern) and HasNoWildcards(SchemaPattern) and ((ColumnNamePattern = '') or (ColumnNamePattern = '%')) then begin
       TempTableNamePattern := StripEscape(TableNamePattern);
       TempTableNamePattern := NormalizePatternCase(TempTableNamePattern);
-      TblTmp := ConSettings.ConvFuncs.ZStringToRaw(TempTableNamePattern, ConSettings^.CTRL_CP, 65001);
+      {$IFDEF UNICODE}
+      TblTmp := ZUnicodeToRaw(TempTableNamePattern, zCP_UTF8);
+      {$ELSE}
+      TblTmp := TempTableNamePattern;
+      {$ENDIF}
+
       Temp_scheme := StripEscape(SchemaPattern);
-      SchemaTmp := ConSettings.ConvFuncs.ZStringToRaw(Temp_scheme, ConSettings^.CTRL_CP, 65001);
+      {$IFDEF UNICODE}
+      SchemaTmp := ZUnicodeToRaw(Temp_scheme, zCP_UTF8);
+      {$ELSE}
+      SchemaTmp := Temp_scheme;
+      {$ENDIF}
       ResSet := GetStatement.ExecuteQuery('PRAGMA '+SchemaTmp+'table_info('''+TblTmp+''')');
-      FillResult(ResSet, UndefinedVarcharAsStringLength, ColumnNamePattern, SchemaTmp, TblTmp);
+      FillResult(ResSet, UndefinedVarcharAsStringLength, ColumnNamePattern, SchemaTmp, TblTmp, SQLiteIntAffinity);
     end else begin
       {$IFDEF WITH_VAR_INIT_WARNING}TableTypes := nil;{$ENDIF}
       SetLength(TableTypes, 1);
@@ -1468,7 +1486,7 @@ begin
           SchemaTmp := SchemaTmp + '.';
         TblTmp := TblRS.GetRawByteString(TableNameIndex);
         ResSet := GetStatement.ExecuteQuery('PRAGMA '+SchemaTmp+'table_info('''+TblTmp+''')');
-        FillResult(ResSet, UndefinedVarcharAsStringLength, ColumnNamePattern, SchemaTmp, TblTmp);
+        FillResult(ResSet, UndefinedVarcharAsStringLength, ColumnNamePattern, SchemaTmp, TblTmp, SQLiteIntAffinity);
       end;
     end;
   end;

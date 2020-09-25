@@ -574,9 +574,9 @@ begin
       if Clob = nil then
         Result := (Blob).GetStream
       else begin
-        if FConSettings^.AutoEncode or (FConSettings^.ClientCodePage^.Encoding = ceUTF16)
-        then CP := FConSettings^.CTRL_CP
-        else CP := FConSettings^.ClientCodePage^.CP;
+        CP := TZColumnInfo(ColumnsInfo[ColumnIndex{$IFNDEF _GENERIC_INDEX}-1{$ENDIF}]).ColumnCodePage;
+        if CP = zCP_UTF16 then
+          CP := GetW2A2WConversionCodePage(FConSettings);
         Result := Clob.GetStream(CP)
       end;
     LastWasNull := (Result = nil);
@@ -1551,21 +1551,19 @@ procedure TZCustomAsyncResultSet.UpdateAsciiStream(ColumnIndex: Integer;
 var Blob: IZBlob;
     CLob: IZClob;
     CP: Word;
-    FIsNull: Boolean;
+    _IsNull: Boolean;
 begin
   if (Value = nil) then
     RowAccessor.SetNull(ColumnIndex)
   else begin
-    Blob := FRowAccessor.GetBlob(ColumnIndex, FIsNull);
+    Blob := FRowAccessor.GetBlob(ColumnIndex, _IsNull);
     if Blob = nil
     then Blob := CreateLob(ColumnIndex, lsmWrite)
     else Blob.Open(lsmWrite);
     if Blob.QueryInterface(IZCLob, Clob) = S_OK then begin
       CP := FRowAccessor.GetColumnCodePage(ColumnIndex);
-      if FConSettings^.AutoEncode
-      then CP := zCP_None
-      else if CP = zCP_UTF16 then
-        CP := FConSettings^.CTRL_CP;
+      if CP = zCP_UTF16 then
+        CP := GetW2A2WConversionCodePage(FConSettings);
       Clob.SetStream(Value, CP);
     end else Blob.SetStream(Value);
   end;
@@ -1778,7 +1776,7 @@ begin
   New:=AllocMem(SizeOf(TZConSettings)+SizeOf(TZCodePage));
   Old:=(FResultSet as TZAbstractResultSet).GetConSettings;
   New^:=Old^;
-  New^.DataBaseSettings:=nil;
+  //New^.DataBaseSettings:=nil;
   New^.ClientCodePage:=Pointer(@New[1]);
   New^.ClientCodePage^:=Old^.ClientCodePage^;
  end;

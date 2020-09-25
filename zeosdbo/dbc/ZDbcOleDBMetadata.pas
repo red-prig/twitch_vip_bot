@@ -1899,7 +1899,7 @@ end;
 }
 function TOleDBDatabaseMetadata.UncachedGetTableTypes: IZResultSet;
 const
-  TableTypes: array[0..7] of ZWideString = (
+  TableTypes: array[0..7] of UnicodeString = (
     'ALIAS', 'TABLE', 'SYNONYM', 'SYSTEM TABLE', 'VIEW',
     'GLOBAL TEMPORARY', 'LOCAL TEMPORARY', 'SYSTEM VIEW'
   );
@@ -2870,7 +2870,7 @@ begin
         'IDBSchemaRowset.GetRowset', OleDBConnection);
     if Assigned(RowSet) then begin
       Stmt := GetStatement;
-      Result := TZOleDBResultSet.Create(Stmt, '', RowSet, (Stmt as IZOleDBPreparedStatement).GetInternalBufferSize, 0, True);
+      Result := TZOleDBResultSet.Create(Stmt, '', RowSet, (Stmt as IZOleDBPreparedStatement).GetInternalBufferSize, True);
     end;
   finally
     SchemaRS := nil;

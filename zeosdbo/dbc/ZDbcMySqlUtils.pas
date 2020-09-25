@@ -393,9 +393,6 @@ var
   FieldLength: ULong;
   CS: Word;
   function ValueToString(Buf: PAnsiChar; Len: Cardinal): String;
-  {$IFNDEF UNICODE}
-  var tmp: ZWideString;
-  {$ENDIF}
   begin
     if (Buf = nil) or (AnsiChar(Buf^) = AnsiChar(#0)) then
       Result := ''
@@ -403,12 +400,8 @@ var
       {$IFDEF UNICODE}
       Result := PRawToUnicode(Buf, Len, ConSettings^.ClientCodePage^.CP);
       {$ELSE}
-      if (not ConSettings^.AutoEncode) or (ConSettings^.ClientCodePage^.CP = ConSettings^.CTRL_CP)
-      then System.SetString(Result, Buf, Len)
-      else begin
-        tmp := PRawToUnicode(Buf, len, ConSettings^.ClientCodePage^.CP);
-        Result := ZUnicodeToString(tmp, ConSettings^.CTRL_CP);
-      end;
+      Result := '';
+      System.SetString(Result, Buf, Len)
       {$ENDIF}
     end;
   end;
@@ -497,7 +490,7 @@ begin
     end else if Result.ColumnType in [stCurrency, stBigDecimal]
     then Result.Precision := Integer(FieldLength) - 1 - Ord(Result.Signed)
     else Result.Precision := Integer(FieldLength)*Ord(not (PMysqlFieldType(NativeUInt(MYSQL_FIELD)+FieldOffsets._type)^ in
-        [FIELD_TYPE_BLOB, FIELD_TYPE_TINY_BLOB, FIELD_TYPE_MEDIUM_BLOB, FIELD_TYPE_LONG_BLOB]));
+        [FIELD_TYPE_BLOB, FIELD_TYPE_TINY_BLOB, FIELD_TYPE_MEDIUM_BLOB, FIELD_TYPE_LONG_BLOB, FIELD_TYPE_GEOMETRY]));
     Result.Scale := PUInt(NativeUInt(MYSQL_FIELD)+FieldOffsets.decimals)^;
     Result.AutoIncrement := (AUTO_INCREMENT_FLAG and PUInt(NativeUInt(MYSQL_FIELD)+FieldOffsets.flags)^ <> 0);// or
       //(TIMESTAMP_FLAG and MYSQL_FIELD.flags <> 0);
@@ -565,7 +558,8 @@ begin
   end else if TypeName = 'set' then begin
     ColumnSize := 255;
     FieldType := stString;
-  end else if ZFastCode.Pos({$IFDEF UNICODE}RawByteString{$ENDIF}('int'), TypeName) > 0 then begin
+  end else if not StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('po')) and  //exclude "point" type
+    (ZFastCode.Pos({$IFDEF UNICODE}RawByteString{$ENDIF}('int'), TypeName) > 0) then begin
     if StartsWith(TypeName, {$IFDEF UNICODE}RawByteString{$ENDIF}('tiny')) then begin
 lByte:
       FieldType := TZSQLType(Ord(stByte)+Ord(Signed));  //0 - 255 or -128 - 127

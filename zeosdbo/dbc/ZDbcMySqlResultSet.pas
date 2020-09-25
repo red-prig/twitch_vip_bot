@@ -285,7 +285,8 @@ implementation
 
 uses
   Math, {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF}
-  ZFastCode, ZSysUtils, ZMessages, ZEncoding,
+  ZFastCode, ZSysUtils, ZMessages, ZEncoding, ZTokenizer,
+  ZGenericSqlAnalyser,
   ZDbcUtils, ZDbcMetadata, ZDbcLogging;
 
 { TZMySQLResultSetMetadata }
@@ -387,25 +388,45 @@ var
   Current: TZColumnInfo;
   I: Integer;
   TableColumns: IZResultSet;
+  Connection: IZConnection;
+  Driver: IZDriver;
+  IdentifierConvertor: IZIdentifierConvertor;
+  Analyser: IZStatementAnalyser;
+  Tokenizer: IZTokenizer;
 begin
-  if not FHas_ExtendedColumnInfos then
-    inherited LoadColumns
-  else if Metadata.GetConnection.GetDriver.GetStatementAnalyser.DefineSelectSchemaFromQuery(Metadata.GetConnection.GetDriver.GetTokenizer, SQL) <> nil then
-    for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
-      Current := TZColumnInfo(ResultSet.ColumnsInfo[i]);
-      ClearColumn(Current);
-      if Current.TableName = '' then
-        continue;
-      TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(Metadata.GetIdentifierConvertor.Quote(Current.TableName)),'');
-      if TableColumns <> nil then begin
-        TableColumns.BeforeFirst;
-        while TableColumns.Next do
-          if TableColumns.GetString(ColumnNameIndex) = Current.ColumnName then begin
-            FillColumInfoFromGetColumnsRS(Current, TableColumns, Current.ColumnName);
-            Break;
+  if not FHas_ExtendedColumnInfos
+  then inherited LoadColumns
+  else begin
+    Connection := Metadata.GetConnection;
+    Driver := Connection.GetDriver;
+    Analyser := Driver.GetStatementAnalyser;
+    Tokenizer := Driver.GetTokenizer;
+    IdentifierConvertor := Metadata.GetIdentifierConvertor;
+    try
+      if Analyser.DefineSelectSchemaFromQuery(Tokenizer, SQL) <> nil then
+        for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
+          Current := TZColumnInfo(ResultSet.ColumnsInfo[i]);
+          ClearColumn(Current);
+          if Current.TableName = '' then
+            continue;
+          TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConvertor.Quote(Current.TableName)),'');
+          if TableColumns <> nil then begin
+            TableColumns.BeforeFirst;
+            while TableColumns.Next do
+              if TableColumns.GetString(ColumnNameIndex) = Current.ColumnName then begin
+                FillColumInfoFromGetColumnsRS(Current, TableColumns, Current.ColumnName);
+                Break;
+              end;
           end;
-      end;
+        end;
+    finally
+      Driver := nil;
+      Connection := nil;
+      Analyser := nil;
+      Tokenizer := nil;
+      IdentifierConvertor := nil;
     end;
+  end;
   Loaded := True;
 end;
 
@@ -766,7 +787,8 @@ begin
       then FPlainDriver.mysql_stmt_attr_set517UP(FPMYSQL_STMT^,STMT_ATTR_UPDATE_MAX_LENGTH,one)
       else FPlainDriver.mysql_stmt_attr_set(FPMYSQL_STMT^,STMT_ATTR_UPDATE_MAX_LENGTH,one);
       if FPlainDriver.mysql_stmt_store_result(FPMYSQL_STMT^) <> 0 then
-        FMySQLConnection.HandleErrorOrWarning(lcOther, FMYSQL_STMT, 'mysql_stmt_store_result', Self);
+        FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
+          'mysql_stmt_store_result', IImmediatelyReleasable(FWeakImmediatRelPtr));
     end;
     if FFieldCount > 0
     then QueryHandle := FPlainDriver.mysql_stmt_result_metadata(FMYSQL_STMT)
@@ -816,7 +838,8 @@ begin
       fBindBufferAllocated := True;
     end;
     if (FPlainDriver.mysql_stmt_bind_result(FMYSQL_STMT,FMYSQL_Col_BIND_Address^)<>0) then
-      FMySQLConnection.HandleErrorOrWarning(lcOther, FMYSQL_STMT, 'mysql_stmt_bind_result', Self);
+      FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
+        'mysql_stmt_bind_result', IImmediatelyReleasable(FWeakImmediatRelPtr));
   end;
 end;
 
@@ -914,7 +937,7 @@ function TZAbstractMySQLResultSet.Next: Boolean;
 begin
   { Checks for maximum row. }
   Result := False;
-  if (Closed) or (fBindBufferAllocated and not Assigned(FMYSQL_STMT)) or
+  if (Closed) or (fBindBufferAllocated and (FMYSQL_STMT = nil)) or
      ((MaxRows > 0) and (RowNo >= MaxRows)) or (RowNo > LastRowNo) then
     Exit;
   if (RowNo = 0) and FFirstRowFetched then begin //if moveAbsolute(0) was called
@@ -925,7 +948,8 @@ begin
     if FFetchStatus in [STMT_FETCH_OK, MYSQL_DATA_TRUNCATED] then
       Result := True
     else if FFetchStatus = STMT_FETCH_ERROR then
-      FMySQLConnection.HandleErrorOrWarning(lcOther, FMYSQL_STMT, 'mysql_stmt_fetch', Self);
+      FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
+        'mysql_stmt_fetch', IImmediatelyReleasable(FWeakImmediatRelPtr));
   end else begin
     if (FQueryHandle = nil) then begin
       FQueryHandle := FPlainDriver.mysql_store_result(FPMYSQL^);
@@ -948,6 +972,8 @@ begin
     RowNo := RowNo+1;
   end else
     RowNo := RowNo+1;
+  if not Result and not LastRowFetchLogged and DriverManager.HasLoggingListener then
+    DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
 end;
 
 {**
@@ -1073,7 +1099,8 @@ set_Results:Len := Result - PAnsiChar(FByteBuffer);
               if Status <> 0 then
                 if Status = STMT_FETCH_ERROR
                 then raise EZSQLException.Create('Fetch error')
-                else FMySQLConnection.HandleErrorOrWarning(lcOther, FMYSQL_STMT, 'mysql_stmt_fetch_column', Self);
+                else FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
+                  'mysql_stmt_fetch_column', IImmediatelyReleasable(FWeakImmediatRelPtr));
               Len := ColBind^.Length[0];
             end else begin
               FTempBlob := GetBlob(ColumnIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF});
@@ -1212,7 +1239,8 @@ set_Results:Len := Result - PWideChar(FByteBuffer);
               if Status <> 0 then
                 if Status = STMT_FETCH_ERROR
                 then raise EZSQLException.Create('Fetch error')
-                else FMySQLConnection.HandleErrorOrWarning(lcOther, FMYSQL_STMT, 'mysql_stmt_fetch_column', Self);
+                else FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
+                  'mysql_stmt_fetch_column', IImmediatelyReleasable(FWeakImmediatRelPtr));
               if ColBind^.binary
               then FUniTemp := Ascii7ToUnicodeString(PAnsiChar(FByteBuffer), ColBind^.length[0])
               else FUniTemp := PRawToUnicode(PAnsiChar(FByteBuffer), ColBind^.length[0], FClientCP);
@@ -1261,6 +1289,8 @@ begin
   if FieldOffsets.charsetnr > 0
   then bind^.binary := (PUInt(PAnsiChar(MYSQL_FIELD)+FieldOffsets.charsetnr)^ = 63) and (PUInt(PAnsiChar(MYSQL_FIELD)+FieldOffsets.flags)^ and BINARY_FLAG <> 0)
   else bind^.binary := (PUInt(PAnsiChar(MYSQL_FIELD)+FieldOffsets.flags)^ and BINARY_FLAG <> 0);
+  if bind^.buffer_type_address^ = FIELD_TYPE_GEOMETRY then //MySQL does not accept Type 255 as binding type
+    bind^.buffer_type_address^ := FIELD_TYPE_BLOB;
 
   case bind^.buffer_type_address^ of
     FIELD_TYPE_BIT: case PUInt(PAnsiChar(MYSQL_FIELD)+FieldOffsets.length)^ of
@@ -2524,8 +2554,11 @@ begin
 
   if not fBindBufferAllocated and (FQueryHandle = nil) then begin
     FQueryHandle := FPlainDriver.mysql_store_result(FPMYSQL^);
-    if Assigned(FQueryHandle) then
+    if Assigned(FQueryHandle) then begin
       LastRowNo := FPlainDriver.mysql_num_rows(FQueryHandle);
+      if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcFetchDone, IZLoggingObject(FWeakIZLoggingObjectPtr));
+    end;
   end;
 
   { Process negative rows. }
@@ -2559,6 +2592,7 @@ end;
 {$IF defined (RangeCheckEnabled) and defined(WITH_UINT64_C1118_ERROR)}{$R+}{$IFEND}
 
 procedure TZMySQL_Store_ResultSet.OpenCursor;
+label jmpLog;
 begin
   inherited OpenCursor;
   if FPMYSQL_STMT^ <> nil then begin
@@ -2566,13 +2600,19 @@ begin
       FMYSQL_STMT := FPMYSQL_STMT^;
       if FPlainDriver.mysql_stmt_store_result(FMYSQL_STMT)=0
       then LastRowNo := FPlainDriver.mysql_stmt_num_rows(FMYSQL_STMT)
-      else FMySQLConnection.HandleErrorOrWarning(lcOther, FMYSQL_STMT, 'mysql_stmt_store_result', Self);
+      else FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
+        'mysql_stmt_store_result', IImmediatelyReleasable(FWeakImmediatRelPtr));
+      goto jmpLog;
     end;
   end else begin
     FQueryHandle := FPlainDriver.mysql_store_result(FPMYSQL^);
     if Assigned(FQueryHandle)
     then LastRowNo := FPlainDriver.mysql_num_rows(FQueryHandle)
-    else FMySQLConnection.HandleErrorOrWarning(lcOther, nil, 'mysql_store_result', Self)
+    else FMySQLConnection.HandleErrorOrWarning(lcFetch, nil,
+      'mysql_store_result', IImmediatelyReleasable(FWeakImmediatRelPtr));
+jmpLog:
+    if not LastRowFetchLogged and DriverManager.HasLoggingListener then
+      DriverManager.LogMessage(lcFetchDone, Self);
   end;
 end;
 
@@ -2582,7 +2622,8 @@ begin
     if fBindBufferAllocated then begin
       if Assigned(FMYSQL_STMT) then
         if FPlainDriver.mysql_stmt_free_result(FMYSQL_STMT) <> 0 then
-          FMySQLConnection.HandleErrorOrWarning(lcOther, FMYSQL_STMT, 'mysql_stmt_free_result', Self)
+          FMySQLConnection.HandleErrorOrWarning(lcFetch, FMYSQL_STMT,
+            'mysql_stmt_free_result', IImmediatelyReleasable(FWeakImmediatRelPtr))
     end else if FQueryHandle <> nil then begin
       FPlainDriver.mysql_free_result(FQueryHandle);
       FQueryHandle := nil;
@@ -2736,7 +2777,8 @@ begin
         FPlainDriver.mysql_stmt_data_seek(FStmtHandle, FLobRow);
         Status := FPlainDriver.mysql_stmt_fetch(FStmtHandle);
         if Status = STMT_FETCH_ERROR then
-          FMySQLConnection.HandleErrorOrWarning(lcOther, FStmtHandle, 'mysql_stmt_fetch', Self);
+          FMySQLConnection.HandleErrorOrWarning(lcOther, FStmtHandle,
+            'mysql_stmt_fetch', Self);
         FCurrentRowAddr^ := FLobRow +1;
       end;
     end;
@@ -2832,7 +2874,8 @@ begin
   FOwner.FBind^.buffer_Length_address^ := 0;
   FOwner.FBind^.buffer_address^ := nil;
   if Status = STMT_FETCH_ERROR then
-    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle^, 'mysql_stmt_fetch_column', Self);
+    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle^,
+      'mysql_stmt_fetch_column', Self);
   Result := Count;
   FOffSet := Foffset + ULong(Count);
 end;
@@ -2864,7 +2907,8 @@ begin
   Status := FOwner.FPlainDriver.mysql_stmt_send_long_data(FOwner.FStmtHandle^, FOwner.FIndex,
     @Buffer, Count);
   if Status = 1 then
-    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle^, 'mysql_stmt_send_long_data', Self);
+    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle^,
+      'mysql_stmt_send_long_data', Self);
   Result := Count;
   FOffSet := Foffset + ULong(Result);
   FOwner.FBind.length[0] := Foffset;

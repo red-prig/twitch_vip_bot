@@ -76,6 +76,7 @@ type
     FCommandType: CommandTypeEnum;
     FRC: OleVariant;
     FByteBuffer: PByteBuffer;
+    fDEFERPREPARE: Boolean;
   protected
     function CreateResultSet: IZResultSet; virtual;
     procedure ReleaseConnection; override;
@@ -97,7 +98,7 @@ type
   private
     FRefreshParamsFailed, FEmulatedParams: Boolean;
   protected
-    function CheckParameterIndex(Index, ASize: Integer; SQLType: TZSQLType): TDataTypeEnum; reintroduce;
+    function CheckParameterIndex(Index: Integer; SQLType: TZSQLType): TDataTypeEnum; reintroduce;
     procedure PrepareInParameters; override;
     function CreateResultSet: IZResultSet; override;
     function GetCompareFirstKeywordStrings: PPreparablePrefixTokens; override;
@@ -134,7 +135,7 @@ type
     procedure SetAnsiString(Index: Integer; const AValue: AnsiString); reintroduce;
     {$ENDIF}
     procedure SetRawByteString(Index: Integer; const AValue: RawByteString); reintroduce;
-    procedure SetUnicodeString(Index: Integer; const AValue: ZWideString); reintroduce;
+    procedure SetUnicodeString(Index: Integer; const AValue: UnicodeString); reintroduce;
 
     procedure SetDate(Index: Integer; const AValue: TZDate); overload;
     procedure SetTime(Index: Integer; const AValue: TZTime); overload;
@@ -162,13 +163,21 @@ implementation
 
 uses
   Variants, Math, {$IFNDEF FPC}Windows{inline},{$ENDIF}
-  {$IFDEF WITH_UNIT_NAMESPACES}System.Win.ComObj{$ELSE}ComObj{$ENDIF},
   {$IFDEF WITH_TOBJECTLIST_INLINE} System.Contnrs{$ELSE} Contnrs{$ENDIF},
-  ZEncoding, ZDbcLogging, ZDbcResultSet, ZFastCode,
+  ZEncoding, ZDbcLogging, ZDbcResultSet, ZFastCode, ZPlainOleDBDriver,
   ZDbcMetadata, ZDbcResultSetMetadata, ZDbcAdoResultSet,
   ZMessages, ZDbcProperties;
 
 var DefaultPreparableTokens: TPreparablePrefixTokens;
+
+const cParamIOs: array[TZProcedureColumnType] of ParameterDirectionEnum = (
+  {pctUnknown,} adParamInput,
+  {pctIn,}adParamInput,
+  {pctInOut,} adParamInputOutput,
+  {pctOut,} adParamOutput,
+  {pctReturn,} adParamReturnValue,
+  {pctResultSet} adParamUnknown
+  );
 
 { TZAbstractAdoStatement }
 
@@ -214,17 +223,17 @@ begin
   Prepare;
   BindInParameters;
   try
+    RestartTimer;
     FAdoRecordSet := FAdoCommand.Execute(RC, EmptyParam, adOptionUnspecified);
     LastResultSet := CreateResultSet;
     LastUpdateCount := {%H-}RC;
-    Result := Assigned(LastResultSet);
-    DriverManager.LogMessage(lcExecute, ConSettings^.Protocol, ASQL);
+    if DriverManager.HasLoggingListener then
+      DriverManager.LogMessage(lcExecPrepStmt, Self);
   except
-    on E: EOleException do begin
-      DriverManager.LogError(lcExecute, ConSettings^.Protocol, ASQL, E.ErrorCode, ConvertEMsgToRaw(E.Message, ConSettings^.ClientCodePage^.CP));
-      raise EZSQLException.CreateWithCode(E.ErrorCode, E.Message);
-    end;
-  end
+    on E: Exception do
+      FAdoConnection.HandleErrorOrWarning(lcExecPrepStmt, E, Self, SQL);
+  end;
+  Result := Assigned(LastResultSet);
 end;
 
 {**
@@ -242,6 +251,7 @@ begin
   Prepare;
   LastUpdateCount := -1;
   BindInParameters;
+  RestartTimer;
   try
     if FIsSelectSQL then begin
       if (FAdoRecordSet = nil) or (FAdoRecordSet.MaxRecords <> MaxRows) then begin
@@ -265,12 +275,11 @@ begin
       Result := GetResultSet;
     end;
     FOpenResultSet := Pointer(Result);
-    DriverManager.LogMessage(lcExecute, ConSettings^.Protocol, ASQL);
+    if DriverManager.HasLoggingListener then
+      DriverManager.LogMessage(lcExecPrepStmt, Self);
   except
-    on E: EOleException do begin
-      DriverManager.LogError(lcExecute, ConSettings^.Protocol, ASQL, E.ErrorCode, ConvertEMsgToRaw(E.Message, ConSettings^.ClientCodePage^.CP));
-      raise EZSQLException.CreateWithCode(E.ErrorCode, E.Message);
-    end;
+    on E: Exception do
+      FAdoConnection.HandleErrorOrWarning(lcExecPrepStmt, E, Self, SQL);
   end
 end;
 
@@ -290,18 +299,18 @@ begin
   LastUpdateCount := -1;
   BindInParameters;
   try
+    RestartTimer;
     FAdoRecordSet := FAdoCommand.Execute(FRC, EmptyParam, adExecuteNoRecords);
     if BindList.HasOutOrInOutOrResultParam then
       LastResultSet := CreateResultSet;
     LastUpdateCount := FRC;
-    Result := LastUpdateCount;
-    DriverManager.LogMessage(lcExecute, ConSettings^.Protocol, ASQL);
+    if DriverManager.HasLoggingListener then
+      DriverManager.LogMessage(lcExecPrepStmt, Self);
   except
-    on E: EOleException do begin
-      DriverManager.LogError(lcExecute, ConSettings^.Protocol, ASQL, E.ErrorCode, ConvertEMsgToRaw(E.Message, ConSettings^.ClientCodePage^.CP));
-      raise EZSQLException.CreateWithCode(E.ErrorCode, E.Message);
-    end;
-  end
+    on E: Exception do
+      FAdoConnection.HandleErrorOrWarning(lcExecPrepStmt, E, Self, SQL);
+  end;
+  Result := LastUpdateCount;
 end;
 
 function TZAbstractAdoStatement.GetMoreResults: Boolean;
@@ -318,6 +327,7 @@ begin
 end;
 
 procedure TZAbstractAdoStatement.Prepare;
+var S: String;
 begin
   if FAdoCommand = nil then begin
     FAdoCommand := CoCommand.Create;
@@ -328,10 +338,23 @@ begin
     FIsSelectSQL := IsSelect(SQL);
     FAdoCommand.CommandText := WSQL;
     FAdoCommand.CommandType := FCommandType;
-   // FAdoCommand.Properties['Defer Prepare'].Value := False;
-    if (FWeakIntfPtrOfIPrepStmt <> nil) and (FTokenMatchIndex > -1) and
-       StrToBoolEx(ZDbcUtils.DefineStatementParameter(Self, DSProps_PreferPrepared, 'True')) then
-      FAdoCommand.Prepared := True;
+    if (FWeakIZPreparedStatementPtr <> nil) and (FTokenMatchIndex > -1) then begin
+      S := GetParameters.Values[DSProps_DeferPrepare];
+      if S = '' then
+        S := Connection.GetParameters.Values[DSProps_DeferPrepare];
+      if S = '' then begin
+        S := DefineStatementParameter(Self, DSProps_PreferPrepared, StrTrue);
+        fDEFERPREPARE := not StrToBoolEx(S);
+      // FAdoCommand.Properties['Defer Prepare'].Value := False;
+      end else
+        fDEFERPREPARE := StrToBoolEx(S);
+      if (not fDEFERPREPARE and (BindList.Capacity = 0)) or (FCommandType = adCmdStoredProc) then begin
+        RestartTimer;
+        FAdoCommand.Prepared := True;
+        if DriverManager.HasLoggingListener then
+          DriverManager.LogMessage(lcPrepStmt,Self);
+      end;
+    end;
     inherited Prepare;
   end;
 end;
@@ -344,6 +367,7 @@ end;
 
 procedure TZAbstractAdoStatement.Unprepare;
 begin
+  RestartTimer;
   FAdoRecordSet := nil;
   if Assigned(FAdoCommand) and FAdoCommand.Prepared then
     FAdoCommand.Prepared := False;
@@ -353,39 +377,30 @@ end;
 
 { TZAdoPreparedStatement }
 
-function TZAdoPreparedStatement.CheckParameterIndex(Index, ASize: Integer;
+function TZAdoPreparedStatement.CheckParameterIndex(Index: Integer;
   SQLType: TZSQLType): TDataTypeEnum;
-var ParamDirection: ParameterDirectionEnum;
-  I: Integer;
-  W: WideString;
-  V: OleVariant;
+var I: Integer;
+  procedure AddParam(Number: Integer);
+  var Param: _Parameter;
+      W: WideString;
+  begin
+    W := 'Param'+IntToUnicode(Number);
+    Param := fAdoCommand.CreateParameter(W, adVariant, cParamIOs[BindList[i].ParamType], SizeOf(OleVariant), EmptyParam);
+    fAdoCommand.Parameters.Append(Param);
+  end;
 begin
   if not Prepared then Prepare;
+  if not FEmulatedParams and FRefreshParamsFailed and (BindList.Count < (Index+1)) and (BindList.Capacity >= (Index+1)) then
+    for i := BindList.Count to Index do
+      AddParam(I+1);
+  if (FEmulatedParams or FRefreshParamsFailed) and (BindList.Capacity < (Index+1)) then
+    raise CreateBindVarOutOfRangeError(Index);
   inherited CheckParameterIndex(Index);
-  if FEmulatedParams then
-    Result := adBSTR
-  else if FRefreshParamsFailed then begin
-    Result := ZSQLTypeToAdoType[SQLType];
-    if (fAdoCommand.Parameters.Count < Index -1) then begin
-      if BindList[Index].ParamType = pctUnknown
-      then ParamDirection := adParamInput
-      else ParamDirection := ZProcedureColumnType2AdoType[BindList[Index].ParamType];
-      for I := fAdoCommand.Parameters.Count to Index do begin
-        V := null;
-        W := 'Param'+IntToUnicode(I+1);
-        fAdoCommand.Parameters.Append(fAdoCommand.CreateParameter(W, adVariant, ParamDirection, SizeOf(OleVariant), V));
-      end;
-      fAdoCommand.Parameters.Append(fAdoCommand.CreateParameter('Param'+IntToUnicode(Index+1),
-         ConvertSqlTypeToAdo(SQLType), ParamDirection, ASize, null));
-    end else with fAdoCommand.Parameters[Index] do begin
-      Type_ := Result;
-      Size := ASize
-    end
-  end else begin
-    if (Index <0) or (fAdoCommand.Parameters.Count < Index +1) then
-      raise Exception.Create('Index out of bounds');
-    Result := fAdoCommand.Parameters[Index].Type_;
-  end;
+  if FEmulatedParams
+  then Result := adBSTR
+  else if FRefreshParamsFailed
+    then Result := ZSQLTypeToAdoType[SQLType]
+    else Result := fAdoCommand.Parameters[Index].Type_;
 end;
 
 constructor TZAdoPreparedStatement.Create(
@@ -408,6 +423,9 @@ function TZAdoPreparedStatement.CreateResultSet: IZResultSet;
     PD: PDecimal;
     L: NativeUInt;
     AdType: TDataTypeEnum;
+    {$IFNDEF UNICODE}
+    Name: WideString;
+    {$ENDIF}
   begin
     ColumnsInfo := TObjectList.Create;
     try
@@ -417,7 +435,8 @@ function TZAdoPreparedStatement.CreateResultSet: IZResultSet;
         ColumnInfo := TZColumnInfo.Create;
         with ColumnInfo do begin
           {$IFNDEF UNICODE}
-          ColumnLabel := PUnicodeToRaw(Pointer(FAdoCommand.Parameters.Item[i].Name), Length(FAdoCommand.Parameters.Item[i].Name), ConSettings^.CTRL_CP);
+          Name := FAdoCommand.Parameters.Item[i].Name;
+          ColumnLabel := PUnicodeToRaw(Pointer(Name), Length(Name), ZCP_UTF8);
           {$ELSE}
           ColumnLabel := FAdoCommand.Parameters.Item[i].Name;
           {$ENDIF}
@@ -522,10 +541,12 @@ begin
 end;
 
 procedure TZAdoPreparedStatement.PrepareInParameters;
-var i: Integer;
+(*var i: Integer;
 begin
   { test if we can access the parameter collection }
-  try
+  if fDEFERPREPARE then
+    FRefreshParamsFailed := True
+  else try
     if BindList.Count <> FAdoCommand.Parameters.Count then //this could cause an AV
       BindList.Count := FAdoCommand.Parameters.Count;
     FRefreshParamsFailed := False;
@@ -540,6 +561,58 @@ begin
     FAdoCommand.Parameters.Append(FAdoCommand.CreateParameter('DummyParam', adVariant, adParamInput, SizeOf(OleVariant), null));
     FAdoCommand.Parameters.Delete('DummyParam');
     FRefreshParamsFailed := True;
+  end;*)
+var
+  I: Integer;
+  ParamCount: NativeUInt;
+  ParamInfo: PDBParamInfoArray;
+  NamesBuffer: PPOleStr;
+  Name: WideString;
+  Parameter: _Parameter;
+  Direction: ParameterDirectionEnum;
+  OLEDBCommand: ICommand;
+  OLEDBParameters: ICommandWithParameters;
+  CommandPrepare: ICommandPrepare;
+begin
+  if (FCommandType = adCmdStoredProc) or (Bindlist.Capacity = 0) then Exit;
+  OLEDBCommand := (FAdoCommand as ADOCommandConstruction).OLEDBCommand as ICommand;
+  OLEDBCommand.QueryInterface(ICommandWithParameters, OLEDBParameters);
+  if Assigned(OLEDBParameters) and not fDEFERPREPARE then begin
+    OLEDBParameters.SetParameterInfo(0, nil, nil);
+    ParamInfo := nil;
+    NamesBuffer := nil;
+    try
+      OLEDBCommand.QueryInterface(ICommandPrepare, CommandPrepare);
+      if Assigned(CommandPrepare) then CommandPrepare.Prepare(0);
+      if OLEDBParameters.GetParameterInfo(ParamCount{%H-}, PDBPARAMINFO(ParamInfo), NamesBuffer) = S_OK then begin
+        for I := 0 to ParamCount - 1 do
+          with ParamInfo[I] do begin
+            { When no default name, fabricate one like ADO does }
+            if pwszName = nil then
+              Name := 'Param' + ZFastCode.IntToUnicode(I+1) else { Do not localize }
+              Name := pwszName;
+            { ADO maps DBTYPE_BYTES to adVarBinary }
+            if wType = DBTYPE_BYTES then wType := adVarBinary;
+            { ADO maps DBTYPE_STR to adVarChar }
+            if wType = DBTYPE_STR then wType := adVarChar;
+            { ADO maps DBTYPE_WSTR to adVarWChar }
+            if wType = DBTYPE_WSTR then wType := adVarWChar;
+            Direction := dwFlags and $F;
+            { Verify that the Direction is initialized }
+            if Direction = adParamUnknown then
+              Direction := cParamIOs[BindList[i].ParamType];
+            Parameter := FAdoCommand.CreateParameter(Name, wType, Direction, ulParamSize, EmptyParam);
+            Parameter.Precision := bPrecision;
+            Parameter.NumericScale := ParamInfo[I].bScale;
+            Parameter.Attributes := dwFlags and $FFFFFFF0; { Mask out Input/Output flags }
+          end;
+        FRefreshParamsFailed := False;
+      end else FRefreshParamsFailed := True;
+    finally
+      if Assigned(CommandPrepare) then CommandPrepare.Unprepare;
+      if (ParamInfo <> nil) then ZAdoMalloc.Free(ParamInfo);
+      if (NamesBuffer <> nil) then ZAdoMalloc.Free(NamesBuffer);
+    end;
   end;
 end;
 
@@ -555,7 +628,7 @@ procedure TZAdoPreparedStatement.SetBigDecimal(Index: Integer;
 var V: OleVariant;
 label set_var;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(tagDec), stBigDecimal) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stBigDecimal) of
     adBoolean:  begin
                   tagVariant(V).vt := VT_BOOL;
                   tagVariant(V).vbool := BCDCompare(AValue, NullBCD) <> 0;
@@ -590,7 +663,7 @@ begin
   Lob := AValue; //inc refcnt else FPC leaks many memory
   if (AValue = nil) or (aValue.IsEmpty) then
     SetNull(Index, SQLType)
-  else case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, 0, SQLType) of
+  else case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SQLType) of
     adBSTR, adChar, adVarChar, adLongVarChar, adWChar, adVarWChar,
     adLongVarWChar: if Lob.IsClob then begin
                       Lob.SetCodePageTo(zCP_UTF16);
@@ -615,7 +688,7 @@ procedure TZAdoPreparedStatement.SetBoolean(Index: Integer;
   AValue: Boolean);
 var V: OleVariant;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(WordBool), stBoolean) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stBoolean) of
     adBoolean: begin
         tagVariant(V).vt := VT_BOOL;
         tagVariant(V).vbool := AValue;
@@ -632,7 +705,7 @@ end;
 procedure TZAdoPreparedStatement.SetByte(Index: Integer; AValue: Byte);
 var V: OleVariant;
 begin
-  if CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Byte), stByte) = adUnsignedTinyInt then begin
+  if CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stByte) = adUnsignedTinyInt then begin
     tagVariant(V).vt := VT_UI1;
     tagVariant(V).bVal := AValue;
     FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}].Value := V;
@@ -656,7 +729,7 @@ procedure TZAdoPreparedStatement.SetBytes(ParameterIndex: Integer; Value: PByte;
 begin
   if (Value = nil) or (Len = 0) then
     SetNull(ParameterIndex, stBytes)
-  else case CheckParameterIndex(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, 0, stBytes) of
+  else case CheckParameterIndex(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stBytes) of
     adBinary,
     adVarBinary,
     adLongVarBinary: SetPBytes(ParameterIndex, Value, Len);
@@ -684,7 +757,7 @@ begin
   then SetNull(Index, stBytes)
   else begin
     L := Length(AValue);
-    case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, L, stBytes) of
+    case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stBytes) of
       adGUID: begin
                 Assert(L=SizeOf(TGUID), 'UID-Size missmatch');
                 GUIDToBuffer(@UID.D1, PWideChar(fByteBuffer), [guidWithBrackets, guidSet0Term]);
@@ -719,7 +792,7 @@ var V: OleVariant;
   I64: Int64 absolute AValue;
 label set_var;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Currency), stCurrency) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stCurrency) of
     adCurrency: begin
                   tagVariant(V).vt := VT_CY;
                   tagVariant(V).cyVal := AValue;
@@ -776,7 +849,7 @@ procedure TZAdoPreparedStatement.SetDate(Index: Integer;
 var V: OleVariant;
 label jmp_assign;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Double), stDate) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stDate) of
     adDBDate, adDBTime, adDBTimeStamp:
                 with FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}] do begin
                   if Size <> 8 then //size is initializesd to ole record sizes are not 8
@@ -807,7 +880,7 @@ var V: OleVariant;
 label set_var;
 begin
   V := null;
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Double), stDouble) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stDouble) of
     adTinyInt, adSmallInt, adInteger, adBigInt, adUnsignedTinyInt,
     adUnsignedSmallInt, adUnsignedInt, adUnsignedBigInt:
                   SetLong(Index, Trunc(AValue));
@@ -853,7 +926,7 @@ var V: OleVariant;
   BCD: TBCD;
 label set_var;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Single), stFloat) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stFloat) of
     adTinyInt, adSmallInt, adInteger, adBigInt, adUnsignedTinyInt,
     adUnsignedSmallInt, adUnsignedInt, adUnsignedBigInt:
                   SetLong(Index, Trunc(AValue));
@@ -907,7 +980,7 @@ var V: OleVariant;
 label set_var;
 begin
   V := null;
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Integer), stInteger) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stInteger) of
     adTinyInt:  begin
                   tagVariant(V).vt := VT_I1;
                   PShortInt(@tagVariant(V).cVal)^ := AValue;
@@ -972,7 +1045,7 @@ var V: OleVariant;
   P: PWideChar absolute PD;
 label set_var;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Int64), stLong) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stLong) of
     adTinyInt:  begin
                   tagVariant(V).vt := VT_I1;
                   PShortInt(@tagVariant(V).cVal)^ := AValue;
@@ -1033,12 +1106,12 @@ set_var:          FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]
   end;
 end;
 
-const cNullUni = ZWideString('null');
+const cNullUni = UnicodeString('null');
 procedure TZAdoPreparedStatement.SetNull(Index: Integer;
   SQLType: TZSQLType);
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1{$ENDIF};
-  CheckParameterIndex(Index, ZSQLTypeToAdoParamSize[SQLType], SQLType);
+  CheckParameterIndex(Index, SQLType);
   if FEmulatedParams
   then BindList.Put(Index, SQLType, cNullUni)
   else FAdoCommand.Parameters[Index].Value := null;
@@ -1050,7 +1123,7 @@ var V: OleVariant;
 begin
   if AValue = nil then
     SetNull(Index, stBytes)
-  else case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, Len, stBytes) of
+  else case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stBytes) of
     adBinary,
     adVarBinary,
     adLongVarBinary: if FEmulatedParams then begin
@@ -1091,7 +1164,7 @@ label set_BSTR;
 begin
   if FEmulatedParams then
     SetEmulatedValue
-  else case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, Len, stUnicodeString) of
+  else case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stUnicodeString) of
     adTinyInt, adSmallInt, adInteger, adUnsignedTinyInt, adUnsignedSmallInt:
       SetInt(Index, UniCodeToIntDef(Value, Value+Len, 0));
     adBigInt: SetLong(Index, UniCodeToInt64Def(Value, Value+Len, 0));
@@ -1140,7 +1213,7 @@ procedure TZAdoPreparedStatement.SetRawByteString(Index: Integer;
 var L: LengthInt;
 begin
   L := Length(AValue);
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, L, stString) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stString) of
     adBinary, adVarBinary, adLongVarBinary:
       SetPBytes(Index, Pointer(AValue), L);
     else begin
@@ -1154,7 +1227,7 @@ procedure TZAdoPreparedStatement.SetShort(Index: Integer;
   AValue: ShortInt);
 var V: OleVariant;
 begin
-  if CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(ShortInt), stShort) = adTinyInt then begin
+  if CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stShort) = adTinyInt then begin
     tagVariant(V).vt := VT_UI1;
     PShortInt(@tagVariant(V).cVal)^ := AValue;
     FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}].Value := V;
@@ -1166,7 +1239,7 @@ procedure TZAdoPreparedStatement.SetSmall(Index: Integer;
   AValue: SmallInt);
 var V: OleVariant;
 begin
-  if CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(SmallInt), stSmall) = adSmallInt then begin
+  if CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stSmall) = adSmallInt then begin
     tagVariant(V).vt := VT_I2;
     tagVariant(V).iVal := AValue;
     FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}].Value := V;
@@ -1176,15 +1249,22 @@ end;
 
 procedure TZAdoPreparedStatement.SetString(Index: Integer;
   const AValue: String);
+var PW: PWideChar;
+  L: NativeUInt;
 begin
   {$IFDEF UNICODE}
-  SetPWideChar(Index, Pointer(AValue), Length(AValue));
+  L := Length(AValue);
+  if L = 0
+  then PW := PEmptyUnicodeString
+  else PW := Pointer(AValue);
   {$ELSE}
-  if Consettings.AutoEncode
-  then fUniTemp := ConSettings.ConvFuncs.ZStringToUnicode(AValue, ConSettings^.CTRL_CP)
-  else fUniTemp := PRawToUnicode(Pointer(AValue), Length(AValue), FClientCP);
-  SetPWideChar(Index, Pointer(fUniTemp), Length(fUniTemp));
+  fUniTemp := ZRawToUnicode(AValue, GetW2A2WConversionCodePage(ConSettings));
+  L := Length(fUniTemp);
+  if L = 0
+  then PW := PEmptyUnicodeString
+  else PW := Pointer(fUniTemp);
   {$ENDIF}
+  SetPWideChar(Index, PW, L);
 end;
 
 procedure TZAdoPreparedStatement.SetTime(Index: Integer;
@@ -1192,7 +1272,7 @@ procedure TZAdoPreparedStatement.SetTime(Index: Integer;
 var V: OleVariant;
 label jmp_assign;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Double), stTime) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stTime) of
     adDBDate, adDBTime, adDBTimeStamp:
                 with FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}] do begin
                   if Size <> 8 then //size is initializesd to ole record sizes which are not 8
@@ -1221,7 +1301,7 @@ procedure TZAdoPreparedStatement.SetTimestamp(Index: Integer;
 var V: OleVariant;
 label jmp_Assign;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Double), stTimeStamp) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stTimeStamp) of
     adDBTimeStamp, adDBDate, adDBTime:
             with FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}] do begin
               if Size <> 8 then //size is initializesd to ole record sizes are not 8
@@ -1253,7 +1333,7 @@ var V: OleVariant;
   P: PWideChar absolute PD;
 label set_var;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Cardinal), stLongWord) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stLongWord) of
     adTinyInt:  begin
                   tagVariant(V).vt := VT_I1;
                   PShortInt(@tagVariant(V).cVal)^ := AValue;
@@ -1318,7 +1398,7 @@ var V: OleVariant;
   P: PWideChar absolute PD;
 label set_var;
 begin
-  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Uint64), stULong) of
+  case CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stULong) of
     adTinyInt, adSmallInt, adInteger, adBigInt: SetLong(Index, AValue);
     adUnsignedTinyInt: begin
                   tagVariant(V).vt := VT_UI1;
@@ -1369,7 +1449,7 @@ set_var:          FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]
 end;
 
 procedure TZAdoPreparedStatement.SetUnicodeString(Index: Integer;
-  const AValue: ZWideString);
+  const AValue: UnicodeString);
 begin
   SetPWideChar(Index, Pointer(AValue), Length(AValue));
 end;
@@ -1384,7 +1464,7 @@ end;
 procedure TZAdoPreparedStatement.SetWord(Index: Integer; AValue: Word);
 var V: OleVariant;
 begin
-  if CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, SizeOf(Word), stWord) = adUnsignedSmallInt then begin
+  if CheckParameterIndex(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stWord) = adUnsignedSmallInt then begin
     tagVariant(V).vt := VT_UI2;
     tagVariant(V).uiVal := AValue;
     FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}].Value := V;
