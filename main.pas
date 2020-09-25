@@ -263,6 +263,10 @@ type
 implementation
 
 uses
+ DbcScriptExp,
+ DbcScriptUtils,
+ ZTokenizer,
+
  WinAudioSession,
  ufrmvol,
  ufrmpred,
@@ -1207,6 +1211,71 @@ begin
  end;
 end;
 
+{
+var
+ calc_TickKd:Int64;
+
+procedure DoCalc(const user,msg:RawByteString);
+var
+ F,v:RawByteString;
+ i:Integer;
+ Tokenizer:TZDbcScriptTokenizer;
+ FToken:TZToken;
+ Exp:TExpressionState;
+ calc:TExpressionCalc;
+ Buffer,EOS:PAnsiChar;
+begin
+ F:=LowerCase(Trim(msg));
+
+ i:=Pos(' ',F);
+ if (i<>0) then
+ begin
+  v:=Trim(Copy(F,1,i));
+  F:=Trim(Copy(F,i+1));
+ end else
+ begin
+  v:=F;
+  F:='';
+ end;
+
+ if (v='!calc') then
+ begin
+
+  if (GetTickCount64<calc_TickKd+2000) then Exit;
+
+  Buffer:=PAnsiChar(F);
+  EOS:=Buffer+Length(F);
+
+  Tokenizer:=TZDbcScriptTokenizer.Create;
+
+  Exp:=Default(TExpressionState);
+  FToken:=Default(TZToken);
+  While (FToken.TokenType<>ttEOF) do
+  begin
+   FToken:=TZDbcScriptTokenizer(Tokenizer).FetchNextToken(Buffer,EOS);
+   Exp.Parse(FToken);
+  end;
+  Tokenizer.Free;
+
+  Exp.Finish;
+
+  calc:=Default(TExpressionCalc);
+
+  calc.Node:=Exp.Node;
+
+  v:=_GetAsRawByteString(calc.calc);
+
+  if v='' then
+   push_irc_msg('@'+user+' что то пошло не так((')
+  else
+   push_irc_msg('@'+user+' '+Trim(F)+'='+v);
+
+  FreeExpression(calc.Node);
+
+  calc_TickKd:=GetTickCount64;
+ end;
+end;}
+
 procedure TFrmMain.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
  cmd:RawByteString;
@@ -1225,7 +1294,18 @@ begin
   FrmVorRpg.add_to_chat_cmd(PC,user,display_name,msg);
  {$ENDIF}
 
+
+ //DoCalc(user,msg);
+
+ //DoCalc('','!calc 1.0/0.0');
+
+ //DoCalc('','!calc 999999999999999999999999/0.0000000000000000000001');
+ //!calc 9^9^9^9^9^9^9
+
+ //!calc 1.0/0.0
+
 end;
+
 
 Function GetShortTimeStr(Time:TDateTime):RawByteString;
 var
