@@ -7,5 +7,7 @@
 *.ini
 *.db
 *.txt
+*.rar
+link.res
 lib/
 backup/
