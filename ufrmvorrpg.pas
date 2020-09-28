@@ -444,7 +444,6 @@ type
  TVorScript=class(TDualLockScript)
   public
    s:RawByteString;
-   Procedure try_debuf(Const user:RawByteString;var data:TJson);
    Procedure OnEvent; override;
  end;
 
@@ -861,26 +860,35 @@ begin
  Result:=i;
 end;
 
-Procedure TVorScript.try_debuf(Const user:RawByteString;var data:TJson);
+function do_debuf(Const s,user:RawByteString;var data:TJson):Boolean;
 var
  id,time:Int64;
- rnd:Integer;
  debuf:Tdebuf;
  cmd:RawByteString;
 begin
+ Result:=False;
+ id:=Get_random_debuf_id;
+ if (id<>-1) then
+ begin
+  debuf:=Get_debuf(id);
+  time:=DEBUF_MIN_TIME+Random(RCT,DEBUF_MAX_TIME-DEBUF_MIN_TIME+1);
+  Set_debuf(data,id,time);
+  cmd:=Format(vor_rpg.stat_msg.on_debuf,[user,debuf.text]);
+  push_irc_msg(cmd);
+  FrmMain._add_reward_2_log(s,cmd);
+  Result:=True;
+ end;
+end;
+
+function try_debuf(Const s,user:RawByteString;var data:TJson):Boolean;
+var
+ rnd:Integer;
+begin
+ Result:=False;
  rnd:=Random(RCT,100);
  if (rnd<DEBUF_PERCENT) then
  begin
-  id:=Get_random_debuf_id;
-  if (id<>-1) then
-  begin
-   debuf:=Get_debuf(id);
-   time:=DEBUF_MIN_TIME+Random(RCT,DEBUF_MAX_TIME-DEBUF_MIN_TIME+1);
-   Set_debuf(data,id,time);
-   cmd:=Format(vor_rpg.stat_msg.on_debuf,[user,debuf.text]);
-   push_irc_msg(cmd);
-   FrmMain._add_reward_2_log(s,cmd);
-  end;
+  Result:=do_debuf(s,user,data);
  end;
 end;
 
@@ -909,7 +917,7 @@ begin
    FrmMain._add_reward_2_log(s,cmd);
    Points1.IncExp(1);
 
-   try_debuf(user1,data1);
+   try_debuf(s,user1,data1);
 
   end else
   begin
@@ -938,7 +946,7 @@ begin
     FrmMain._add_reward_2_log(s,cmd);
     Points1.IncExp(2);
 
-    try_debuf(user1,data1);
+    try_debuf(s,user1,data1);
 
    end;
   end;
@@ -973,7 +981,7 @@ begin
     Points1.IncExp(4);
     Points2.IncExp(1);
 
-    try_debuf(user2,data2);
+    try_debuf(s,user2,data2);
 
    end else
    begin
@@ -995,7 +1003,7 @@ begin
     Points1.IncExp(3);
     Points2.IncExp(1);
 
-    try_debuf(user1,data1);
+    try_debuf(s,user1,data1);
 
    end;
 
@@ -1060,7 +1068,7 @@ begin
      Points1.IncExp(1);
      Points2.IncExp(2);
 
-     try_debuf(user1,data1);
+     try_debuf(s,user1,data1);
 
     end;
 
@@ -1301,7 +1309,105 @@ begin
 
 end;
 
-//А ну да, чисто подкрался незаметно со спины, но споткнулся и упал на свой нож отлетев в бан KEKW
+//kick
+
+type
+ TKickScript=class(TDualLockScript)
+  public
+   Procedure OnEvent; override;
+ end;
+
+Const
+ KICK_PERC=30;
+
+Procedure TKickScript.OnEvent;
+var
+ Points1,Points2:TPlayer;
+ Val:Int64;
+ rnd:Integer;
+begin
+ if not data2.isAssigned then
+ begin
+  push_irc_msg(Format('%s был задержан за нарушение правопорядка ',[user1]));
+
+  Points1.Load(data1);
+
+  Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
+  if (Val<>0) then
+  begin
+   push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
+  end;
+
+  OnUnlock(nil);
+  Exit;
+ end;
+
+ Points1.Load(data1);
+ Points2.Load(data2);
+
+ val:=KICK_PERC+Points1.GetESCPercent-Points2.GetESCPercent;
+ val:=MMP(val);
+ rnd:=Random(RCT,100);
+ if (rnd<val) then
+ begin
+
+  val:=KICK_PERC+Points1.GetSTRPercent-Points2.GetDEFPercent;
+  val:=MMP(val);
+  rnd:=Random(RCT,100);
+  if (rnd<val) then
+  begin
+   push_irc_msg(Format('Гопник %s избил невинного %s',[user1,user2]));
+
+   do_debuf('',user2,data2);
+   SetDBRpgUser1(user2,data2,@OnUnlock);
+
+  end else
+  begin
+   push_irc_msg(Format('Гопник %s не смог пробить дыхалку %s',[user1,user2]));
+
+   if try_debuf('',user1,data1) then
+   begin
+    SetDBRpgUser1(user1,data1,@OnUnlock);
+   end else
+   begin
+    OnUnlock(nil);
+   end;
+  end;
+
+ end else
+ begin
+  push_irc_msg(Format('Гопник %s не попал ногой по %s',[user1,user2]));
+
+  if try_debuf('',user1,data1) then
+  begin
+   SetDBRpgUser1(user1,data1,@OnUnlock);
+  end else
+  begin
+   OnUnlock(nil);
+  end;
+
+ end;
+
+
+end;
+
+Procedure kick(const dst_user,msg:RawByteString);
+Var
+ FDbcScript:TDbcScriptLock;
+ src_user:RawByteString;
+ FKickScript:TKickScript;
+begin
+ src_user:=Extract_nick(msg);
+
+ FKickScript:=TKickScript.Create;
+ FKickScript.user1:=dst_user;
+ FKickScript.user2:=src_user;
+
+ FDbcScript:=TDbcScriptLock.Create;
+ FDbcScript.Prepare(FKickScript);
+ FDbcScript.AsyncFunc(@FDbcScript.try_start);
+
+end;
 
 procedure TFrmVorRpg.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
@@ -1312,60 +1418,66 @@ begin
 
  v:=FetchAny(F);
 
- if (v='!ban_test') then
- begin
-
-  if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
-
-  F:=FetchAny(F);
-  rpg_theif_vip('',user,F);
-
-  vor_rpg.TickKd:=GetTickCount64;
-
-  Exit;
- end;
-
- if (v='!vor') then
- begin
-
-  if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
-
-  if (F='') then
+ Case v of
+  '!пнуть':
   begin
-   push_irc_msg(Format(vor_rpg.stat_msg.help_msg1,[user]));
-  end else
-  begin
+   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
-   v:=FetchAny(F);
+   kick(user,F);
 
-   case v of
-    'dbf',
-    'debuf',
-    'level',
-    'lvl' ,
-    'points',
-    'pts' ,
-    'stats',
-    'stat':GetDBRpgUserInfo(user,v);
-    'add':begin
-           v:=FetchAny(F);
-           Case v of
-            'luk',
-            'def',
-            'chr',
-            'agl',
-            'str':add_pts(user,v);
-            else
-             push_irc_msg(Format(vor_rpg.stat_msg.help_msg2,[user]));
-           end;
-          end;
-    else
-     push_irc_msg(Format(vor_rpg.stat_msg.help_msg1,[user]));
-   end;
-
+   vor_rpg.TickKd:=GetTickCount64;
   end;
 
-  vor_rpg.TickKd:=GetTickCount64;
+  '!ban_test':
+  begin
+   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+
+   F:=FetchAny(F);
+   rpg_theif_vip('',user,F);
+
+   vor_rpg.TickKd:=GetTickCount64;
+  end;
+  '!vor':
+  begin
+   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+
+   if (F='') then
+   begin
+    push_irc_msg(Format(vor_rpg.stat_msg.help_msg1,[user]));
+   end else
+   begin
+
+    v:=FetchAny(F);
+
+    case v of
+     'dbf',
+     'debuf',
+     'level',
+     'lvl' ,
+     'points',
+     'pts' ,
+     'stats',
+     'stat':GetDBRpgUserInfo(user,v);
+     'add':begin
+            v:=FetchAny(F);
+            Case v of
+             'luk',
+             'def',
+             'chr',
+             'agl',
+             'str':add_pts(user,v);
+             else
+              push_irc_msg(Format(vor_rpg.stat_msg.help_msg2,[user]));
+            end;
+           end;
+     else
+      push_irc_msg(Format(vor_rpg.stat_msg.help_msg1,[user]));
+    end;
+
+   end;
+
+   vor_rpg.TickKd:=GetTickCount64;
+  end;
  end;
 
 end;

@@ -122,7 +122,7 @@
   <add_msg>   @%s навык вкачен в %s                              </add_msg>
   <not_msg>   @%s нет свободных очков навыка                     </not_msg>
   <max_msg>   @%s максимум очков навыка в %s                     </max_msg>
-  <help_msg1> @%s команды вора: [debuf,lvl,pts,stat,add [парам.]]</help_msg1>
+  <help_msg1> @%s команды вора: [dbf,lvl,pts,stat,add [парам.]]</help_msg1>
   <help_msg2> @%s для прокачки: [luk,def,chr,agl,str]            </help_msg2>
   <on_debuf>  @%s наложен дебаф: (%s)                            </on_debuf>
  </stat_msg>
