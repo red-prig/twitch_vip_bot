@@ -122,8 +122,9 @@
   <add_msg>   @%s навык вкачен в %s                              </add_msg>
   <not_msg>   @%s нет свободных очков навыка                     </not_msg>
   <max_msg>   @%s максимум очков навыка в %s                     </max_msg>
-  <help_msg1> @%s команды вора: [lvl,pts,stat,add [парам.]]      </help_msg1>
+  <help_msg1> @%s команды вора: [debuf,lvl,pts,stat,add [парам.]]</help_msg1>
   <help_msg2> @%s для прокачки: [luk,def,chr,agl,str]            </help_msg2>
+  <on_debuf>  @%s наложен дебаф: (%s)                            </on_debuf>
  </stat_msg>
 
  <calc>
@@ -132,11 +133,11 @@
   <DEC_TIME>300</DEC_TIME>
   
   <MAX_LVL>100</MAX_LVL>
-  <MAX_LUK>30</MAX_LUK>
-  <MAX_DEF>30</MAX_DEF>
-  <MAX_CHR>30</MAX_CHR>
-  <MAX_STR>30</MAX_STR>
-  <MAX_AGL>30</MAX_AGL>
+  <MAX_LUK>25</MAX_LUK>
+  <MAX_DEF>29</MAX_DEF>
+  <MAX_CHR>100</MAX_CHR>
+  <MAX_STR>29</MAX_STR>
+  <MAX_AGL>100</MAX_AGL>
 
   <MUL_EXP>2</MUL_EXP>
   <MUL_LUK>4</MUL_LUK>
@@ -151,6 +152,66 @@
   
   <PERC_MINUS_VIP>10</PERC_MINUS_VIP>
  </calc>
+
+ <debuf>
+  <text>Сломано колено -AGL</text>
+  <chr>
+   <AGL>-1</AGL>
+  </chr>
+ </debuf>
+
+ <debuf>
+  <text>Вывихнул лодыжку -AGL</text>
+  <chr>
+   <AGL>-1</AGL>
+  </chr>
+ </debuf>
+
+ <debuf>
+  <text>Сломана рука -STR</text>
+  <chr>
+   <STR>-1</STR>
+  </chr>
+ </debuf>
+
+ <debuf>
+  <text>Порвана одежда -DEF</text>
+  <chr>
+   <DEF>-1</DEF>
+  </chr>
+ </debuf>
+
+ <debuf>
+  <text>Эффект фигурки -LUK</text>
+  <chr>
+   <LUK>-1</LUK>
+  </chr>
+ </debuf>
+
+ <debuf>
+  <text>Уронил мыло -CHR</text>
+  <chr>
+   <CHR>-1</CHR>
+  </chr>
+ </debuf>
+
+ <debuf>
+  <text>У тебя круги под глазами -CHR</text>
+  <chr>
+   <CHR>-1</CHR>
+  </chr>
+ </debuf>
+
+ <debuf>
+  <text>Анигиляторная пушка +LUK -STR,DEF,AGL,CHR</text>
+  <chr>
+   <LUK>1</LUK>
+   <STR>-1</STR>
+   <DEF>-1</DEF>
+   <AGL>-1</AGL>
+   <CHR>-1</CHR>
+  </chr>
+ </debuf>
 
 </vor_rpg>
 

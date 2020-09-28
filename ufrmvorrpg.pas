@@ -54,7 +54,8 @@ var
     not_msg,
     max_msg,
     help_msg1,
-    help_msg2:RawByteString;
+    help_msg2,
+    on_debuf:RawByteString;
    end;
 
    calc:record
@@ -93,6 +94,22 @@ var
 
   FSetRpgUser1:TSQLScript;
   FSetRpgUser2:TSQLScript;
+
+type
+ Pcharacteristic=^Tcharacteristic;
+ Tcharacteristic=object
+  STR,LUK,DEF,CHR,AGL:Int64;
+  Procedure SumTo(var S:Tcharacteristic);
+ end;
+
+ Pdebuf=^Tdebuf;
+ Tdebuf=object
+  id:Int64;
+  chr:Tcharacteristic;
+  text:RawByteString;
+ end;
+
+procedure add_debuf(d:Tdebuf);
 
 implementation
 
@@ -427,6 +444,7 @@ type
  TVorScript=class(TDualLockScript)
   public
    s:RawByteString;
+   Procedure try_debuf(Const user:RawByteString;var data:TJson);
    Procedure OnEvent; override;
  end;
 
@@ -475,18 +493,13 @@ end;
 
  PERCENT_MINUS_VIP=10;}
 
+Const
+ DEBUF_PERCENT=20;
+
+ DEBUF_MIN_TIME=4500;
+ DEBUF_MAX_TIME=86400;
+
 type
- Tcharacteristic=object
-  PTS,STR,LUK,DEF,CHR,AGL:Int64;
-  Procedure SumTo(var S:Tcharacteristic);
- end;
-
- Tdebuf=object
-  id:Int64;
-  chr:Tcharacteristic;
-  text:RawByteString;
- end;
-
  TdebufCompare=class
   class function c(const a,b:Tdebuf):boolean; static;
  end;
@@ -494,9 +507,10 @@ type
  TdebufSet=specialize TSet<Tdebuf,TdebufCompare>;
 
  TUserPoints=object(Tcharacteristic)
-  EXP,LVL:Int64;
+  EXP,LVL,PTS:Int64;
   function  GetExpToLvl:Int64;
   procedure CheckNewLvl;
+  procedure CheckMaxPts;
   procedure Load(J:TJson);
   procedure Save(var J:TJson);
  end;
@@ -504,6 +518,11 @@ type
  TPlayer=object
   Points:TUserPoints;
   Effects:Tcharacteristic;
+  Function  STR:Int64;
+  Function  LUK:Int64;
+  Function  DEF:Int64;
+  Function  CHR:Int64;
+  Function  AGL:Int64;
   Function  GetLUKPercent:Int64;
   Function  GetDEFPercent:Int64;
   Function  GetSTRPercent:Int64;
@@ -521,7 +540,6 @@ end;
 
 Procedure Tcharacteristic.SumTo(var S:Tcharacteristic);
 begin
- S.PTS:=S.PTS+PTS;
  S.STR:=S.STR+STR;
  S.LUK:=S.LUK+LUK;
  S.DEF:=S.DEF+DEF;
@@ -553,49 +571,109 @@ begin
  until false;
 end;
 
+procedure TUserPoints.CheckMaxPts;
+
+ procedure try_max(var param:Int64;var max:DWORD); inline;
+ begin
+  if (param>max) then
+  begin
+   PTS:=PTS+(param-max);
+   param:=max;
+  end;
+ end;
+
+begin
+ if (PTS<0) then PTS:=0;
+ try_max(LUK,vor_rpg.calc.MAX_LUK);
+ try_max(DEF,vor_rpg.calc.MAX_DEF);
+ try_max(CHR,vor_rpg.calc.MAX_CHR);
+ try_max(AGL,vor_rpg.calc.MAX_AGL);
+ try_max(STR,vor_rpg.calc.MAX_STR);
+end;
+
+Function TPlayer.STR:Int64;
+begin
+ Result:=Points.STR+Effects.STR;
+end;
+
+Function TPlayer.LUK:Int64;
+begin
+ Result:=Points.LUK+Effects.LUK;
+end;
+
+Function TPlayer.DEF:Int64;
+begin
+ Result:=Points.DEF+Effects.DEF;
+end;
+
+Function TPlayer.CHR:Int64;
+begin
+ Result:=Points.CHR+Effects.CHR;
+end;
+
+Function TPlayer.AGL:Int64;
+begin
+ Result:=Points.AGL+Effects.AGL;
+end;
+
 Function TPlayer.GetLUKPercent:Int64;
 var
- LUK:Int64;
+ _LUK:Int64;
 begin
- LUK:=Points.LUK+Effects.LUK;
- if (LUK<=0) then Exit(0);
- Result:=Trunc(Log2((LUK+1)*4-2)*vor_rpg.calc.MUL_LUK+vor_rpg.calc.DEC_LUK);
+ _LUK:=LUK;
+ if (_LUK=0) then Exit(0) else
+ if (_LUK>0) then
+  Result:=Trunc(Log2((_LUK+1)*4-2)*vor_rpg.calc.MUL_LUK+vor_rpg.calc.DEC_LUK)
+ else
+  Result:=-Trunc(Log2((abs(_LUK)+1)*4-2)*vor_rpg.calc.MUL_LUK+vor_rpg.calc.DEC_LUK);
 end;
 
 Function TPlayer.GetDEFPercent:Int64;
 var
- DEF:Int64;
+ _DEF:Int64;
 begin
- DEF:=Points.DEF+Effects.DEF;
- if (DEF<=0) then Exit(0);
- Result:=Trunc(Log2((DEF+1)*4-2)*vor_rpg.calc.MUL_DEF+vor_rpg.calc.DEC_DEF);
+ _DEF:=DEF;
+ if (_DEF=0) then Exit(0) else
+ if (_DEF>0) then
+  Result:=Trunc(Log2((_DEF+1)*4-2)*vor_rpg.calc.MUL_DEF+vor_rpg.calc.DEC_DEF)
+ else
+  Result:=-Trunc(Log2((abs(_DEF)+1)*4-2)*vor_rpg.calc.MUL_DEF+vor_rpg.calc.DEC_DEF);
 end;
 
 Function TPlayer.GetSTRPercent:Int64;
 var
- STR:Int64;
+ _STR:Int64;
 begin
- STR:=Points.STR+Effects.STR;
- if (STR<=0) then Exit(0);
- Result:=Trunc(Log2((STR+1)*4-2)*vor_rpg.calc.MUL_STR+vor_rpg.calc.DEC_STR)
+ _STR:=STR;
+ if (_STR=0) then Exit(0) else
+ if (_STR>0) then
+  Result:=Trunc(Log2((_STR+1)*4-2)*vor_rpg.calc.MUL_STR+vor_rpg.calc.DEC_STR)
+ else
+  Result:=-Trunc(Log2((abs(_STR)+1)*4-2)*vor_rpg.calc.MUL_STR+vor_rpg.calc.DEC_STR);
 end;
 
 Function TPlayer.GetESCPercent:Int64;
 var
- AGL:Int64;
+ _AGL:Int64;
 begin
- AGL:=Points.AGL+Effects.AGL;
- if (AGL<=0) then Exit(0);
- Result:=Trunc(Log2(AGL*3-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL);
+ _AGL:=AGL;
+ if (_AGL=0) then Exit(0) else
+ if (_AGL>0) then
+  Result:=Trunc(Log2(_AGL*3-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL)
+ else
+  Result:=-Trunc(Log2(abs(_AGL)*3-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL);
 end;
 
 Function TPlayer.GetTime:Int64;
 var
- CHR:Int64;
+ _CHR:Int64;
 begin
- CHR:=Points.CHR+Effects.CHR;
- if (CHR<=0) then Exit(0);
- Result:=Trunc(Log2(CHR*3-2)*vor_rpg.calc.MUL_TIME+vor_rpg.calc.DEC_TIME);
+ _CHR:=CHR;
+ if (_CHR=0) then Exit(0) else
+ if (_CHR>0) then
+  Result:=Trunc(Log2(_CHR*3-2)*vor_rpg.calc.MUL_TIME+vor_rpg.calc.DEC_TIME)
+ else
+  Result:=-Trunc(Log2(abs(_CHR)*3-2)*vor_rpg.calc.MUL_TIME+vor_rpg.calc.DEC_TIME);
 end;
 
 procedure TUserPoints.Load(J:TJson);
@@ -617,7 +695,7 @@ begin
   J.Delete(path);
  end else
  begin
-  J.Path[path]:=TJson.New(val);
+  J.Values[path]:=val;
  end;
 end;
 
@@ -642,6 +720,16 @@ end;
 var
  debufSet:TdebufSet;
 
+procedure add_debuf(d:Tdebuf);
+begin
+ if (debufSet=nil) then
+ begin
+  debufSet:=TdebufSet.Create;
+ end;
+ d.id:=debufSet.Size;
+ debufSet.Insert(d);
+end;
+
 function Get_debuf(id:Int64):Tdebuf;
 var
  Node:debufSet.PNode;
@@ -654,6 +742,50 @@ begin
  Result:=Node^.Data;
 end;
 
+function Get_random_debuf_id:Int64;
+begin
+ Result:=-1;
+ if (debufSet=nil) then Exit;
+ Result:=Random(RCT,int64(debufSet.Size))
+end;
+
+procedure Set_debuf(var J:TJson;id,time:Int64);
+Var
+ instance,item:TJson;
+ i,C:SizeUint;
+ new:Int64;
+begin
+ instance:=J.Path['debuf.instance'];
+ if not instance.isAssigned then
+ begin
+  instance:=TJson.New;
+  instance.SetArray;
+  J.Path['debuf.instance']:=instance;
+ end;
+
+ C:=instance.Count;
+ new:=DateTimeToUnix(sysutils.Now,False)+time;
+ if (C<>0) then
+ begin
+  For i:=0 to C-1 do
+  begin
+   item:=instance.Item[i];
+   if (item.Path['id'].AsInt64(0)=id) then
+   begin
+    item.Values['time']:=Max(new,item.Path['time'].AsInt64(0));
+    Exit;
+   end;
+  end;
+ end;
+
+ item:=TJson.New;
+ item.Values['id']:=id;
+ item.Values['time']:=new;
+
+ instance.Add(item);
+
+end;
+
 procedure TPlayer.Load(J:TJson);
 Var
  instance:TJson;
@@ -663,6 +795,7 @@ Var
 begin
  Points.Load(J);
  Points.CheckNewLvl;
+ Points.CheckMaxPts;
 
  Effects:=Default(Tcharacteristic);
 
@@ -684,6 +817,11 @@ begin
     debuf.chr.SumTo(Effects);
    end;
   end;
+ end;
+
+ if instance.Count=0 then
+ begin
+  J.Delete('debuf');
  end;
 
 end;
@@ -713,6 +851,39 @@ begin
   Result:=L.Strings[Random(RCT,L.Count)];
 end;
 
+Function MMP(i:Int64):Int64;
+begin
+ if (i<0) then
+  i:=0
+ else
+ if (i>100) then
+  i:=100;
+ Result:=i;
+end;
+
+Procedure TVorScript.try_debuf(Const user:RawByteString;var data:TJson);
+var
+ id,time:Int64;
+ rnd:Integer;
+ debuf:Tdebuf;
+ cmd:RawByteString;
+begin
+ rnd:=Random(RCT,100);
+ if (rnd<DEBUF_PERCENT) then
+ begin
+  id:=Get_random_debuf_id;
+  if (id<>-1) then
+  begin
+   debuf:=Get_debuf(id);
+   time:=DEBUF_MIN_TIME+Random(RCT,DEBUF_MAX_TIME-DEBUF_MIN_TIME+1);
+   Set_debuf(data,id,time);
+   cmd:=Format(vor_rpg.stat_msg.on_debuf,[user,debuf.text]);
+   push_irc_msg(cmd);
+   FrmMain._add_reward_2_log(s,cmd);
+  end;
+ end;
+end;
+
 Procedure TVorScript.OnEvent;
 var
  cmd:RawByteString;
@@ -737,6 +908,9 @@ begin
 
    FrmMain._add_reward_2_log(s,cmd);
    Points1.IncExp(1);
+
+   try_debuf(user1,data1);
+
   end else
   begin
    rnd:=Random(RCT,100);
@@ -757,12 +931,15 @@ begin
 
     cmd:=Format(cmd,[user1]);
     push_irc_msg(cmd);
-    if Val<>0 then
+    if (Val<>0) then
     begin
      push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
     end;
     FrmMain._add_reward_2_log(s,cmd);
     Points1.IncExp(2);
+
+    try_debuf(user1,data1);
+
    end;
   end;
   Points1.Save(data1);
@@ -770,8 +947,7 @@ begin
  end else
  begin
   Val:=(vip_rnd.perc_vor+Points1.GetLUKPercent-Points2.GetDEFPercent);
-  Val:=Max(Val,0);
-  Val:=Min(Val,100);
+  Val:=MMP(Val);
 
   rnd:=Random(RCT,100);
 
@@ -779,8 +955,7 @@ begin
   begin
 
    Val:=(1+Points1.GetLUKPercent);
-   Val:=Max(Val,0);
-   Val:=Min(Val,100);
+   Val:=MMP(Val);
 
    rnd:=Random(RCT,100);
 
@@ -795,8 +970,10 @@ begin
 
     ChangeVip(user2,user1);
 
-    Points1.IncExp(5);
+    Points1.IncExp(4);
     Points2.IncExp(1);
+
+    try_debuf(user2,data2);
 
    end else
    begin
@@ -810,13 +987,15 @@ begin
     ChangeVip(user2,user1);
 
     Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
-    if Val<>0 then
+    if (Val<>0) then
     begin
      push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
     end;
 
-    Points1.IncExp(4);
+    Points1.IncExp(3);
     Points2.IncExp(1);
+
+    try_debuf(user1,data1);
 
    end;
 
@@ -824,8 +1003,7 @@ begin
   begin //str
 
    Val:=(vip_rnd.perc_vor+Points1.GetSTRPercent-Points2.GetDEFPercent);
-   Val:=Max(Val,0);
-   Val:=Min(Val,100);
+   Val:=MMP(Val);
 
    rnd:=Random(RCT,100);
 
@@ -848,8 +1026,7 @@ begin
     //escape
 
     Val:=Points1.GetESCPercent;
-    Val:=Max(Val,0);
-    Val:=Min(Val,100);
+    Val:=MMP(Val);
 
     rnd:=Random(RCT,100);
 
@@ -875,13 +1052,15 @@ begin
      push_irc_msg(cmd);
 
      Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
-     if Val<>0 then
+     if (Val<>0) then
      begin
       push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
      end;
 
      Points1.IncExp(1);
      Points2.IncExp(2);
+
+     try_debuf(user1,data1);
 
     end;
 
@@ -905,6 +1084,7 @@ type
   data:TJson;
   Procedure Cleanup; override;
   Procedure OnFin(Sender:TBaseTask);
+  function  Get_debufs:RawByteString;
   procedure Print;
  end;
 
@@ -977,12 +1157,59 @@ begin
  Print;
 end;
 
+function TDbcGetUserInfo.Get_debufs:RawByteString;
+Var
+ instance,item:TJson;
+ i,C:SizeUint;
+ now,time,hr,id:Int64;
+ debuf:Tdebuf;
+begin
+ Result:='';
+ instance:=data.Path['debuf.instance'];
+ if not instance.isAssigned then Exit;
+
+ C:=instance.Count;
+ now:=DateTimeToUnix(sysutils.Now,False);
+ if (C<>0) then
+ begin
+  For i:=0 to C-1 do
+  begin
+   item:=instance.Item[i];
+   time:=item.Path['time'].AsInt64(0);
+   time:=time-now;
+   if (time>0) then
+   begin
+    id:=item.Path['id'].AsInt64(0);
+    debuf:=Get_debuf(id);
+    if (debuf.text<>'') then
+    begin
+     if (Result<>'') then Result:=Result+', ';
+     time:=time div 60;
+     hr:=time div 60;
+     if (hr<>0) then
+     begin
+      time:=time-(hr*60);
+      Result:=Result+debuf.text+'('+IntToStr(hr)+'ч '+IntToStr(time)+'мин)';
+     end else
+     begin
+      Result:=Result+debuf.text+'('+IntToStr(time)+'мин)';
+     end;
+    end;
+   end;
+  end;
+ end;
+
+end;
+
 procedure TDbcGetUserInfo.Print;
 var
  Points:TPlayer;
 begin
  Points.Load(data);
  case cmd of
+  'dbf',
+  'debuf':push_irc_msg(Format('@%s <%s>',[user,Get_debufs]));
+
   'level',
   'lvl' :push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[user,
                                       IntToStr(Points.Points.LVL),
@@ -990,11 +1217,11 @@ begin
                                       IntToStr(Points.Points.GetExpToLvl)]));
   'points',
   'pts' :push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[user,
-                                      IntToStr(Points.Points.LUK),
-                                      IntToStr(Points.Points.DEF),
-                                      IntToStr(Points.Points.CHR),
-                                      IntToStr(Points.Points.AGL),
-                                      IntToStr(Points.Points.STR),
+                                      IntToStr(Points.LUK),
+                                      IntToStr(Points.DEF),
+                                      IntToStr(Points.CHR),
+                                      IntToStr(Points.AGL),
+                                      IntToStr(Points.STR),
                                       IntToStr(Points.Points.PTS)]));
   'stats',
   'stat':push_irc_msg(Format(vor_rpg.stat_msg.stat_msg,[user,
@@ -1014,7 +1241,7 @@ type
 
 Procedure TAddPtsScript.OnEvent;
 var
- Points1:TUserPoints;
+ Points1:TPlayer;
  do_inc:Boolean;
 
  function try_inc(var param:Int64;var max:DWORD):Boolean;
@@ -1029,19 +1256,19 @@ var
 begin
  Points1.Load(data1);
 
- if (Points1.PTS>0) then
+ if (Points1.Points.PTS>0) then
  begin
   Case cmd of
-   'luk':do_inc:=try_inc(Points1.LUK,vor_rpg.calc.MAX_LUK);
-   'def':do_inc:=try_inc(Points1.DEF,vor_rpg.calc.MAX_DEF);
-   'chr':do_inc:=try_inc(Points1.CHR,vor_rpg.calc.MAX_CHR);
-   'agl':do_inc:=try_inc(Points1.AGL,vor_rpg.calc.MAX_AGL);
-   'str':do_inc:=try_inc(Points1.STR,vor_rpg.calc.MAX_STR);
+   'luk':do_inc:=try_inc(Points1.Points.LUK,vor_rpg.calc.MAX_LUK);
+   'def':do_inc:=try_inc(Points1.Points.DEF,vor_rpg.calc.MAX_DEF);
+   'chr':do_inc:=try_inc(Points1.Points.CHR,vor_rpg.calc.MAX_CHR);
+   'agl':do_inc:=try_inc(Points1.Points.AGL,vor_rpg.calc.MAX_AGL);
+   'str':do_inc:=try_inc(Points1.Points.STR,vor_rpg.calc.MAX_STR);
   end;
 
   if do_inc then
   begin
-   Dec(Points1.PTS);
+   Dec(Points1.Points.PTS);
    push_irc_msg(Format(vor_rpg.stat_msg.add_msg,[user1,cmd]));
   end else
   begin
@@ -1090,6 +1317,7 @@ begin
 
   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
+  F:=FetchAny(F);
   rpg_theif_vip('',user,F);
 
   vor_rpg.TickKd:=GetTickCount64;
@@ -1111,20 +1339,25 @@ begin
    v:=FetchAny(F);
 
    case v of
+    'dbf',
+    'debuf',
     'level',
     'lvl' ,
     'points',
     'pts' ,
     'stats',
     'stat':GetDBRpgUserInfo(user,v);
-    'add':Case F of
-           'luk',
-           'def',
-           'chr',
-           'agl',
-           'str':add_pts(user,F);
-           else
-            push_irc_msg(Format(vor_rpg.stat_msg.help_msg2,[user]));
+    'add':begin
+           v:=FetchAny(F);
+           Case v of
+            'luk',
+            'def',
+            'chr',
+            'agl',
+            'str':add_pts(user,v);
+            else
+             push_irc_msg(Format(vor_rpg.stat_msg.help_msg2,[user]));
+           end;
           end;
     else
      push_irc_msg(Format(vor_rpg.stat_msg.help_msg1,[user]));
@@ -1203,7 +1436,6 @@ end;
 
 initialization
  LockStr:=TRawByteStringSet.Create;
- debufSet:=TdebufSet.Create;
  vor_rpg.time_kd:=8;
 
 end.

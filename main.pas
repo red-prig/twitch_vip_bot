@@ -171,7 +171,7 @@ function GetDateTimeStr(Const Value:TDateTime):RawByteString;
 procedure SetDBParam(Const fname,fvalue:RawByteString);
 procedure GetDBParam(Const fname:RawByteString;N:TNotifyTask);
 
-Function  Extract_nick(const s:RawByteString):RawByteString; inline;
+Function  Extract_nick(const s:RawByteString):RawByteString;
 
 var
  Config:TINIFile;
@@ -657,7 +657,7 @@ begin
  FreeAndNil(L);
 end;
 
-Function Extract_nick(const s:RawByteString):RawByteString; inline;
+Function Extract_nick(const s:RawByteString):RawByteString;
 var
  i:SizeInt;
 begin
@@ -1182,7 +1182,6 @@ begin
 
     if (F<>'') then
     begin
-
      //set volume app
      Volume:=FindSessionsStr(v);
      if Volume=nil then
@@ -1191,6 +1190,7 @@ begin
      end else
      begin
       i:=0;
+      F:=FetchAny(F);
       case F of
        'm',
        'mute':
@@ -2457,6 +2457,16 @@ type
  TVorRpg_calc_Func=class(TNodeFunc)
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
+
+ TVorRpg_chr_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_debuf_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+  class procedure CLS(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
  {$ENDIF}
 
  TOpenSub_Func=class(TNodeFunc)
@@ -2726,6 +2736,10 @@ begin
    begin
     Node.Push(TVorRpg_calc_Func,nil);
    end;
+  'debuf':
+   begin
+    Node.Push(TVorRpg_debuf_Func,AllocMem(SizeOf(Tdebuf)));
+   end;
  end;
 end;
 
@@ -2763,6 +2777,10 @@ begin
   'help_msg2':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg2);
+   end;
+  'on_debuf':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.on_debuf);
    end;
  end;
 end;
@@ -2853,6 +2871,59 @@ begin
 
  end;
 end;
+
+class procedure TVorRpg_chr_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'STR':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.STR);
+  end;
+  'LUK':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.LUK);
+  end;
+  'DEF':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.DEF);
+  end;
+  'CHR':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.CHR);
+  end;
+  'AGL':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.AGL);
+  end;
+ end;
+end;
+
+class procedure TVorRpg_debuf_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'chr':
+  begin
+   Node.Push(TVorRpg_chr_Func,@Pdebuf(Node.CData)^.chr);
+  end;
+  'text':
+  begin
+   Node.Push(TLoadStr_Func,@Pdebuf(Node.CData)^.text);
+  end;
+ end;
+end;
+
+class procedure TVorRpg_debuf_Func.CLS(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'debuf':
+  begin
+   add_debuf(Pdebuf(Node.CData)^);
+   FreeMem(Node.CData);
+  end;
+ end;
+ inherited;
+end;
+
 {$ENDIF}
 
 class procedure TOpenSub_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
