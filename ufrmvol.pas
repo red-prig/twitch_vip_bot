@@ -112,8 +112,11 @@ begin
             EnumSessionsVolume(vol_cmd.Device,vol_cmd.System,@SL.OnSessions);
  end;
 
- Result:=SL.L.Text;
+ Result:=Trim(SL.L.Text);
  FreeAndNil(SL.L);
+
+ if (Result<>'') and (Result[Length(Result)]=',') then
+  Delete(Result,Length(Result),1);
 end;
 
 function TSessionFind.OnSessions(Const name:RawByteString;Volume:ISimpleAudioVolume):Boolean;
@@ -198,6 +201,18 @@ Procedure TFrmVolParam.InitCfg;
 begin
  SetVolExclude('');
 
+ case vol_cmd.Device of
+  'all',
+  'default':;
+  else
+   try
+    if not IsVaildDeviceID(vol_cmd.Device) then
+     vol_cmd.Device:='all';
+   except
+    vol_cmd.Device:='all';
+   end;
+ end;
+
  case Vol_cmd.Enable of
   True :Config.WriteString('vol' ,'enable','1');
   False:Config.WriteString('vol' ,'enable','0');
@@ -218,6 +233,19 @@ begin
  Vol_cmd.System :=Trim(Config.ReadString('vol','system','0'))='1';
  Vol_cmd.Device :=LowerCase(Trim(Config.ReadString('vol','device' ,Vol_cmd.Device)));
  SetVolExclude((Config.ReadString('vol','exclude',GetVolExclude)));
+
+ case vol_cmd.Device of
+  'all',
+  'default':;
+  else
+   try
+    if not IsVaildDeviceID(vol_cmd.Device) then
+     vol_cmd.Device:='all';
+   except
+    vol_cmd.Device:='all';
+   end;
+ end;
+
 end;
 
 Procedure TFrmVolParam.Open;

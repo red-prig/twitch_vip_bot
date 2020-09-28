@@ -199,6 +199,7 @@ procedure EnumDeviceAudio(dwStateMask:DWORD;cb:TCBEnumDeviceAudio);
 function  EnumSessionsVolume(Device:IMMDevice;SystemSession:Boolean;cb:TCBEnumSessionsVolume):Boolean;
 procedure EnumSessionsVolume(AllDevice,SystemSession:Boolean;cb:TCBEnumSessionsVolume);
 procedure EnumSessionsVolume(Const id:RawByteString;SystemSession:Boolean;cb:TCBEnumSessionsVolume);
+function  IsVaildDeviceID(Const id:RawByteString):Boolean;
 
 implementation
 
@@ -448,7 +449,7 @@ var
  deviceEnum:IMMDeviceEnumerator;
  Device:IMMDevice;
 begin
- if cb=nil then Exit;
+ if (cb=nil) or (id='') then Exit;
  deviceEnum:=nil;
  if CoCreateInstance(IID_MMDeviceEnumerator,nil,CLSCTX_INPROC_SERVER or CLSCTX_LOCAL_SERVER,IMMDeviceEnumerator,deviceEnum)<>S_OK then Exit;
  if deviceEnum=nil then Exit;
@@ -459,6 +460,27 @@ begin
  EnumSessionsVolume(Device,SystemSession,cb);
  Device:=nil;
 
+ deviceEnum:=nil;
+end;
+
+function IsVaildDeviceID(Const id:RawByteString):Boolean;
+var
+ W:WideString;
+ deviceEnum:IMMDeviceEnumerator;
+ Device:IMMDevice;
+begin
+ Result:=False;
+ if (id='') then Exit;
+
+ deviceEnum:=nil;
+ if CoCreateInstance(IID_MMDeviceEnumerator,nil,CLSCTX_INPROC_SERVER or CLSCTX_LOCAL_SERVER,IMMDeviceEnumerator,deviceEnum)<>S_OK then Exit;
+ if deviceEnum=nil then Exit;
+
+ Device:=nil;
+ W:=UTF8Decode(id);
+ if deviceEnum.GetDevice(PWideChar(W),Device)<>S_OK then Exit;
+ Result:=(Device<>nil);
+ Device:=nil;
  deviceEnum:=nil;
 end;
 

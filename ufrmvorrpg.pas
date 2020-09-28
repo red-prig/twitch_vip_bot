@@ -1079,20 +1079,11 @@ end;
 procedure TFrmVorRpg.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
  F,v:RawByteString;
- i:Integer;
+
 begin
  F:=LowerCase(Trim(msg));
 
- i:=Pos(' ',F);
- if (i<>0) then
- begin
-  v:=Trim(Copy(F,1,i));
-  F:=Trim(Copy(F,i+1));
- end else
- begin
-  v:=F;
-  F:='';
- end;
+ v:=FetchAny(F);
 
  if (v='!ban_test') then
  begin
@@ -1116,16 +1107,8 @@ begin
    push_irc_msg(Format(vor_rpg.stat_msg.help_msg1,[user]));
   end else
   begin
-   i:=Pos(' ',F);
-   if (i<>0) then
-   begin
-    v:=Trim(Copy(F,1,i));
-    F:=Trim(Copy(F,i+1));
-   end else
-   begin
-    v:=F;
-    F:='';
-   end;
+
+   v:=FetchAny(F);
 
    case v of
     'level',

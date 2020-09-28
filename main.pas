@@ -249,6 +249,7 @@ var
 function  fetch_random_no_more(Var Context:TMTRandomContext):Boolean;
 procedure push_irc_msg(const msg:RawByteString);
 procedure push_irc_list(L:TStringList;const Args:Array of const);
+function  FetchAny(var Value:RawByteString):RawByteString;
 
 Const
  DefZURL='zdbc:sqlite:///new.db';
@@ -1113,101 +1114,153 @@ begin
 
 end;
 
+function FetchAny(var Value:RawByteString):RawByteString;
+Const
+ Delimiter=' ';
+Const
+ Quotations:Set of AnsiChar=['`','''','"'];
+Var
+ Quote:AnsiChar;
+ i:SizeUInt;
+begin
+ Result:='';
+ Quote:=#0;
+ if Length(Value)>0 then
+ begin
+  For i:=1 to Length(Value) do
+  begin
+   if (Value[i] in Quotations)  then
+   begin
+    if (Quote=#0) then
+    begin
+     Quote:=Value[i];
+    end else
+    if (i<>1) and (Value[i-1]=Quote) then
+    begin
+     Result:=Result+Value[i];
+    end else
+    begin
+     Quote:=#0;
+    end;
+   end else
+   if Value[i]=Delimiter then
+   begin
+    if (Quote<>#0) then
+    begin
+     Result:=Result+Value[i];
+    end else
+    begin
+     System.Delete(Value,1,i);
+     Exit;
+    end;
+   end else
+   begin
+    Result:=Result+Value[i];
+   end;
+  end;
+  Value:='';
+ end;
+end;
+
 procedure TFrmMain.add_vol_cmd(const user,cmd:RawByteString);
 var
- F,v:RawByteString;
  i:Integer;
+ F,v:RawByteString;
  Volume:ISimpleAudioVolume;
 begin
  F:=LowerCase(Trim(cmd));
 
- i:=Pos(' ',F);
- if i<>0 then
- begin
-  v:=Trim(Copy(F,1,i));
-  F:=Trim(Copy(F,i+1));
-  if v=vol_cmd.prefix then
+ v:=FetchAny(F);
+
+ if (V<>vol_cmd.prefix) then Exit;
+
+ try
+  if (F<>'') then
   begin
 
-   i:=Pos(' ',F);
-   if i<>0 then
-   begin
-    v:=Trim(Copy(F,1,i));
-    F:=Trim(Copy(F,i+1));
+    v:=FetchAny(F);
 
-    //set volume app
-    Volume:=FindSessionsStr(v);
-    if Volume=nil then
+    if (F<>'') then
     begin
-     F:='nop';
-    end else
-    begin
-     i:=0;
-     case F of
-      'm',
-      'mute':
-      begin
-       SetMute(Volume,True);
-       F:=GetVolumeInfo(v,Volume);
-      end;
-      'u',
-      'unmute':
-      begin
-       SetMute(Volume,False);
-       F:=GetVolumeInfo(v,Volume);
-      end;
-      else
-      begin
-       if TryStrToInt(F,i) then
+
+     //set volume app
+     Volume:=FindSessionsStr(v);
+     if Volume=nil then
+     begin
+      F:='nop';
+     end else
+     begin
+      i:=0;
+      case F of
+       'm',
+       'mute':
        begin
-        case F[1] of
-         '-',
-         '+':begin
-              i:=GetVolume(Volume)+i;
-              if i<0 then   i:=0;
-              if i>100 then i:=100;
-              SetVolume(Volume,i);
-             end;
-         else
-             begin //absolute
-              if i>100 then i:=100;
-              SetVolume(Volume,i);
-             end;
-        end;
+        SetMute(Volume,True);
         F:=GetVolumeInfo(v,Volume);
-       end else
+       end;
+       'u',
+       'unmute':
        begin
-        F:='nop';
+        SetMute(Volume,False);
+        F:=GetVolumeInfo(v,Volume);
+       end;
+       else
+       begin
+        if TryStrToInt(F,i) then
+        begin
+         case F[1] of
+          '-',
+          '+':begin
+               i:=GetVolume(Volume)+i;
+               if i<0 then   i:=0;
+               if i>100 then i:=100;
+               SetVolume(Volume,i);
+              end;
+          else
+              begin //absolute
+               if i>100 then i:=100;
+               SetVolume(Volume,i);
+              end;
+         end;
+         F:=GetVolumeInfo(v,Volume);
+        end else
+        begin
+         F:='nop';
+        end;
        end;
       end;
      end;
-    end;
 
-    push_irc_msg(user+' '+F);
-   end else
-   begin
-    //get info app
-    Volume:=FindSessionsStr(F);
-    if Volume=nil then
-    begin
-     F:='nop';
+     push_irc_msg(user+' '+F);
     end else
     begin
-     F:=GetVolumeInfo(F,Volume);
+     //get info app
+     Volume:=FindSessionsStr(v);
+     if Volume=nil then
+     begin
+      F:='nop';
+     end else
+     begin
+      F:=GetVolumeInfo(v,Volume);
+     end;
+     push_irc_msg(user+' '+F);
     end;
-    push_irc_msg(user+' '+F);
-   end;
+
+  end else
+  begin
+   //list app
+   F:=GetSessionsStr;
+
+   if F='' then F:='nop';
+   push_irc_msg(user+' '+F);
+
   end;
- end else
- if F=vol_cmd.prefix then
- begin
-  //list app
-  F:=GetSessionsStr;
-
-  F:=Copy(F,1,Length(F)-1);
-  if F='' then F:='nop';
-  push_irc_msg(user+' '+F);
-
+ except
+  on E:Exception do
+  begin
+   DumpExceptionCallStack(E);
+   push_irc_msg(user+' Error:'+E.Message );
+  end;
  end;
 end;
 
