@@ -89,6 +89,7 @@ begin
  if (name<>'') then
  begin
   F:=LowerCase(name);
+  if Pos(' ',F)<>0 then F:='"'+F+'"';
   if (Vol_cmd.Exclude=nil) or (vol_cmd.Exclude.IndexOf(F)=-1) then
    if L.IndexOfName(F)=-1 then
    begin
