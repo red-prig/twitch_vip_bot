@@ -1279,23 +1279,15 @@ var
  calc:TExpressionCalc;
  Buffer,EOS:PAnsiChar;
 begin
- F:=LowerCase(Trim(msg));
 
- i:=Pos(' ',F);
- if (i<>0) then
- begin
-  v:=Trim(Copy(F,1,i));
-  F:=Trim(Copy(F,i+1));
- end else
- begin
-  v:=F;
-  F:='';
- end;
+ F:=Trim(msg);
+ v:=FetchAny(F);
+ v:=LowerCase(v);
 
  if (v='!calc') then
  begin
 
-  if (GetTickCount64<calc_TickKd+2000) then Exit;
+  if (GetTickCount64<calc_TickKd+3000) then Exit;
 
   Buffer:=PAnsiChar(F);
   EOS:=Buffer+Length(F);
