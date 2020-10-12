@@ -38,8 +38,8 @@ type
     procedure UpdateTextSubTime(mode:Byte);
     Procedure OnGetSubTime(Sender:TBaseTask);
     function  _Timer:Boolean;
-    function  CanSetSubMode(m:Boolean):Boolean;
-    function  CanSetRevMode(m:Boolean):Boolean;
+    //function  CanSetSubMode(m:Boolean):Boolean;
+    //function  CanSetRevMode(m:Boolean):Boolean;
     procedure SetSubModeText(m:Boolean);
     procedure SetTimerSubMode(m:Boolean);
     procedure OnRoomState(m:Boolean);
@@ -171,26 +171,6 @@ begin
  end;
 end;
 
-function TFrmSubParam.CanSetSubMode(m:Boolean):Boolean;
-begin
- Case m of
-  True :Result:=frmmain.BtnInfo.Visible and (not submode_Tag) and (sub_mod.T.TimeRv>0);
-  False:Result:=frmmain.BtnInfo.Visible and submode_Tag;
- end;
-end;
-
-function TFrmSubParam.CanSetRevMode(m:Boolean):Boolean;
-begin
- Case m of
-  True :Result:=frmmain.BtnInfo.Visible and
-                sub_mod.Rev_tick and
-                (not submode_Tag) and
-                (not _Timer) and
-                (sub_mod.T.TimeRv<0);
-  False:Result:=_Timer and (sub_mod.T.TimeRv=0);
- end;
-end;
-
 procedure TFrmSubParam.SetSubModeText(m:Boolean);
 begin
  Case m of
@@ -235,20 +215,26 @@ end;
 procedure TFrmSubParam.OnRoomState(m:Boolean);
 begin
  submode_Tag:=m;
+ if not frmmain.BtnInfo.Visible then Exit;
  if m then
  begin
-  if CanSetSubMode(true) then
+  if (sub_mod.T.TimeRv>0) then
   begin
    SetTimerSubMode(True);
   end else
   begin
+   SetTimerSubMode(False);
    SetSubModeText(True);
   end;
  end else
  begin
-  if CanSetRevMode(true) then
+  if (sub_mod.T.TimeRv<0) then
   begin
    SetTimerSubMode(True);
+  end else
+  begin
+   SetTimerSubMode(False);
+   SetSubModeText(False);
   end;
  end;
 end;
@@ -256,11 +242,10 @@ end;
 procedure TFrmSubParam.BtnClickSubModeOn(Sender:TObject);
 begin
  if frmmain.BtnInfo.Visible then
- if CanSetSubMode(true) then
+ if (sub_mod.T.TimeRv>0) then
  begin
   //submode send on
   push_irc_list(sub_mod.cmd_on ,[base.login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-  SetTimerSubMode(True);
  end;
  sub_mod.T.TickKd:=GetTickCount64;
 end;
@@ -268,15 +253,10 @@ end;
 procedure TFrmSubParam.BtnClickSubModeOff(Sender:TObject);
 begin
  if frmmain.BtnInfo.Visible then
- if CanSetSubMode(false) then
+ if submode_Tag then
  begin
   //submode send off
   push_irc_list(sub_mod.cmd_off,[base.login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-  SetTimerSubMode(False);
- end else
- if CanSetRevMode(true) then
- begin
-  SetTimerSubMode(True);
  end;
  sub_mod.T.TickKd:=GetTickCount64;
 end;
@@ -301,13 +281,9 @@ begin
    begin
     sub_mod.T.TimeRv:=0;
     //submode send off
-    if CanSetSubMode(false) then
-    begin
-     push_irc_list(sub_mod.cmd_off,[base.login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-     sub_mod.T.TickKd:=GetTickCount64;
-     SetTimerSubMode(False);
-     Exit;
-    end;
+    push_irc_list(sub_mod.cmd_off,[base.login,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+    sub_mod.T.TickKd:=GetTickCount64;
+    Exit;
    end;
    UpdateTextSubTime(1);
   end else
@@ -338,12 +314,14 @@ begin
   begin
    sub_mod.T.TimeRv:=sub_mod.max_inc*60*60;
   end;
-  if CanSetSubMode(True) then
+  if (not submode_Tag) then
   begin
    if frmmain.BtnInfo.Visible then
+   begin
     push_irc_list(sub_mod.cmd_on,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+    submode_Tag:=True;
+   end;
    cmd:=Format(_get_first_cmd(sub_mod.cmd_on),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-   SetTimerSubMode(True);
   end else
   begin
    if frmmain.BtnInfo.Visible then
@@ -352,10 +330,6 @@ begin
   end;
  end else
  begin
-  if CanSetRevMode(true) then
-  begin
-   SetTimerSubMode(True);
-  end;
   if frmmain.BtnInfo.Visible then
    push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
   cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
@@ -378,19 +352,21 @@ begin
   begin
    sub_mod.T.TimeRv:=-sub_mod.max_dec*60*60;
   end;
-  if CanSetSubMode(False) then
+  if submode_Tag then
   begin
    if frmmain.BtnInfo.Visible then
+   begin
     push_irc_list(sub_mod.cmd_off,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+    submode_Tag:=False;
+   end;
    cmd:=Format(_get_first_cmd(sub_mod.cmd_off),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-   SetTimerSubMode(False);
   end else
   begin
    if frmmain.BtnInfo.Visible then
     push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
    cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
   end;
-  if CanSetRevMode(true) then
+  if (not submode_Tag) and (sub_mod.T.TimeRv<0) then
   begin
    SetTimerSubMode(True);
   end;

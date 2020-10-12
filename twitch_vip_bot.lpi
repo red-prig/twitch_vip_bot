@@ -147,9 +147,17 @@
     </CodeGeneration>
     <Linking>
       <LinkSmart Value="True"/>
+      <Options>
+        <Win32>
+          <GraphicApplication Value="True"/>
+        </Win32>
+      </Options>
     </Linking>
     <Other>
       <CustomOptions Value="-dDisableMemoryLeakReporting"/>
+      <OtherDefines Count="1">
+        <Define0 Value="DisableMemoryLeakReporting"/>
+      </OtherDefines>
     </Other>
   </CompilerOptions>
   <Debugging>
