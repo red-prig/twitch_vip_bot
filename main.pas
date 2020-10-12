@@ -104,6 +104,7 @@ type
     procedure OnPopupClickVipParam(Sender:TObject);
     procedure OnPopupClickParam(Sender:TObject);
     procedure OnPredClick(Sender:TObject);
+    procedure OnExortClick(Sender:TObject);
     procedure OnTabClose(Sender:TObject;TabIndex:Integer;var CanClose:Boolean);
     procedure OnBtnEnterClick(Sender:TObject);
     procedure OnBtnCloseClick(Sender:TObject);
@@ -155,6 +156,7 @@ var
 
  FrmMain: TFrmMain;
 
+ FExportStoryScript:TSQLScript;
  FGetParamScript:TSQLScript;
  FSetParamScript:TSQLScript;
 
@@ -172,6 +174,9 @@ procedure SetDBParam(Const fname,fvalue:RawByteString);
 procedure GetDBParam(Const fname:RawByteString;N:TNotifyTask);
 
 Function  Extract_nick(const s:RawByteString):RawByteString;
+
+function fetch_msg(msg2:TJson):RawByteString; inline;
+function fetch_reward(msg2:TJson):RawByteString; inline;
 
 var
  Config:TINIFile;
@@ -270,6 +275,7 @@ uses
  ZTokenizer,
 
  WinAudioSession,
+ ufrmexportstory,
  ufrmvol,
  ufrmpred,
  UFrmAbout,
@@ -1851,6 +1857,11 @@ begin
  FrmPred.Show;
 end;
 
+procedure TFrmMain.OnExortClick(Sender:TObject);
+begin
+ FrmExportStory.Open;
+end;
+
 procedure TFrmMain.OnTabClose(Sender:TObject;TabIndex:Integer;var CanClose:Boolean);
 begin
  CanClose:=False;
@@ -2122,6 +2133,11 @@ begin
  //------
  Item:=TMenuItem.Create(PopupCfg);
  Item.Caption:='-';
+ PopupCfg.Items.Add(Item);
+
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='Экспорт истории в xls';
+ Item.OnClick:=@OnExortClick;
  PopupCfg.Items.Add(Item);
 
  Item_UseTray:=TMenuItem.Create(PopupCfg);
@@ -3009,6 +3025,10 @@ begin
   'list_story':
    begin
     Node.Push(TLoadSQL_Func,@frmMain.FListStoryScript);
+   end;
+  'export_story':
+   begin
+    Node.Push(TLoadSQL_Func,@FExportStoryScript);
    end;
   'insert_story':
    begin

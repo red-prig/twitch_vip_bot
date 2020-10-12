@@ -349,17 +349,23 @@
 
   VACUUM
  </create>
+
  <insert_story>
   INSERT INTO story ( datetime,user,mes,cmd  ) VALUES(@datetime,@user,@mes,@cmd);
  </insert_story>
+
  <list_story>
-  //все записи
-  //SELECT * FROM story;
- 
   //последние 300 записей
   SELECT * FROM story LIMIT 300 OFFSET (SELECT COUNT(*) FROM story)-300;
  </list_story>
  
+ <export_story>
+  //все записи
+  DECLARE @count int;
+  SET @count=(SELECT count(*) FROM story)+0;
+  SELECT * FROM story;
+ </export_story>
+
  <get_param>
   SELECT value FROM params WHERE (name=@name);
  </get_param>

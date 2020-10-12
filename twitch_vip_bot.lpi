@@ -34,7 +34,7 @@
         <PackageName Value="LCL"/>
       </Item2>
     </RequiredPackages>
-    <Units Count="13">
+    <Units Count="14">
       <Unit0>
         <Filename Value="twitch_vip_bot.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -120,6 +120,13 @@
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="UFrmVorRpg"/>
       </Unit12>
+      <Unit13>
+        <Filename Value="ufrmexportstory.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="FrmExportStory"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit13>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -131,7 +138,7 @@
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
       <Libraries Value="netlibs\static\$(TargetCPU)-$(TargetOS)"/>
-      <OtherUnitFiles Value="KControls;zeosdbo\component;zeosdbo\core;zeosdbo\plain;zeosdbo\parsesql;zeosdbo\dbc;utils_libs;uniqueinstance\uniqueinstance;netlibs;netlibs\xpath;FastMM4-AVX"/>
+      <OtherUnitFiles Value="KControls;zeosdbo\component;zeosdbo\core;zeosdbo\plain;zeosdbo\parsesql;zeosdbo\dbc;utils_libs;uniqueinstance\uniqueinstance;netlibs;netlibs\xpath;FastMM4-AVX;fpspreadsheet\common"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <CodeGeneration>
@@ -140,17 +147,9 @@
     </CodeGeneration>
     <Linking>
       <LinkSmart Value="True"/>
-      <Options>
-        <Win32>
-          <GraphicApplication Value="True"/>
-        </Win32>
-      </Options>
     </Linking>
     <Other>
       <CustomOptions Value="-dDisableMemoryLeakReporting"/>
-      <OtherDefines Count="1">
-        <Define0 Value="DisableMemoryLeakReporting"/>
-      </OtherDefines>
     </Other>
   </CompilerOptions>
   <Debugging>

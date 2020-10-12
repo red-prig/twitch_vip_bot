@@ -1,0 +1,25 @@
+object FrmExportStory: TFrmExportStory
+  Left = 551
+  Height = 61
+  Top = 177
+  Width = 209
+  BorderIcons = []
+  BorderStyle = bsSingle
+  ClientHeight = 61
+  ClientWidth = 209
+  Position = poMainFormCenter
+  LCLVersion = '2.0.10.0'
+  object LText: TLabel
+    Left = 0
+    Height = 61
+    Top = 0
+    Width = 209
+    Align = alClient
+    Alignment = taCenter
+    Caption = '0/0'
+    Font.Height = -27
+    Font.Style = [fsBold]
+    ParentColor = False
+    ParentFont = False
+  end
+end

@@ -145,9 +145,9 @@ type
  PSQLContext=^TSQLContext;
  TSQLContext=object
   protected
-   FGlobal:IZResultSet;
    FCursors:TZCursorSet;
   public
+   FGlobal:IZResultSet;
    FVariables:TSQLVariables;
    FConnection:IZConnection;
    FGlobalCache:TZPreparedCacheSet;
@@ -303,7 +303,7 @@ end;
 
 Procedure DoPrint(Const S:RawByteString);
 begin
- Writeln(S);
+ //Writeln(S);
 end;
 
 Procedure TDbcStatementScript.OnQuery;
