@@ -1,7 +1,7 @@
 object FrmSubParam: TFrmSubParam
-  Left = 623
+  Left = 747
   Height = 309
-  Top = 149
+  Top = 109
   Width = 353
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры саб мода'
@@ -276,5 +276,14 @@ object FrmSubParam: TFrmSubParam
     Anchors = [akTop, akRight]
     Caption = 'Включено'
     TabOrder = 0
+  end
+  object CBRevTick: TCheckBox
+    Left = 216
+    Height = 19
+    Top = 58
+    Width = 128
+    Anchors = [akTop, akRight]
+    Caption = 'Тик отриц. таймера'
+    TabOrder = 8
   end
 end

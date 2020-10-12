@@ -209,6 +209,7 @@ var
 
  sub_mod:record
   Enable:Boolean;
+  Rev_tick:Boolean;
   _label:record
    name,_on,off:RawByteString;
   end;
@@ -878,7 +879,7 @@ end;
 
 procedure TFrmMain.SetRoomStates(RS:TRoomStates);
 begin
- FrmSubParam.SetTimerSubMode(Rs_room_tag in RS);
+ FrmSubParam.OnRoomState(Rs_room_tag in RS);
 end;
 
 procedure TFrmMain.parse_vips(msg:RawByteString);
