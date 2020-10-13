@@ -386,6 +386,26 @@
    INSERT OR IGNORE INTO params ( name,value  ) VALUES('rev','2');
   end
 
+  if (SELECT value FROM params WHERE (name='rev'))='2'
+  begin
+    BEGIN TRANSACTION;
+
+    CREATE TABLE temp_table AS
+     SELECT uniq,(
+      SELECT count(mes) FROM story where (user=uniq) and INSTR(mes,'"title":"ВОР"')&lt;&gt;0
+     ) as count FROM (
+      SELECT DISTINCT TRIM(user) as uniq FROM story where uniq&lt;&gt;""
+     ) WHERE count&lt;&gt;0;
+
+    INSERT OR REPLACE INTO rpg ( user,data  )
+     SELECT uniq as user,('{"points":{"EXP":' || count || '}}') as data FROM temp_table;
+
+    DROP TABLE temp_table;
+
+    INSERT OR REPLACE INTO params ( name,value  ) VALUES('rev','3');
+    COMMIT TRANSACTION;
+  end;
+
   VACUUM
  </create>
 

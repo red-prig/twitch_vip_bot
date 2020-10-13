@@ -1716,32 +1716,37 @@ end;
 
 Procedure TSQLParseContext.cbBegin;
 begin
- if isEOC(FToken) then
- begin
-  //begin block
-  PushBlock(btBegin,Script^.GetLastCmdId);
-  Reset;
- end else
  Case State of
-  0:Case FToken.TokenType of
-     ttWhitespace:;
-     ttWord,
-     ttKeyWord:Case _get_begin_op(FToken.P,FToken.L) of
-                0,1:begin //TRAN TRANSACTION
-                     AddCmd('',qcBeginTran,-1);
-                     State:=1;
-                    end;
-                2:;//TRY
-                3:;//CATCH
-                else //begin block
-                    begin
-                     PushBlock(btBegin,Script^.GetLastCmdId);
-                     Reset;
-                     cbNormal;
-                    end;
-               end;
+  0:begin
+     if isEOC(FToken) then
+     begin
+      //begin block
+      PushBlock(btBegin,Script^.GetLastCmdId);
+      Reset;
+     end else
+     Case FToken.TokenType of
+      ttWhitespace:;
+      ttWord,
+      ttKeyWord:Case _get_begin_op(FToken.P,FToken.L) of
+                 0,1:begin //TRAN TRANSACTION
+                      AddCmd('',qcBeginTran,-1);
+                      State:=1;
+                     end;
+                 2:;//TRY
+                 3:;//CATCH
+                 else //begin block
+                     begin
+                      PushBlock(btBegin,Script^.GetLastCmdId);
+                      Reset;
+                      cbNormal;
+                     end;
+                end;
+     end;
     end;
-  1:;
+  1:if isEOC(FToken) then
+    begin
+     Reset;
+    end;
  end;
 end;
 
@@ -1846,6 +1851,7 @@ begin
                      //set if id
                      Script^.SetGotoIds(Script^.GetLastCmdId+1,key^.GotoBackward);
                      key^._type:=btIf2;
+                     PopBlock;
                      {if Script^.TrySetExpOp(TopBlock.VSID,Script^.GetLastCmdId+1) then
                      begin
                       SetTopBlockType(2);

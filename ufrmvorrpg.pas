@@ -1682,7 +1682,7 @@ end;
 
 initialization
  LockStr:=TRawByteStringSet.Create;
- //vor_rpg.time_kd:=8;
+ vor_rpg.time_kd:=8;
 
 end.
 
