@@ -63,6 +63,7 @@ type
     procedure OnBtnUnVipClick(Sender:TObject);
     procedure OnBtnUpdateVipClick(Sender:TObject);
     Procedure OnListVips(Sender:TBaseTask);
+    procedure vip_time_cmd(cmd:RawByteString);
     procedure GridKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure OnBtnFind(Sender:TObject);
     Procedure InitCfg;
@@ -159,8 +160,8 @@ begin
  C:=GridVips.RowCount;
  if C>1 then
  begin
-  v:=LowerCase(FValue);
   u:=GridVips.FindColumn('user');
+  v:=LowerCase(FValue);
   if u<>-1 then
    For i:=1 to C-1 do
     if LowerCase(GridVips.Cells[u,i])=v then
@@ -622,6 +623,32 @@ begin
   //GridVips.ScrollModeVert:=smCell;
   //GridVips.ScrollModeVert:=smSmooth;
   GridVips.Columns[0].Extent:=GridVips.Columns[0].MinExtent;
+ end;
+end;
+
+procedure TFrmVipParam.vip_time_cmd(cmd:RawByteString);
+var
+ FS:TFormatSettings;
+ i:Integer;
+ DB,DE:TDateTime;
+begin
+ if FetchAny(cmd)=vip_rnd.viptime_get_cmd then
+ begin
+  cmd:=Extract_nick(cmd);
+  i:=FindVipUser(cmd);
+  if (i<>-1) then
+  if TryGetDateTime(GridVips.FieldValue['datebeg',i],DB) then
+  if TryGetDateTime(GridVips.FieldValue['dateend',i],DE) then
+  begin
+   FS:=DefaultFormatSettings;
+   FS.ShortDateFormat:='dd/mm/yyyy';
+   FS.DateSeparator:='.';
+   FS.ShortTimeFormat:='hh:nn:ss';
+   FS.LongTimeFormat:='hh:nn:ss';
+   FS.TimeSeparator:=':';
+   FS.ListSeparator:=' ';
+   push_irc_msg(Format(vip_rnd.viptime_get_info,[cmd,DateTimeToStr(DB,FS),DateTimeToStr(DE,FS)]));
+  end;
  end;
 end;
 

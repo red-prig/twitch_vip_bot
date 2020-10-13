@@ -194,6 +194,8 @@ var
   Enable:Boolean;
   Auto_expired:Boolean;
   Enable_vor:Boolean;
+  viptime_get_cmd:RawByteString;
+  viptime_get_info:RawByteString;
   title:RawByteString;
   title_vor:RawByteString;
   unvip_cmd:RawByteString;
@@ -1334,6 +1336,9 @@ var
 begin
 
  cmd:=Trim(msg);
+
+ if vip_rnd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+  FrmVipParam.vip_time_cmd(cmd);
 
  if (sub_mod.Enable) then
   FrmSubParam.add_sub_mod_cmd(cmd);
@@ -2635,6 +2640,14 @@ end;
 class procedure TOpenVip_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin
  Case Name of
+  'viptime_get_cmd':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.viptime_get_cmd);
+   end;
+  'viptime_get_info':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.viptime_get_info);
+   end;
   'title':
    begin
     Node.Push(TLoadStr_Func ,@vip_rnd.title);
