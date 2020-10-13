@@ -438,7 +438,7 @@ begin
    if (vip_rnd.Timer=nil) then
    begin
     vip_rnd.Timer:=TTimer.Create(Self);
-    vip_rnd.Timer.Interval:={30*}60*1000; //30min
+    vip_rnd.Timer.Interval:=30*60*1000; //30min
     vip_rnd.Timer.OnTimer:=@OnBtnCheckVipClick;
    end;
    vip_rnd.Timer.Enabled:=m;

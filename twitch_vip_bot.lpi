@@ -144,8 +144,14 @@
     <CodeGeneration>
       <SmartLinkUnit Value="True"/>
       <RelocatableUnit Value="True"/>
+      <Optimizations>
+        <OptimizationLevel Value="3"/>
+      </Optimizations>
     </CodeGeneration>
     <Linking>
+      <Debugging>
+        <GenerateDebugInfo Value="False"/>
+      </Debugging>
       <LinkSmart Value="True"/>
       <Options>
         <Win32>
@@ -155,9 +161,6 @@
     </Linking>
     <Other>
       <CustomOptions Value="-dDisableMemoryLeakReporting"/>
-      <OtherDefines Count="1">
-        <Define0 Value="DisableMemoryLeakReporting"/>
-      </OtherDefines>
     </Other>
   </CompilerOptions>
   <Debugging>

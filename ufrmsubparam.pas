@@ -218,7 +218,7 @@ begin
  if not frmmain.BtnInfo.Visible then Exit;
  if m then
  begin
-  if (sub_mod.T.TimeRv>0) then
+  if sub_mod.Enable and (sub_mod.T.TimeRv>0) then
   begin
    SetTimerSubMode(True);
   end else
@@ -228,7 +228,7 @@ begin
   end;
  end else
  begin
-  if (sub_mod.T.TimeRv<0) then
+  if sub_mod.Enable and sub_mod.Rev_tick and (sub_mod.T.TimeRv<0) then
   begin
    SetTimerSubMode(True);
   end else
@@ -316,23 +316,27 @@ begin
   end;
   if (not submode_Tag) then
   begin
-   if frmmain.BtnInfo.Visible then
+   if frmmain.BtnInfo.Visible and sub_mod.Enable then
    begin
     push_irc_list(sub_mod.cmd_on,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
     submode_Tag:=True;
+    cmd:=Format(_get_first_cmd(sub_mod.cmd_on),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
    end;
-   cmd:=Format(_get_first_cmd(sub_mod.cmd_on),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
   end else
   begin
-   if frmmain.BtnInfo.Visible then
+   if frmmain.BtnInfo.Visible and sub_mod.Enable then
+   begin
     push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-   cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+    cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+   end;
   end;
  end else
  begin
-  if frmmain.BtnInfo.Visible then
+  if frmmain.BtnInfo.Visible and sub_mod.Enable then
+  begin
    push_irc_list(sub_mod.cmd_inc,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-  cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_inc),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+  end;
  end;
  sub_mod.T.TickKd:=GetTickCount64;
  UpdateTextSubTime(0);
@@ -354,27 +358,31 @@ begin
   end;
   if submode_Tag then
   begin
-   if frmmain.BtnInfo.Visible then
+   if frmmain.BtnInfo.Visible and sub_mod.Enable then
    begin
     push_irc_list(sub_mod.cmd_off,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
     submode_Tag:=False;
+    cmd:=Format(_get_first_cmd(sub_mod.cmd_off),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
    end;
-   cmd:=Format(_get_first_cmd(sub_mod.cmd_off),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
   end else
   begin
-   if frmmain.BtnInfo.Visible then
+   if frmmain.BtnInfo.Visible and sub_mod.Enable then
+   begin
     push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-   cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+    cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+   end;
   end;
-  if (not submode_Tag) and (sub_mod.T.TimeRv<0) then
+  if sub_mod.Enable and sub_mod.Rev_tick and (not submode_Tag) and (sub_mod.T.TimeRv<0) then
   begin
    SetTimerSubMode(True);
   end;
  end else
  begin
-  if frmmain.BtnInfo.Visible then
+  if frmmain.BtnInfo.Visible and sub_mod.Enable then
+  begin
    push_irc_list(sub_mod.cmd_dec,[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
-  cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+   cmd:=Format(_get_first_cmd(sub_mod.cmd_dec),[user,IntToStr(sub_mod.inc_min),unixTime2String(sub_mod.T.TimeRv)]);
+  end;
  end;
  sub_mod.T.TickKd:=GetTickCount64;
  UpdateTextSubTime(0);
@@ -549,6 +557,7 @@ begin
   end;
 
   sub_mod.T.TickKd:=0;
+  OnRoomState(submode_Tag);
  end;
 end;
 
