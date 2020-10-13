@@ -1,7 +1,7 @@
 object FrmSubParam: TFrmSubParam
-  Left = 747
+  Left = 458
   Height = 309
-  Top = 109
+  Top = 124
   Width = 353
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры саб мода'

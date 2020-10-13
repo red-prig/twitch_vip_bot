@@ -2476,6 +2476,11 @@ type
   class procedure CLS(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
+ TVorRpg_kick_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+
  {$ENDIF}
 
  TOpenSub_Func=class(TNodeFunc)
@@ -2745,9 +2750,25 @@ begin
    begin
     Node.Push(TVorRpg_calc_Func,nil);
    end;
+  'DEBUF_PERCENT':
+   begin
+    Node.Push(TLoadPerc_Func,@vor_rpg.debuf.PERC);
+   end;
+  'DEBUF_MIN_TIME':
+   begin
+    Node.Push(TLoadInt64_Func,@vor_rpg.debuf.MIN_TIME);
+   end;
+  'DEBUF_MAX_TIME':
+   begin
+    Node.Push(TLoadInt64_Func,@vor_rpg.debuf.MAX_TIME);
+   end;
   'debuf':
    begin
     Node.Push(TVorRpg_debuf_Func,AllocMem(SizeOf(Tdebuf)));
+   end;
+  'kick':
+   begin
+    Node.Push(TVorRpg_kick_Func,nil);
    end;
  end;
 end;
@@ -2790,6 +2811,10 @@ begin
   'on_debuf':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.on_debuf);
+   end;
+  'debuf_pr':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.debuf_pr);
    end;
  end;
 end;
@@ -2877,7 +2902,6 @@ begin
   begin
    Node.Push(TLoadPerc_Func,@vor_rpg.calc.PERC_MINUS_VIP);
   end;
-
  end;
 end;
 
@@ -2931,6 +2955,40 @@ begin
   end;
  end;
  inherited;
+end;
+
+class procedure TVorRpg_kick_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'PERC':
+  begin
+   Node.Push(TLoadPerc_Func,@vor_rpg.kick.PERC);
+  end;
+  'in_time':
+  begin
+   Node.Push(TLoadInt64_Func,@vor_rpg.kick.in_time);
+  end;
+  'out_time':
+  begin
+   Node.Push(TLoadInt64_Func,@vor_rpg.kick.out_time);
+  end;
+  'not_vor':
+  begin
+   Node.Push(TLoadList_Func,@vor_rpg.kick.not_vor);
+  end;
+  'go_kick':
+  begin
+   Node.Push(TLoadList_Func,@vor_rpg.kick.go_kick);
+  end;
+  'go_def':
+  begin
+   Node.Push(TLoadList_Func,@vor_rpg.kick.go_def);
+  end;
+  'go_esc':
+  begin
+   Node.Push(TLoadList_Func,@vor_rpg.kick.go_esc);
+  end;
+ end;
 end;
 
 {$ENDIF}

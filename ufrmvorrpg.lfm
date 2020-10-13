@@ -1,16 +1,16 @@
 object FrmVorRpg: TFrmVorRpg
-  Left = 232
-  Height = 421
-  Top = 136
-  Width = 382
+  Left = 524
+  Height = 540
+  Top = 119
+  Width = 380
   BorderIcons = [biSystemMenu]
   Caption = 'Вор Рпг'
-  ClientHeight = 421
-  ClientWidth = 382
+  ClientHeight = 540
+  ClientWidth = 380
   Position = poMainFormCenter
   LCLVersion = '2.0.10.0'
   object CBVorRpgEnable: TCheckBox
-    Left = 296
+    Left = 294
     Height = 19
     Top = 8
     Width = 77
@@ -20,9 +20,9 @@ object FrmVorRpg: TFrmVorRpg
     TabOrder = 0
   end
   object BtnCancel: TBitBtn
-    Left = 280
+    Left = 278
     Height = 30
-    Top = 387
+    Top = 506
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -98,7 +98,7 @@ object FrmVorRpg: TFrmVorRpg
   object BtnOk: TBitBtn
     Left = 7
     Height = 30
-    Top = 387
+    Top = 506
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -170,5 +170,213 @@ object FrmVorRpg: TFrmVorRpg
     OnClick = BtnOkClick
     OnKeyDown = FormKeyDown
     TabOrder = 2
+  end
+  object EdtTimeKd: TLabeledEdit
+    Left = 7
+    Height = 25
+    Hint = 'Общий кд для команд в чате'
+    Top = 32
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Общий кд для команд:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 3
+    OnExit = EdtDwExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtDwKeyPress
+  end
+  object EdtBaseTime: TLabeledEdit
+    Left = 7
+    Height = 25
+    Hint = 'Базовое время таймача'
+    Top = 88
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Базовое время таймача:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 4
+    OnExit = EdtDwExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtDwKeyPress
+  end
+  object EdtPercMinusVip: TLabeledEdit
+    Left = 7
+    Height = 25
+    Hint = 'Обозначаяеться вероятность потерять випку при попытке своровать, когда уже ВИП'
+    Top = 144
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Вер. минус VIP при ВОР для уже VIP %0-%100:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 5
+    OnExit = EdtPercMinusVipExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtPercMinusVipKeyPress
+  end
+  object EdtDebufPerc: TLabeledEdit
+    Left = 8
+    Height = 25
+    Hint = 'Обозначаяеться вероятность дебафа при неудаче кражи випки'
+    Top = 200
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Вероятность дебафа при неудаче %0-%100:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 6
+    OnExit = EdtPercMinusVipExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtPercMinusVipKeyPress
+  end
+  object EdtDebufMinTime: TLabeledEdit
+    Left = 8
+    Height = 25
+    Hint = 'Минимальное время дебафа'
+    Top = 256
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Минимальное время дебафа:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 7
+    OnExit = EdtDwExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtDwKeyPress
+  end
+  object EdtDebufMaxTime: TLabeledEdit
+    Left = 7
+    Height = 25
+    Hint = 'Максимальное время дебафа'
+    Top = 312
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Максимальное время дебафа:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 8
+    OnExit = EdtDwExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtDwKeyPress
+  end
+  object CBKickEnable: TCheckBox
+    Left = 317
+    Height = 19
+    Top = 352
+    Width = 54
+    Anchors = [akTop, akRight]
+    Caption = '!пнуть'
+    OnKeyDown = FormKeyDown
+    TabOrder = 9
+  end
+  object EdtKickPerc: TLabeledEdit
+    Left = 7
+    Height = 25
+    Hint = 'Обозначаяеться базовая вероятность пнуть вора и наложить дебаф'
+    Top = 376
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Базовая вероятность попасть %0-%100:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 10
+    OnExit = EdtPercMinusVipExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtPercMinusVipKeyPress
+  end
+  object EdtKickIn: TLabeledEdit
+    Left = 5
+    Height = 25
+    Hint = 'Кд для того кто пинает (сек)'
+    Top = 424
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Кд для того кто пинает (сек):'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 11
+    OnExit = EdtDwExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtDwKeyPress
+  end
+  object EdtKickOut: TLabeledEdit
+    Left = 7
+    Height = 25
+    Hint = 'Кд для того кого пинают (сек)'
+    Top = 472
+    Width = 364
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 364
+    EditLabel.Caption = 'Кд для того кого пинают (сек):'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 12
+    OnExit = EdtDwExit
+    OnKeyDown = FormKeyDown
+    OnKeyPress = EdtDwKeyPress
   end
 end

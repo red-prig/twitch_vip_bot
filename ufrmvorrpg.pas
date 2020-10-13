@@ -5,8 +5,8 @@ unit UFrmVorRpg;
 interface
 
 uses
-  Classes, SysUtils, dateutils, Forms, Controls, Graphics, Dialogs, StdCtrls, Buttons,
-  TaskManager,DbcEngine,DbcScript,Main;
+  Classes, SysUtils, dateutils, Forms, Controls, Graphics, Dialogs, StdCtrls,
+  Buttons, ExtCtrls, TaskManager, DbcEngine, DbcScript, Main;
 
 type
 
@@ -16,11 +16,27 @@ type
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
     CBVorRpgEnable: TCheckBox;
+    CBKickEnable: TCheckBox;
+    EdtDebufMinTime: TLabeledEdit;
+    EdtDebufMaxTime: TLabeledEdit;
+    EdtKickOut: TLabeledEdit;
+    EdtPercMinusVip: TLabeledEdit;
+    EdtDebufPerc: TLabeledEdit;
+    EdtKickPerc: TLabeledEdit;
+    EdtTimeKd: TLabeledEdit;
+    EdtBaseTime: TLabeledEdit;
+    EdtKickIn: TLabeledEdit;
     procedure BtnOkClick(Sender:TObject);
     procedure BtnCancelClick(Sender:TObject);
     procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
+    procedure EdtPercMinusVipKeyPress(Sender:TObject;var Key:char);
+    procedure EdtPercMinusVipExit(Sender:TObject);
+    procedure EdtDwExit(Sender: TObject);
+    procedure EdtDwKeyPress(Sender:TObject;var Key:char);
   private
+    prev_perc:Byte;
+    prev_dw:DWORD;
   public
     Procedure rpg_theif_vip(const s,dst_user,msg:RawByteString);
     procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
@@ -55,7 +71,8 @@ var
     max_msg,
     help_msg1,
     help_msg2,
-    on_debuf:RawByteString;
+    on_debuf,
+    debuf_pr:RawByteString;
    end;
 
    calc:record
@@ -83,6 +100,23 @@ var
     DEC_AGL:Double;
 
     PERC_MINUS_VIP:Byte;
+   end;
+
+   debuf:record
+    PERC:Byte;
+    MIN_TIME:Int64;
+    MAX_TIME:Int64;
+   end;
+
+   kick:record
+    Enable:Boolean;
+    in_time :Int64;
+    out_time:Int64;
+    PERC:Byte;
+    not_vor:TStringList;
+    go_kick:TStringList;
+    go_def:TStringList;
+    go_esc:TStringList;
    end;
 
   end;
@@ -474,29 +508,11 @@ begin
 
 end;
 
-{Const
- BASE_TIME={4500}0;
- MUL_TIME=300;
-
- MAX_LVL=100;
- MUL_EXP=2;
- MUL_LUK=4;
- MUL_DEF=4;
- MUL_STR=4;
- MUL_AGL=5;
-
- DEC_LUK=-7;
- DEC_DEF=-6;
- DEC_STR=-6;
- DEC_AGL=5;
-
- PERCENT_MINUS_VIP=10;}
-
-Const
- DEBUF_PERCENT=20;
-
- DEBUF_MIN_TIME=4500;
- DEBUF_MAX_TIME=86400;
+//Const
+// DEBUF_PERCENT=20;
+//
+// DEBUF_MIN_TIME=4500;
+// DEBUF_MAX_TIME=86400;
 
 type
  TdebufCompare=class
@@ -871,7 +887,7 @@ begin
  if (id<>-1) then
  begin
   debuf:=Get_debuf(id);
-  time:=DEBUF_MIN_TIME+Random(RCT,DEBUF_MAX_TIME-DEBUF_MIN_TIME+1);
+  time:=abs(vor_rpg.debuf.MIN_TIME)+Random(RCT,abs(vor_rpg.debuf.MAX_TIME-vor_rpg.debuf.MIN_TIME+1));
   Set_debuf(data,id,time);
   cmd:=Format(vor_rpg.stat_msg.on_debuf,[user,debuf.text]);
   push_irc_msg(cmd);
@@ -886,7 +902,7 @@ var
 begin
  Result:=False;
  rnd:=Random(RCT,100);
- if (rnd<DEBUF_PERCENT) then
+ if (rnd<vor_rpg.debuf.PERC) then
  begin
   Result:=do_debuf(s,user,data);
  end;
@@ -1216,7 +1232,7 @@ begin
  Points.Load(data);
  case cmd of
   'dbf',
-  'debuf':push_irc_msg(Format('@%s <%s>',[user,Get_debufs]));
+  'debuf':push_irc_msg(Format(vor_rpg.stat_msg.debuf_pr,[user,Get_debufs]));
 
   'level',
   'lvl' :push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[user,
@@ -1317,18 +1333,29 @@ type
    Procedure OnEvent; override;
  end;
 
-Const
- KICK_PERC=30;
-
 Procedure TKickScript.OnEvent;
 var
  Points1,Points2:TPlayer;
  Val:Int64;
  rnd:Integer;
+ Now,time:Int64;
 begin
+
+ Now:=DateTimeToUnix(sysutils.Now,False);
+
+ time:=data1.Path['kick._in'].AsInt(0);
+ if (time<>0) and ((time+vor_rpg.kick.in_time)>Now) then
+ begin
+  OnUnlock(nil);
+  Exit;
+ end;
+ data1.Values['kick._in']:=Now;
+
  if not data2.isAssigned then
  begin
-  push_irc_msg(Format('%s был задержан за нарушение правопорядка ',[user1]));
+  //not found in base
+
+  push_irc_msg(Format(get_random_msg(vor_rpg.kick.not_vor),[user1]));
 
   Points1.Load(data1);
 
@@ -1338,56 +1365,48 @@ begin
    push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
   end;
 
+  SetDBRpgUser1(user1,data1,@OnUnlock);
+  Exit;
+ end;
+
+ time:=data2.Path['kick._out'].AsInt(0);
+ if (time<>0) and ((time+vor_rpg.kick.out_time)>Now) then
+ begin
   OnUnlock(nil);
   Exit;
  end;
+ data2.Values['kick._out']:=Now;
 
  Points1.Load(data1);
  Points2.Load(data2);
 
- val:=KICK_PERC+Points1.GetESCPercent-Points2.GetESCPercent;
+ val:=vor_rpg.kick.PERC+Points1.GetESCPercent-Points2.GetESCPercent;
  val:=MMP(val);
  rnd:=Random(RCT,100);
  if (rnd<val) then
  begin
-
-  val:=KICK_PERC+Points1.GetSTRPercent-Points2.GetDEFPercent;
+  val:=vor_rpg.kick.PERC+Points1.GetSTRPercent-Points2.GetDEFPercent;
   val:=MMP(val);
   rnd:=Random(RCT,100);
   if (rnd<val) then
   begin
-   push_irc_msg(Format('Гопник %s избил невинного %s',[user1,user2]));
-
+   //kick is
+   push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_kick),[user1,user2]));
    do_debuf('',user2,data2);
-   SetDBRpgUser1(user2,data2,@OnUnlock);
-
   end else
   begin
-   push_irc_msg(Format('Гопник %s не смог пробить дыхалку %s',[user1,user2]));
-
-   if try_debuf('',user1,data1) then
-   begin
-    SetDBRpgUser1(user1,data1,@OnUnlock);
-   end else
-   begin
-    OnUnlock(nil);
-   end;
+   //do def
+   push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_def),[user1,user2]));
+   try_debuf('',user1,data1);
   end;
-
  end else
  begin
-  push_irc_msg(Format('Гопник %s не попал ногой по %s',[user1,user2]));
-
-  if try_debuf('',user1,data1) then
-  begin
-   SetDBRpgUser1(user1,data1,@OnUnlock);
-  end else
-  begin
-   OnUnlock(nil);
-  end;
-
+  //escape
+  push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_esc),[user1,user2]));
+  try_debuf('',user1,data1);
  end;
 
+ SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
 
 end;
 
@@ -1398,6 +1417,8 @@ Var
  FKickScript:TKickScript;
 begin
  src_user:=Extract_nick(msg);
+
+ if src_user=dst_user then Exit;
 
  FKickScript:=TKickScript.Create;
  FKickScript.user1:=dst_user;
@@ -1420,6 +1441,7 @@ begin
 
  Case v of
   '!пнуть':
+  if vor_rpg.kick.Enable then
   begin
    if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
@@ -1428,6 +1450,7 @@ begin
    vor_rpg.TickKd:=GetTickCount64;
   end;
 
+  {$IFOPT D+}
   '!ban_test':
   begin
    if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
@@ -1437,6 +1460,8 @@ begin
 
    vor_rpg.TickKd:=GetTickCount64;
   end;
+  {$ENDIF}
+
   '!vor':
   begin
    if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
@@ -1493,16 +1518,54 @@ end;
 
 Procedure TFrmVorRpg.LoadCfg;
 begin
+ {$IFOPT D+}
+ vor_rpg.timeout_cmd:='';
+ {$ENDIF}
  vor_rpg.Enable:=Trim(Config.ReadString('vor_rpg','enable','0'))='1';
+ vor_rpg.time_kd            :=StrToDWORDDef(Config.ReadString('vor_rpg','time_kd'       ,IntToStr(vor_rpg.time_kd            )),vor_rpg.time_kd            );
+ vor_rpg.calc.BASE_TIME     :=StrToDWORDDef(Config.ReadString('vor_rpg','BASE_TIME'     ,IntToStr(vor_rpg.calc.BASE_TIME     )),vor_rpg.calc.BASE_TIME     );
+ vor_rpg.calc.PERC_MINUS_VIP:=StrToDWORDDef(Config.ReadString('vor_rpg','PERC_MINUS_VIP',IntToStr(vor_rpg.calc.PERC_MINUS_VIP)),vor_rpg.calc.PERC_MINUS_VIP);
+ vor_rpg.debuf.PERC         :=StrToDWORDDef(Config.ReadString('vor_rpg','DEBUF_PERCENT' ,IntToStr(vor_rpg.debuf.PERC         )),vor_rpg.debuf.PERC         );
+ vor_rpg.debuf.MIN_TIME     :=StrToDWORDDef(Config.ReadString('vor_rpg','DEBUF_MIN_TIME',IntToStr(vor_rpg.debuf.MIN_TIME     )),vor_rpg.debuf.MIN_TIME     );
+ vor_rpg.debuf.MAX_TIME     :=StrToDWORDDef(Config.ReadString('vor_rpg','DEBUF_MAX_TIME',IntToStr(vor_rpg.debuf.MAX_TIME     )),vor_rpg.debuf.MAX_TIME     );
+
+ vor_rpg.kick.Enable:=Trim(Config.ReadString('vor_rpg','kick_enable','0'))='1';
+ vor_rpg.kick.PERC          :=StrToDWORDDef(Config.ReadString('vor_rpg','kick_PERC'     ,IntToStr(vor_rpg.kick.PERC          )),vor_rpg.kick.PERC          );
+ vor_rpg.kick.in_time       :=StrToDWORDDef(Config.ReadString('vor_rpg','in_time'       ,IntToStr(vor_rpg.kick.in_time       )),vor_rpg.kick.in_time       );
+ vor_rpg.kick.out_time      :=StrToDWORDDef(Config.ReadString('vor_rpg','out_time'      ,IntToStr(vor_rpg.kick.out_time      )),vor_rpg.kick.out_time      );
 end;
 
 Procedure TFrmVorRpg.Open;
 begin
  CBVorRpgEnable.Checked :=vor_rpg.Enable;
+ EdtTimeKd.Text         :=IntToStr(vor_rpg.time_kd);
+ EdtBaseTime.Text       :=IntToStr(vor_rpg.calc.BASE_TIME);
+ EdtPercMinusVip.Text   :=IntToStr(vor_rpg.calc.PERC_MINUS_VIP);
+ EdtDebufPerc.Text      :=IntToStr(vor_rpg.debuf.PERC);
+ EdtDebufMinTime.Text   :=IntToStr(vor_rpg.debuf.MIN_TIME);
+ EdtDebufMaxTime.Text   :=IntToStr(vor_rpg.debuf.MAX_TIME);
+
+ CBKickEnable.Checked   :=vor_rpg.kick.Enable;
+ EdtKickPerc.Text       :=IntToStr(vor_rpg.kick.PERC);
+
+ EdtKickIn.Text         :=IntToStr(vor_rpg.kick.in_time);
+ EdtKickOut.Text        :=IntToStr(vor_rpg.kick.out_time);
 
  if ShowModal=1 then
  begin
-  vor_rpg.Enable:=CBVorRpgEnable.Checked;
+  vor_rpg.Enable             :=CBVorRpgEnable.Checked;
+  vor_rpg.time_kd            :=StrToDWORDDef(EdtTimeKd.Text      ,vor_rpg.time_kd);
+  vor_rpg.calc.BASE_TIME     :=StrToDWORDDef(EdtBaseTime.Text    ,vor_rpg.calc.BASE_TIME);
+  vor_rpg.calc.PERC_MINUS_VIP:=StrToDWORDDef(EdtPercMinusVip.Text,vor_rpg.calc.PERC_MINUS_VIP);
+  vor_rpg.debuf.PERC         :=StrToDWORDDef(EdtDebufPerc.Text   ,vor_rpg.debuf.PERC);
+  vor_rpg.debuf.MIN_TIME     :=StrToDWORDDef(EdtDebufMinTime.Text,vor_rpg.debuf.MIN_TIME);
+  vor_rpg.debuf.MAX_TIME     :=StrToDWORDDef(EdtDebufMaxTime.Text,vor_rpg.debuf.MAX_TIME);
+
+  vor_rpg.kick.Enable        :=CBKickEnable.Checked;
+  vor_rpg.kick.PERC          :=StrToDWORDDef(EdtKickPerc.Text    ,vor_rpg.kick.PERC);
+
+  vor_rpg.kick.in_time       :=StrToDWORDDef(EdtKickin.Text      ,vor_rpg.kick.in_time);
+  vor_rpg.kick.out_time      :=StrToDWORDDef(EdtKickOut.Text     ,vor_rpg.kick.out_time);
 
   try
 
@@ -1510,6 +1573,22 @@ begin
     True :Config.WriteString('vor_rpg' ,'enable','1');
     False:Config.WriteString('vor_rpg' ,'enable','0');
    end;
+
+   Config.WriteString('vor_rpg','time_kd'       ,IntToStr(vor_rpg.time_kd));
+   Config.WriteString('vor_rpg','BASE_TIME'     ,IntToStr(vor_rpg.calc.BASE_TIME));
+   Config.WriteString('vor_rpg','PERC_MINUS_VIP',IntToStr(vor_rpg.calc.PERC_MINUS_VIP));
+   Config.WriteString('vor_rpg','DEBUF_PERCENT' ,IntToStr(vor_rpg.debuf.PERC));
+   Config.WriteString('vor_rpg','DEBUF_MIN_TIME',IntToStr(vor_rpg.debuf.MIN_TIME));
+   Config.WriteString('vor_rpg','DEBUF_MAX_TIME',IntToStr(vor_rpg.debuf.MAX_TIME));
+
+   case vor_rpg.kick.Enable of
+    True :Config.WriteString('vor_rpg' ,'kick_enable','1');
+    False:Config.WriteString('vor_rpg' ,'kick_enable','0');
+   end;
+
+   Config.WriteString('vor_rpg','kick_PERC',IntToStr(vor_rpg.kick.PERC));
+   Config.WriteString('vor_rpg','in_time'  ,IntToStr(vor_rpg.kick.in_time));
+   Config.WriteString('vor_rpg','out_time' ,IntToStr(vor_rpg.kick.out_time));
 
   except
    on E:Exception do
@@ -1546,9 +1625,64 @@ begin
  end;
 end;
 
+procedure TFrmVorRpg.EdtPercMinusVipKeyPress(Sender:TObject;var Key:char);
+begin
+ prev_perc:=StrToQWORDDef(TLabeledEdit(Sender).Text,70);
+ if prev_perc>100 then prev_perc:=100;
+ Case Key of
+  #8,#9,#37,#39:;
+  '0'..'9':;
+  else
+   Key:=#0;
+ end;
+end;
+
+procedure TFrmVorRpg.EdtPercMinusVipExit(Sender:TObject);
+var
+ S,L:Integer;
+begin
+ case StrToDWordDef(TLabeledEdit(Sender).Text,0) of
+  1..100:;
+  else
+  begin
+   S:=TLabeledEdit(Sender).SelStart ;
+   L:=TLabeledEdit(Sender).SelLength;
+   TLabeledEdit(Sender).Text:=IntToStr(prev_perc);
+   TLabeledEdit(Sender).SelStart :=S;
+   TLabeledEdit(Sender).SelLength:=L;
+  end;
+ end;
+end;
+
+procedure TFrmVorRpg.EdtDwExit(Sender: TObject);
+var
+ S,L:Integer;
+ d:DWORD;
+begin
+ if not TryStrToDWord(TLabeledEdit(Sender).Text,d) then
+ begin
+  S:=TLabeledEdit(Sender).SelStart ;
+  L:=TLabeledEdit(Sender).SelLength;
+  TLabeledEdit(Sender).Text:=IntToStr(prev_dw);
+  TLabeledEdit(Sender).SelStart :=S;
+  TLabeledEdit(Sender).SelLength:=L;
+ end;
+end;
+
+procedure TFrmVorRpg.EdtDwKeyPress(Sender:TObject;var Key:char);
+begin
+ prev_dw:=StrToDWORDDef(TLabeledEdit(Sender).Text,1);
+ Case Key of
+  #8,#9,#37,#39:;
+  '0'..'9':;
+  else
+   Key:=#0;
+ end;
+end;
+
 initialization
  LockStr:=TRawByteStringSet.Create;
- vor_rpg.time_kd:=8;
+ //vor_rpg.time_kd:=8;
 
 end.
 

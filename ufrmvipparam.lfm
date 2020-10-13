@@ -1,11 +1,11 @@
 object FrmVipParam: TFrmVipParam
-  Left = 635
-  Height = 422
-  Top = 136
+  Left = 348
+  Height = 421
+  Top = 141
   Width = 421
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры VIP'
-  ClientHeight = 422
+  ClientHeight = 421
   ClientWidth = 421
   OnCreate = FormCreate
   OnKeyDown = FormKeyDown
@@ -14,7 +14,7 @@ object FrmVipParam: TFrmVipParam
   object BtnCancel: TBitBtn
     Left = 319
     Height = 30
-    Top = 386
+    Top = 385
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -90,7 +90,7 @@ object FrmVipParam: TFrmVipParam
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 386
+    Top = 385
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'

@@ -122,13 +122,14 @@
   <add_msg>   @%s навык вкачен в %s                              </add_msg>
   <not_msg>   @%s нет свободных очков навыка                     </not_msg>
   <max_msg>   @%s максимум очков навыка в %s                     </max_msg>
-  <help_msg1> @%s команды вора: [dbf,lvl,pts,stat,add [парам.]]</help_msg1>
+  <help_msg1> @%s команды вора: [dbf,lvl,pts,stat,add [парам.]]  </help_msg1>
   <help_msg2> @%s для прокачки: [luk,def,chr,agl,str]            </help_msg2>
   <on_debuf>  @%s наложен дебаф: (%s)                            </on_debuf>
+  <debuf_pr>  @%s &lt;%s&gt;                                     </debuf_pr>
  </stat_msg>
 
  <calc>
-  <BASE_TIME>0</BASE_TIME>
+  <BASE_TIME>4500</BASE_TIME>
   <MUL_TIME>300</MUL_TIME>
   <DEC_TIME>300</DEC_TIME>
   
@@ -152,6 +153,10 @@
   
   <PERC_MINUS_VIP>10</PERC_MINUS_VIP>
  </calc>
+
+ <DEBUF_PERCENT>20</DEBUF_PERCENT>
+ <DEBUF_MIN_TIME>4500</DEBUF_MIN_TIME>
+ <DEBUF_MAX_TIME>43200</DEBUF_MAX_TIME>
 
  <debuf>
   <text>Сломано колено -AGL</text>
@@ -212,6 +217,36 @@
    <CHR>-1</CHR>
   </chr>
  </debuf>
+
+ <debuf>
+  <text>3 часа закрепа туалета -STR +CHR</text>
+  <chr>
+   <STR>-1</STR>
+   <CHR>1</CHR>
+  </chr>
+ </debuf>
+
+ <kick>
+  <PERC>30</PERC>
+  <in_time>14400</in_time>
+  <out_time>14400</out_time>
+  <not_vor>
+   %s был задержан за нарушение правопорядка
+   %s вышел голым на площадь и давай всех пинать
+  </not_vor>
+  <go_kick>
+   Гопник %s избил невинного %s
+   Цыган %s погадал на ручку для %s
+  </go_kick>
+  <go_def>
+   Гопник %s не смог пробить дыхалку %s
+   Амбал %1:s не заметил удара от %0:s
+  </go_def>
+  <go_esc>
+   Гопник %s не попал ногой по %s
+   Бегун %1:s успешно смылся от %0:s
+  </go_esc>
+ </kick>
 
 </vor_rpg>
 
