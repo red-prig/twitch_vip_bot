@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, dateutils, Forms, Controls, Graphics, Dialogs, StdCtrls,
-  Buttons, ExtCtrls, TaskManager, DbcEngine, DbcScript, Main;
+  Buttons, ExtCtrls, ComCtrls, TaskManager, DbcEngine, DbcScript, Main;
 
 type
 
@@ -15,17 +15,21 @@ type
   TFrmVorRpg = class(TForm)
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
-    CBVorRpgEnable: TCheckBox;
     CBKickEnable: TCheckBox;
-    EdtDebufMinTime: TLabeledEdit;
-    EdtDebufMaxTime: TLabeledEdit;
-    EdtKickOut: TLabeledEdit;
-    EdtPercMinusVip: TLabeledEdit;
-    EdtDebufPerc: TLabeledEdit;
-    EdtKickPerc: TLabeledEdit;
-    EdtTimeKd: TLabeledEdit;
+    CBVorRpgEnable: TCheckBox;
     EdtBaseTime: TLabeledEdit;
+    EdtDebufMaxTime: TLabeledEdit;
+    EdtDebufMinTime: TLabeledEdit;
+    EdtDebufPerc: TLabeledEdit;
     EdtKickIn: TLabeledEdit;
+    EdtKickOut: TLabeledEdit;
+    EdtKickPerc: TLabeledEdit;
+    EdtPercMinusVip: TLabeledEdit;
+    EdtTimeKd: TLabeledEdit;
+    PageCtrl: TPageControl;
+    TabSheet1: TTabSheet;
+    TabSheet2: TTabSheet;
+    TabSheet3: TTabSheet;
     procedure BtnOkClick(Sender:TObject);
     procedure BtnCancelClick(Sender:TObject);
     procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
