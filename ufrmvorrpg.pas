@@ -1334,6 +1334,7 @@ end;
 type
  TKickScript=class(TDualLockScript)
   public
+   is_mod:Boolean;
    Procedure OnEvent; override;
  end;
 
@@ -1363,11 +1364,11 @@ begin
 
   Points1.Load(data1);
 
-  Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
+  {Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
   if (Val<>0) then
   begin
    push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
-  end;
+  end;}
 
   SetDBRpgUser1(user1,data1,@OnUnlock);
   Exit;
@@ -1385,11 +1386,13 @@ begin
  Points2.Load(data2);
 
  val:=vor_rpg.kick.PERC+Points1.GetESCPercent-Points2.GetESCPercent;
+ if is_mod then val:=val+10;
  val:=MMP(val);
  rnd:=Random(RCT,100);
  if (rnd<val) then
  begin
   val:=vor_rpg.kick.PERC+Points1.GetSTRPercent-Points2.GetDEFPercent;
+  if is_mod then val:=val+10;
   val:=MMP(val);
   rnd:=Random(RCT,100);
   if (rnd<val) then
@@ -1414,7 +1417,7 @@ begin
 
 end;
 
-Procedure kick(const dst_user,msg:RawByteString);
+Procedure kick(const dst_user,msg:RawByteString;is_mod:Boolean);
 Var
  FDbcScript:TDbcScriptLock;
  src_user:RawByteString;
@@ -1427,6 +1430,7 @@ begin
  FKickScript:=TKickScript.Create;
  FKickScript.user1:=dst_user;
  FKickScript.user2:=src_user;
+ FKickScript.is_mod:=is_mod;
 
  FDbcScript:=TDbcScriptLock.Create;
  FDbcScript.Prepare(FKickScript);
@@ -1449,7 +1453,7 @@ begin
   begin
    if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
-   kick(user,F);
+   kick(user,F,PC.PS*[pm_broadcaster,pm_moderator]<>[]);
 
    vor_rpg.TickKd:=GetTickCount64;
   end;
