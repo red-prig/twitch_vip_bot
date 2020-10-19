@@ -806,14 +806,33 @@ begin
 end;
 
 Procedure _submit_tm(ev:Ptimer;arg:pointer);
+Const
+ max_msg_size=500;
 var
  v:Piovec;
 
  PC:TPrivMsgCfg;
 begin
- v:=evbuffer_pop(msg_send_buf);
+ v:=evbuffer_peek(msg_send_buf);
  if (v<>nil) then
  begin
+  if iovec_getlen(v)>max_msg_size then
+  begin
+   v:=GetMem(max_msg_size+SizeOf(Tiovec));
+   With v^ do
+   begin
+    base:=@PByte(v)[SizeOf(Tiovec)];
+    len:=max_msg_size;
+    pos:=0;
+    buf_free:=nil;
+    vec_free:=Freemem_ptr;
+   end;
+   evbuffer_remove(msg_send_buf,v^.base,max_msg_size);
+  end else
+  begin
+   v:=evbuffer_pop(msg_send_buf);
+  end;
+
   Log(irc_log,0,['<',GetStr(iovec_getdata(v),iovec_getlen(v))]);
 
   PC:=Default(TPrivMsgCfg);
