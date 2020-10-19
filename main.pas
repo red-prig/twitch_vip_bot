@@ -168,7 +168,7 @@ procedure push_reward(const S:RawByteString);
 
 function  _get_first_cmd(L:TStringList):RawByteString;
 
-function GetDateTimeStr(Const Value:TDateTime):RawByteString;
+function  GetDateTimeStr_US(Const Value:TDateTime):RawByteString;
 
 procedure SetDBParam(Const fname,fvalue:RawByteString);
 procedure GetDBParam(Const fname:RawByteString;N:TNotifyTask);
@@ -194,7 +194,7 @@ var
   Enable:Boolean;
   Auto_expired:Boolean;
   Enable_vor:Boolean;
-  viptime_get_cmd:RawByteString;
+  vipinfo_get_info:RawByteString;
   viptime_get_info:RawByteString;
   title:RawByteString;
   title_vor:RawByteString;
@@ -637,24 +637,13 @@ end;
 function TFrmMain.getRandomTmpVip(const msg:RawByteString):SizeInt;
 var
  i:integer;
- s,u,e:SizeInt;
+ s:SizeInt;
  L:TStringList;
 begin
  Result:=-1;
- L:=TStringList.Create;
- L.Sorted:=True;
- s:=GridVips.RowCount;
- if s>1 then
- begin
-  u:=GridVips.FindColumn('user');
-  e:=GridVips.FindColumn('dateend');
-  if (u<>-1) and (e<>-1) then
-   For i:=1 to s-1 do
-    if (GridVips.Cells[e,i]<>'') then
-     L.AddObject(LowerCase(GridVips.Cells[u,i]),GridVips.Rows[i]);
- end;
+ L:=FrmVipParam.getTmpVipList;
  s:=L.Count;
- if s<>0 then
+ if (s<>0) then
  begin
   i:=-1;
   if not L.Find(LowerCase(Trim(msg)),i) then
@@ -1129,42 +1118,59 @@ Const
 Const
  Quotations:Set of AnsiChar=['`','''','"'];
 Var
- Quote:AnsiChar;
  i:SizeUInt;
+ Quote:AnsiChar;
+ State:Byte;
 begin
  Result:='';
  Quote:=#0;
+ State:=0;
  if Length(Value)>0 then
  begin
   For i:=1 to Length(Value) do
   begin
-   if (Value[i] in Quotations)  then
-   begin
-    if (Quote=#0) then
-    begin
-     Quote:=Value[i];
-    end else
-    if (i<>1) and (Value[i-1]=Quote) then
-    begin
-     Result:=Result+Value[i];
-    end else
-    begin
-     Quote:=#0;
-    end;
-   end else
-   if Value[i]=Delimiter then
-   begin
-    if (Quote<>#0) then
-    begin
-     Result:=Result+Value[i];
-    end else
-    begin
-     System.Delete(Value,1,i);
-     Exit;
-    end;
-   end else
-   begin
-    Result:=Result+Value[i];
+   case State of
+    0:begin
+       if (Value[i] in Quotations)  then
+       begin
+        State:=1;
+        Quote:=Value[i];
+       end else
+       if Value[i]=Delimiter then
+       begin
+        System.Delete(Value,1,i);
+        Exit;
+       end else
+       begin
+        Result:=Result+Value[i];
+       end;
+      end;
+    1:begin
+       if Value[i]=Quote then
+       begin
+        State:=2;
+       end else
+       begin
+        Result:=Result+Value[i];
+       end;
+      end;
+    2:begin
+       if Value[i]=Quote then
+       begin
+        State:=1;
+        Result:=Result+Quote;
+       end else
+       if Value[i]=Delimiter then
+       begin
+        System.Delete(Value,1,i);
+        Exit;
+       end else
+       begin
+        State:=0;
+        Quote:=#0;
+        Result:=Result+Value[i];
+       end;
+      end;
    end;
   end;
   Value:='';
@@ -1436,7 +1442,7 @@ begin
  Show;
 end;
 
-function GetDateTimeStr(Const Value:TDateTime):RawByteString;
+function GetDateTimeStr_US(Const Value:TDateTime):RawByteString;
 var
  FS:TFormatSettings;
 begin
@@ -1453,7 +1459,7 @@ end;
 procedure TFrmMain._set_field_story(DT:TDateTime;const user,rew,msg,cmd:RawByteString;aRow:Integer);
 
 begin
- GridStory.FieldValue['datetime',aRow]:=' '+GetDateTimeStr(DT);
+ GridStory.FieldValue['datetime',aRow]:=' '+GetDateTimeStr_US(DT);
  GridStory.FieldValue['user'    ,aRow]:=user;
  GridStory.FieldValue['rew'     ,aRow]:=rew;
  GridStory.FieldValue['mes'     ,aRow]:=msg;
@@ -2640,13 +2646,13 @@ end;
 class procedure TOpenVip_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin
  Case Name of
-  'viptime_get_cmd':
-   begin
-    Node.Push(TLoadStr_Func ,@vip_rnd.viptime_get_cmd);
-   end;
   'viptime_get_info':
    begin
     Node.Push(TLoadStr_Func ,@vip_rnd.viptime_get_info);
+   end;
+  'vipinfo_get_info':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.vipinfo_get_info);
    end;
   'title':
    begin

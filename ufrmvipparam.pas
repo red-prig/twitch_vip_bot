@@ -47,8 +47,12 @@ type
     procedure VipsEditorCreate(Sender:TObject;ACol,ARow:Integer;var AEditor:TWinControl);
     function  FindVipUser(Const FValue:RawByteString):Integer;
     function  FindPosVipUser(Const FValue:RawByteString):Integer;
+    procedure getVipStat(var All,Tmp:RawByteString);
+    function  getTmpVipList:TStringList;
+    function  getPermVipList:TStringList;
     function  DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
+    procedure DbUpdateVip_Time(const user:RawByteString;DT:TDateTime);
     procedure DbUpdateVip_user(const src_user,dst_user:RawByteString);
     procedure DbDeleteVip(const user:RawByteString);
     function  DoVipDelete(aRow:Integer):Boolean;
@@ -87,11 +91,11 @@ var
 implementation
 
 Uses
-  ULog,Main,ujson,DateUtils;
+  ULog,Main,ujson,DateUtils,Math;
 
 {$R *.lfm}
 
-function TryGetDateTime(const S:RawByteString;out Value:TDateTime):Boolean;
+function TryGetDateTime_US(const S:RawByteString;out Value:TDateTime):Boolean;
 var
  FS:TFormatSettings;
 begin
@@ -103,6 +107,34 @@ begin
  FS.TimeSeparator:=':';
  FS.ListSeparator:=' ';
  Result:=TryStrToDateTime2(S,Value,FS);
+end;
+
+function TryGetDateTime_RU(const S:RawByteString;out Value:TDateTime):Boolean;
+var
+ FS:TFormatSettings;
+begin
+ FS:=DefaultFormatSettings;
+ FS.ShortDateFormat:='dd/mm/yyyy';
+ FS.DateSeparator:='.';
+ FS.ShortTimeFormat:='hh:nn:ss';
+ FS.LongTimeFormat:='hh:nn:ss';
+ FS.TimeSeparator:=':';
+ FS.ListSeparator:=' ';
+ Result:=TryStrToDateTime2(S,Value,FS);
+end;
+
+function DateTimeToStr_RU(DateTime:TDateTime):RawByteString;
+var
+ FS:TFormatSettings;
+begin
+ FS:=DefaultFormatSettings;
+ FS.ShortDateFormat:='dd/mm/yyyy';
+ FS.DateSeparator:='.';
+ FS.ShortTimeFormat:='hh:nn:ss';
+ FS.LongTimeFormat:='hh:nn:ss';
+ FS.TimeSeparator:=':';
+ FS.ListSeparator:=' ';
+ Result:=DateTimeToStr(DateTime,FS);
 end;
 
 function GetDateTimeEnd(const Value:TDateTime):TDateTime;
@@ -187,6 +219,64 @@ begin
  end;
 end;
 
+procedure TFrmVipParam.getVipStat(var All,Tmp:RawByteString);
+var
+ i:integer;
+ s,e,r:SizeInt;
+begin
+ r:=0;
+ s:=GridVips.RowCount;
+ if (s>1) then
+ begin
+  Dec(s);
+  e:=GridVips.FindColumn('dateend');
+  if (e<>-1) then
+   For i:=1 to s do
+    if (GridVips.Cells[e,i]<>'') then
+     Inc(r);
+ end;
+ All:=IntToStr(s);
+ Tmp:=IntToStr(r);
+end;
+
+function TFrmVipParam.getTmpVipList:TStringList;
+var
+ i:integer;
+ s,u,e:SizeInt;
+begin
+ Result:=TStringList.Create;
+ Result.Sorted:=True;
+ s:=GridVips.RowCount;
+ if s>1 then
+ begin
+  u:=GridVips.FindColumn('user');
+  e:=GridVips.FindColumn('dateend');
+  if (u<>-1) and (e<>-1) then
+   For i:=1 to s-1 do
+    if (GridVips.Cells[e,i]<>'') then
+     Result.AddObject(LowerCase(GridVips.Cells[u,i]),GridVips.Rows[i]);
+ end;
+end;
+
+ function TFrmVipParam.getPermVipList:TStringList;
+var
+ i:integer;
+ s,u,e:SizeInt;
+begin
+ Result:=TStringList.Create;
+ Result.Sorted:=True;
+ s:=GridVips.RowCount;
+ if s>1 then
+ begin
+  u:=GridVips.FindColumn('user');
+  e:=GridVips.FindColumn('dateend');
+  if (u<>-1) and (e<>-1) then
+   For i:=1 to s-1 do
+    if (GridVips.Cells[e,i]='') then
+     Result.AddObject(LowerCase(GridVips.Cells[u,i]),GridVips.Rows[i]);
+ end;
+end;
+
 function TFrmVipParam.DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
 Var
  FDbcScript:TDbcStatementScript;
@@ -205,7 +295,7 @@ begin
      Result:=False;
     end else
     begin
-     if TryGetDateTime(FValue,DT) then
+     if TryGetDateTime_US(FValue,DT) then
      begin
 
       FDbcScript:=TDbcStatementScript.Create;
@@ -217,7 +307,7 @@ begin
       FDbcScript.Start;
       FDbcScript.Release;
 
-      GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
+      GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr_US(GetDateTimeEnd(DT));
 
       GridVips.ResetRowInsert;
       UpdateStatusBarVips;
@@ -268,15 +358,7 @@ begin
     if (FValue='    .  .     :  :  ') or (FValue='') then
     begin
 
-     FDbcScript:=TDbcStatementScript.Create;
-     FDbcScript.Handle.DbcConnection:=DbcThread;
-     FDbcScript.SetSctipt(FUpdateVipsScript);
-     FDbcScript.ExecuteScript;
-     FDbcScript.Params.SetRawByteString(':field','datetime');
-     FDbcScript.Params.SetAsNull('value');
-     FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
-     FDbcScript.Start;
-     FDbcScript.Release;
+     DbUpdateVip_Time(GridVips.FieldValue['user',ARow],NAN);
 
      GridVips.FieldValue[FName    ,ARow]:='';
      GridVips.FieldValue['dateend',ARow]:='';
@@ -285,20 +367,12 @@ begin
      Result:=False;
     end else
     begin
-     if TryGetDateTime(FValue,DT) then
+     if TryGetDateTime_US(FValue,DT) then
      begin
 
-      FDbcScript:=TDbcStatementScript.Create;
-      FDbcScript.Handle.DbcConnection:=DbcThread;
-      FDbcScript.SetSctipt(FUpdateVipsScript);
-      FDbcScript.ExecuteScript;
-      FDbcScript.Params.SetRawByteString(':field','datetime');
-      FDbcScript.Params.SetAsDateTime('value',DT);
-      FDbcScript.Params.SetRawByteString('user',GridVips.FieldValue['user',ARow]);
-      FDbcScript.Start;
-      FDbcScript.Release;
+      DbUpdateVip_Time(GridVips.FieldValue['user',ARow],DT);
 
-      GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
+      GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr_US(GetDateTimeEnd(DT));
 
       GridVips.ResetRowInsert;
      end else
@@ -325,6 +399,27 @@ begin
   end;
  end;
 
+end;
+
+procedure TFrmVipParam.DbUpdateVip_Time(const user:RawByteString;DT:TDateTime);
+Var
+ FDbcScript:TDbcStatementScript;
+begin
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.SetSctipt(FUpdateVipsScript);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Params.SetRawByteString(':field','datetime');
+ if IsNullValue(DT) then
+ begin
+  FDbcScript.Params.SetAsNull('value');
+ end else
+ begin
+  FDbcScript.Params.SetAsDateTime('value',DT);
+ end;
+ FDbcScript.Params.SetRawByteString('user',user);
+ FDbcScript.Start;
+ FDbcScript.Release;
 end;
 
 procedure TFrmVipParam.DbUpdateVip_user(const src_user,dst_user:RawByteString);
@@ -415,8 +510,8 @@ begin
   GridVips.FieldValue['dateend',ARow]:='';
  end else
  begin
-  GridVips.FieldValue['datebeg',ARow]:=GetDateTimeStr(DT);
-  GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr(GetDateTimeEnd(DT));
+  GridVips.FieldValue['datebeg',ARow]:=GetDateTimeStr_US(DT);
+  GridVips.FieldValue['dateend',ARow]:=GetDateTimeStr_US(GetDateTimeEnd(DT));
  end;
 
  GridVips.FieldValue['user'   ,ARow]:=FUser;
@@ -481,7 +576,7 @@ begin
    For i:=1 to s-1 do
    begin
     T:=GridVips.Cells[de,i];
-    if (T<>'') and TryGetDateTime(T,DT) then
+    if (T<>'') and TryGetDateTime_US(T,DT) then
     begin
      if ND>DT then
      begin
@@ -608,8 +703,8 @@ begin
     GridVips.FieldValue['user'   ,i]:=ResultSet.GetRawByteString(user_f);
    end else
    begin
-    GridVips.FieldValue['datebeg',i]:=GetDateTimeStr(ResultSet.GetDouble(datetime_f));
-    GridVips.FieldValue['dateend',i]:=GetDateTimeStr(GetDateTimeEnd(ResultSet.GetDouble(datetime_f)));
+    GridVips.FieldValue['datebeg',i]:=GetDateTimeStr_US(ResultSet.GetDouble(datetime_f));
+    GridVips.FieldValue['dateend',i]:=GetDateTimeStr_US(GetDateTimeEnd(ResultSet.GetDouble(datetime_f)));
     GridVips.FieldValue['user'   ,i]:=ResultSet.GetRawByteString(user_f);
    end;
 
@@ -628,27 +723,118 @@ end;
 
 procedure TFrmVipParam.vip_time_cmd(cmd:RawByteString);
 var
- FS:TFormatSettings;
  i:Integer;
- DB,DE:TDateTime;
+ D:TDateTime;
+ cmd1,cmd2,nick,datebeg,dateend:RawByteString;
+ L:TStringList;
 begin
- if FetchAny(cmd)=vip_rnd.viptime_get_cmd then
- begin
-  cmd:=Extract_nick(cmd);
-  i:=FindVipUser(cmd);
-  if (i<>-1) then
-  if TryGetDateTime(GridVips.FieldValue['datebeg',i],DB) then
-  if TryGetDateTime(GridVips.FieldValue['dateend',i],DE) then
-  begin
-   FS:=DefaultFormatSettings;
-   FS.ShortDateFormat:='dd/mm/yyyy';
-   FS.DateSeparator:='.';
-   FS.ShortTimeFormat:='hh:nn:ss';
-   FS.LongTimeFormat:='hh:nn:ss';
-   FS.TimeSeparator:=':';
-   FS.ListSeparator:=' ';
-   push_irc_msg(Format(vip_rnd.viptime_get_info,[cmd,DateTimeToStr(DB,FS),DateTimeToStr(DE,FS)]));
-  end;
+ cmd1:=FetchAny(cmd);
+ cmd2:=FetchAny(cmd);
+ nick:=FetchAny(cmd);
+ cmd1:=LowerCase(Trim(cmd1));
+ cmd2:=LowerCase(Trim(cmd2));
+ if cmd1<>'!vip' then Exit;
+
+ Case cmd2 of
+  'time':
+     begin
+      nick:=Trim(nick);
+      nick:=Extract_nick(nick);
+      i:=FindVipUser(nick);
+      datebeg:='';
+      dateend:='';
+      if (i<>-1) then
+      begin
+       if TryGetDateTime_US(GridVips.FieldValue['datebeg',i],D) then
+       begin
+        datebeg:=DateTimeToStr_RU(D);
+       end;
+       if TryGetDateTime_US(GridVips.FieldValue['dateend',i],D) then
+       begin
+        dateend:=DateTimeToStr_RU(D);
+       end;
+      end else
+      begin
+       nick:='???';
+      end;
+      push_irc_msg(Format(vip_rnd.viptime_get_info,[nick,datebeg,dateend]));
+     end;
+  'settime':
+     begin
+      nick:=Trim(nick);
+      nick:=Extract_nick(nick);
+      i:=FindVipUser(nick);
+      datebeg:='';
+      dateend:='';
+      if (i<>-1) then
+      begin
+       cmd:=FetchAny(cmd);
+       if (cmd='') then
+       begin
+        DbUpdateVip_Time(GridVips.FieldValue['user',i],NAN);
+        GridVips.FieldValue['datebeg',i]:='';
+        GridVips.FieldValue['dateend',i]:='';
+       end else
+       if TryGetDateTime_RU(cmd,D) then
+       begin
+        DbUpdateVip_Time(GridVips.FieldValue['user',i],D);
+        GridVips.FieldValue['datebeg',i]:=GetDateTimeStr_US(D);
+        GridVips.FieldValue['dateend',i]:=GetDateTimeStr_US(GetDateTimeEnd(D));
+        datebeg:=DateTimeToStr_RU(D);
+        dateend:=DateTimeToStr_RU(GetDateTimeEnd(D));
+       end else
+       begin
+        if TryGetDateTime_US(GridVips.FieldValue['datebeg',i],D) then
+        begin
+         datebeg:=DateTimeToStr_RU(D);
+        end;
+        if TryGetDateTime_US(GridVips.FieldValue['dateend',i],D) then
+        begin
+         dateend:=DateTimeToStr_RU(D);
+        end;
+       end;
+      end else
+      begin
+       nick:='???';
+      end;
+      push_irc_msg(Format(vip_rnd.viptime_get_info,[nick,datebeg,dateend]));
+     end;
+  'info':
+     begin
+      datebeg:='';
+      dateend:='';
+      getVipStat(datebeg,dateend);
+      push_irc_msg(Format(vip_rnd.vipinfo_get_info,[datebeg,dateend]));
+     end;
+  'perm':
+     begin
+      L:=getPermVipList;
+      L.LineBreak:=',';
+      nick:=L.Text;
+      if (nick<>'') and (nick[Length(nick)]=',') then
+       Delete(nick,Length(nick),1);
+      FreeAndNil(L);
+      push_irc_msg(nick);
+     end;
+  'tmp':
+     begin
+      L:=getTmpVipList;
+      L.LineBreak:=',';
+      nick:=L.Text;
+      if (nick<>'') and (nick[Length(nick)]=',') then
+       Delete(nick,Length(nick),1);
+      FreeAndNil(L);
+      push_irc_msg(nick);
+     end;
+  'update':
+     begin
+      push_irc_msg(vip_rnd.vip_list_cmd);
+      Frmmain.wait_vip_update:=True;
+     end;
+  else
+     begin
+      push_irc_msg('!vip [time,settime,info,perm,tmp,update]');
+     end;
  end;
 end;
 

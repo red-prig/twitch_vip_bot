@@ -6,9 +6,9 @@
 
  <title>VIP или БАН</title>
 
- <viptime_get_cmd>!viptime</viptime_get_cmd>
-
  <viptime_get_info>Время випки %s: [%s - %s]</viptime_get_info>
+
+ <vipinfo_get_info>Количество випов: %s из них временных: %s</vipinfo_get_info>
 
  <msg_cmd>
   /vip %s
