@@ -1442,10 +1442,45 @@ procedure TFrmVorRpg.add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByte
 var
  F,v:RawByteString;
 
+ Procedure vip_time;
+ var
+  i:Integer;
+  datebeg,dateend:RawByteString;
+  D:TDateTime;
+ begin
+  if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then Exit;
+  if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+
+  i:=FrmVipParam.FindVipUser(user);
+  datebeg:='';
+  dateend:='';
+  if (i<>-1) then
+  begin
+   if TryGetDateTime_US(GridVips.FieldValue['datebeg',i],D) then
+   begin
+    datebeg:=DateTimeToStr_RU(D);
+   end;
+   if TryGetDateTime_US(GridVips.FieldValue['dateend',i],D) then
+   begin
+    dateend:=DateTimeToStr_RU(D);
+   end;
+   push_irc_msg(Format(vip_rnd.viptime_get_info,[user,user,datebeg,dateend]));
+  end;
+
+  vor_rpg.TickKd:=GetTickCount64;
+ end;
+
 begin
  F:=LowerCase(Trim(param));
 
  Case LowerCase(cmd) of
+  '!viptime',
+  '!vipinfo',
+  '!vip':
+  begin
+   vip_time;
+  end;
+
   '!пнуть':
   if vor_rpg.kick.Enable then
   begin

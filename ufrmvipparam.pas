@@ -88,6 +88,10 @@ var
   FUpdateVipsScript:TSQLScript;
   FDeleteVipsScript:TSQLScript;
 
+function TryGetDateTime_US(const S:RawByteString;out Value:TDateTime):Boolean;
+function TryGetDateTime_RU(const S:RawByteString;out Value:TDateTime):Boolean;
+function DateTimeToStr_RU(DateTime:TDateTime):RawByteString;
+
 implementation
 
 Uses
