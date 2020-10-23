@@ -43,6 +43,10 @@ type
     prev_dw:DWORD;
   public
     Procedure rpg_theif_vip(const s,dst_user,msg:RawByteString);
+    procedure check_xchg_vip_time;
+    procedure add2xchgVip(const user,nick:RawByteString);
+    Procedure vip_time(const user:RawByteString);
+    procedure catch_vip(const user:RawByteString);
     procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByteString);
     Procedure InitCfg;
     Procedure LoadCfg;
@@ -56,6 +60,17 @@ var
    vor_sucs:TStringList;
    TickKd:Int64;
    time_kd:DWORD;
+
+   xchg:record
+    max_count:DWORD;
+    max_time:DWORD;
+    exist1_msg,
+    exist2_msg,
+    max_msg,
+    ready_msg,
+    cancel_msg,
+    sucs_msg:RawByteString;
+   end;
 
    jail_vip:TStringList;
    esc_vip:TStringList;
@@ -159,6 +174,22 @@ uses
 {$R *.lfm}
 
 type
+ PxchgVip=^TxchgVip;
+ PxchgNode=^TxchgNode;
+ TxchgNode=record
+  user:RawByteString;
+  link:PxchgVip;
+ end;
+ TxchgVip=record
+  src,dst:TxchgNode;
+  time:Int64;
+ end;
+
+ TxchgNodeCompare=class
+  class function c(a,b:PxchgNode):boolean; static;
+ end;
+
+ TxchgNodeSet=specialize TSet<PxchgNode,TxchgNodeCompare>;
 
  TRawStrCompare=class
   class function c(const a,b:RawByteString):boolean; static;
@@ -210,10 +241,16 @@ type
 
 Var
  LockStr:TRawByteStringSet;
+ xchgSet:TxchgNodeSet;
 
 class function TRawStrCompare.c(const a,b:RawByteString):boolean;
 begin
  Result:=CompareStr(a,b)<0;
+end;
+
+class function TxchgNodeCompare.c(a,b:PxchgNode):boolean;
+begin
+ Result:=CompareStr(a^.user,b^.user)<0;
 end;
 
 procedure TLockScript.OnUnlock(Sender:TBaseTask);
@@ -511,12 +548,6 @@ begin
  FDbcScript.AsyncFunc(@FDbcScript.try_start);
 
 end;
-
-//Const
-// DEBUF_PERCENT=20;
-//
-// DEBUF_MIN_TIME=4500;
-// DEBUF_MAX_TIME=86400;
 
 type
  TdebufCompare=class
@@ -1364,12 +1395,6 @@ begin
 
   Points1.Load(data1);
 
-  {Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
-  if (Val<>0) then
-  begin
-   push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
-  end;}
-
   SetDBRpgUser1(user1,data1,@OnUnlock);
   Exit;
  end;
@@ -1438,47 +1463,205 @@ begin
 
 end;
 
+procedure TFrmVorRpg.check_xchg_vip_time;
+var
+ i:TxchgNodeSet.TIterator;
+ link:PxchgVip;
+begin
+ repeat
+  i:=xchgSet.Min;
+  if not Assigned(i) then Exit;
+  repeat
+   link:=PxchgNode(i.Data)^.link;
+   if Assigned(link) then
+   begin
+    if (GetTickCount64>link^.time+vor_rpg.xchg.max_time*(1000*60)) then
+    begin
+     FreeAndNil(i);
+     xchgSet.Delete(@link^.src);
+     xchgSet.Delete(@link^.dst);
+     Finalize(link^);
+     FreeMem(link);
+     Break;
+    end;
+   end;
+   if not i.Next then
+   begin
+    FreeAndNil(i);
+    Exit;
+   end;
+  until false;
+ until false;
+end;
+
+procedure TFrmVorRpg.add2xchgVip(const user,nick:RawByteString);
+var
+ xchgNode:TxchgNode;
+ link:PxchgVip;
+begin
+ if (nick='') or (user=nick) then Exit;
+ if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+
+ if (FrmVipParam.FindVipUser(user)=-1) then Exit;
+ if (FrmVipParam.FindVipUser(nick)<>-1) then Exit;
+
+ check_xchg_vip_time;
+
+ xchgNode:=Default(TxchgNode);
+ xchgNode.user:=user;
+ if xchgSet.NFind(@xchgNode)<>nil then
+ begin
+  push_irc_msg(Format(vor_rpg.xchg.exist1_msg,[user]));
+  vor_rpg.TickKd:=GetTickCount64;
+  Exit;
+ end;
+
+ xchgNode:=Default(TxchgNode);
+ xchgNode.user:=nick;
+ if xchgSet.NFind(@xchgNode)<>nil then
+ begin
+  push_irc_msg(Format(vor_rpg.xchg.exist2_msg,[user,nick]));
+  vor_rpg.TickKd:=GetTickCount64;
+  Exit;
+ end;
+
+ if (xchgSet.Size>vor_rpg.xchg.max_count*2) then
+ begin
+  push_irc_msg(Format(vor_rpg.xchg.max_msg,[user]));
+  vor_rpg.TickKd:=GetTickCount64;
+  Exit;
+ end;
+
+ link:=AllocMem(SizeOf(TxchgVip));
+ link^.src.user:=user;
+ link^.src.link:=link;
+ link^.dst.user:=nick;
+ link^.dst.link:=link;
+ link^.time:=GetTickCount64;
+
+ xchgSet.Insert(@link^.src);
+ xchgSet.Insert(@link^.dst);
+
+ push_irc_msg(Format(vor_rpg.xchg.ready_msg,[nick,IntToStr(vor_rpg.xchg.max_time)]));
+
+ vor_rpg.TickKd:=GetTickCount64;
+end;
+
+procedure TFrmVorRpg.catch_vip(const user:RawByteString);
+var
+ xchgNode:TxchgNode;
+ link:PxchgVip;
+ Node:TxchgNodeSet.PNode;
+begin
+ if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+
+ check_xchg_vip_time;
+
+ if (FrmVipParam.FindVipUser(user)<>-1) then
+ begin
+  xchgNode:=Default(TxchgNode);
+  xchgNode.user:=user;
+  Node:=xchgSet.NFind(@xchgNode);
+  if (Node<>nil) then
+  begin
+   link:=PxchgNode(Node^.Data)^.link;
+   if (link^.src.user=user) then
+   begin
+
+    push_irc_msg(Format(vor_rpg.xchg.cancel_msg,[user]));
+
+    xchgSet.Delete(@link^.src);
+    xchgSet.Delete(@link^.dst);
+    Finalize(link^);
+    FreeMem(link);
+
+    vor_rpg.TickKd:=GetTickCount64;
+    Exit;
+   end;
+  end;
+ end;
+
+ xchgNode:=Default(TxchgNode);
+ xchgNode.user:=user;
+ Node:=xchgSet.NFind(@xchgNode);
+ if (Node<>nil) then
+ begin
+  link:=PxchgNode(Node^.Data)^.link;
+  if (link^.dst.user=user) then
+  begin
+
+   push_irc_msg(Format(vor_rpg.xchg.sucs_msg,[user]));
+   ChangeVip(link^.src.user,link^.dst.user);
+
+   xchgSet.Delete(@link^.src);
+   xchgSet.Delete(@link^.dst);
+   Finalize(link^);
+   FreeMem(link);
+
+   vor_rpg.TickKd:=GetTickCount64;
+  end;
+ end;
+
+end;
+
+Procedure TFrmVorRpg.vip_time(const user:RawByteString);
+var
+ i:Integer;
+ datebeg,dateend:RawByteString;
+ D:TDateTime;
+begin
+ if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+
+ i:=FrmVipParam.FindVipUser(user);
+ datebeg:='';
+ dateend:='';
+ if (i<>-1) then
+ begin
+  if TryGetDateTime_US(GridVips.FieldValue['datebeg',i],D) then
+  begin
+   datebeg:=DateTimeToStr_RU(D);
+  end;
+  if TryGetDateTime_US(GridVips.FieldValue['dateend',i],D) then
+  begin
+   dateend:=DateTimeToStr_RU(D);
+  end;
+  push_irc_msg(Format(vip_rnd.viptime_get_info,[user,user,datebeg,dateend]));
+ end;
+
+ vor_rpg.TickKd:=GetTickCount64;
+end;
+
 procedure TFrmVorRpg.add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByteString);
 var
  F,v:RawByteString;
-
- Procedure vip_time;
- var
-  i:Integer;
-  datebeg,dateend:RawByteString;
-  D:TDateTime;
- begin
-  if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then Exit;
-  if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
-
-  i:=FrmVipParam.FindVipUser(user);
-  datebeg:='';
-  dateend:='';
-  if (i<>-1) then
-  begin
-   if TryGetDateTime_US(GridVips.FieldValue['datebeg',i],D) then
-   begin
-    datebeg:=DateTimeToStr_RU(D);
-   end;
-   if TryGetDateTime_US(GridVips.FieldValue['dateend',i],D) then
-   begin
-    dateend:=DateTimeToStr_RU(D);
-   end;
-   push_irc_msg(Format(vip_rnd.viptime_get_info,[user,user,datebeg,dateend]));
-  end;
-
-  vor_rpg.TickKd:=GetTickCount64;
- end;
 
 begin
  F:=LowerCase(Trim(param));
 
  Case LowerCase(cmd) of
   '!viptime',
-  '!vipinfo',
+  '!vipinfo':if (PC.PS*[pm_broadcaster,pm_moderator]=[]) then
+              vip_time(user);
+
   '!vip':
   begin
-   vip_time;
+   v:=Trim(FetchAny(F));
+
+   Case v of
+    '',
+    'time',
+    'info':if (PC.PS*[pm_broadcaster,pm_moderator]=[]) then
+            vip_time(user);
+
+    'дать',
+    'отдать':add2xchgVip(user,LowerCase(Extract_nick(FetchAny(F))));
+
+    'моя',
+    'мне',
+    'сюда',
+    'забрать':catch_vip(user);
+   end;
+
   end;
 
   '!пнуть':
@@ -1723,6 +1906,7 @@ end;
 
 initialization
  LockStr:=TRawByteStringSet.Create;
+ xchgSet:=TxchgNodeSet.Create;
  vor_rpg.time_kd:=8;
 
 end.

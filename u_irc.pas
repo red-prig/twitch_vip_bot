@@ -303,7 +303,7 @@ end;
 
 procedure TWebsocketData.Clear;
 begin
- time_kd:=1500000;
+ time_kd:=1600000;
  url:='';
  fpWebsocket_handshake_del(ws_handshake);
  fpWebsocket_session_del(ws_session);

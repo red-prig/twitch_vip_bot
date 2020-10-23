@@ -57,6 +57,17 @@
 
 <vor_rpg>
 
+ <xchg>
+  <max_count>10</max_count>
+  <max_time>5</max_time>  
+  <exist1_msg>@%s ваш запрос на обмен уже существует, для отмены обмена введите !vip моя</exist1_msg>
+  <exist2_msg>@%s запрос на обмен для %s уже существует</exist2_msg>
+  <max_msg>@%s слишком много запросов на обмен випок</max_msg>
+  <ready_msg>@%s введите [!vip забрать] в течение %sмин</ready_msg>
+  <cancel_msg>@%s запрос на обмен випки отменён</cancel_msg>
+  <sucs_msg>@%s новый вип заполнил акт приёма-передачи TwitchVotes</sucs_msg>
+ </xchg>
+
  <timeout_cmd>/timeout %s %s</timeout_cmd>
 
  <vor_sucs>
