@@ -1,7 +1,7 @@
 object FrmVorRpg: TFrmVorRpg
-  Left = 537
+  Left = 551
   Height = 236
-  Top = 204
+  Top = 200
   Width = 379
   BorderIcons = [biSystemMenu]
   Caption = 'Вор Рпг'
@@ -392,6 +392,65 @@ object FrmVorRpg: TFrmVorRpg
         Caption = 'Включено'
         OnKeyDown = FormKeyDown
         TabOrder = 3
+      end
+    end
+    object TabSheet4: TTabSheet
+      Caption = 'Обмен випок'
+      ClientHeight = 162
+      ClientWidth = 370
+      object CBXchgEnable: TCheckBox
+        Left = 288
+        Height = 19
+        Top = 8
+        Width = 77
+        Anchors = [akTop, akRight]
+        Caption = 'Включено'
+        OnKeyDown = FormKeyDown
+        TabOrder = 0
+      end
+      object EdtXchgMaxCount: TLabeledEdit
+        Left = 0
+        Height = 25
+        Hint = 'Максимальное количесто обменов'
+        Top = 32
+        Width = 363
+        Anchors = [akTop, akLeft, akRight]
+        EditLabel.Height = 21
+        EditLabel.Width = 363
+        EditLabel.Caption = 'Максимальное количесто обменов:'
+        EditLabel.ParentColor = False
+        EditLabel.ParentFont = False
+        EditLabel.Font.Height = -16
+        Font.Height = -13
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 1
+        OnExit = EdtDwExit
+        OnKeyDown = FormKeyDown
+        OnKeyPress = EdtDwKeyPress
+      end
+      object EdtXchgMaxTime: TLabeledEdit
+        Left = 0
+        Height = 25
+        Hint = 'Максимальное время для обмена (мин)'
+        Top = 80
+        Width = 363
+        Anchors = [akTop, akLeft, akRight]
+        EditLabel.Height = 21
+        EditLabel.Width = 363
+        EditLabel.Caption = 'Максимальное время для обмена (мин):'
+        EditLabel.ParentColor = False
+        EditLabel.ParentFont = False
+        EditLabel.Font.Height = -16
+        Font.Height = -13
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 2
+        OnExit = EdtDwExit
+        OnKeyDown = FormKeyDown
+        OnKeyPress = EdtDwKeyPress
       end
     end
   end

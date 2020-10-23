@@ -16,20 +16,24 @@ type
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
     CBKickEnable: TCheckBox;
+    CBXchgEnable: TCheckBox;
     CBVorRpgEnable: TCheckBox;
     EdtBaseTime: TLabeledEdit;
     EdtDebufMaxTime: TLabeledEdit;
     EdtDebufMinTime: TLabeledEdit;
     EdtDebufPerc: TLabeledEdit;
     EdtKickIn: TLabeledEdit;
+    EdtXchgMaxCount: TLabeledEdit;
     EdtKickOut: TLabeledEdit;
     EdtKickPerc: TLabeledEdit;
     EdtPercMinusVip: TLabeledEdit;
     EdtTimeKd: TLabeledEdit;
+    EdtXchgMaxTime: TLabeledEdit;
     PageCtrl: TPageControl;
     TabSheet1: TTabSheet;
     TabSheet2: TTabSheet;
     TabSheet3: TTabSheet;
+    TabSheet4: TTabSheet;
     procedure BtnOkClick(Sender:TObject);
     procedure BtnCancelClick(Sender:TObject);
     procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
@@ -62,6 +66,7 @@ var
    time_kd:DWORD;
 
    xchg:record
+    Enable:Boolean;
     max_count:DWORD;
     max_time:DWORD;
     exist1_msg,
@@ -1654,12 +1659,14 @@ begin
             vip_time(user);
 
     'дать',
-    'отдать':add2xchgVip(user,LowerCase(Extract_nick(FetchAny(F))));
+    'отдать':if vor_rpg.xchg.Enable then
+              add2xchgVip(user,LowerCase(Extract_nick(FetchAny(F))));
 
     'моя',
     'мне',
     'сюда',
-    'забрать':catch_vip(user);
+    'забрать':if vor_rpg.xchg.Enable then
+               catch_vip(user);
    end;
 
   end;
@@ -1734,10 +1741,9 @@ end;
 Procedure TFrmVorRpg.InitCfg;
 begin
  vor_rpg.Enable:=False;
- case vor_rpg.Enable of
-  True :Config.WriteString('vor_rpg' ,'enable','1');
-  False:Config.WriteString('vor_rpg' ,'enable','0');
- end;
+ vor_rpg.xchg.Enable:=False;
+ Config.WriteString('vor_rpg' ,'enable','0');
+ Config.WriteString('vor_rpg' ,'xchg_enable','0');
 end;
 
 Procedure TFrmVorRpg.LoadCfg;
@@ -1757,6 +1763,10 @@ begin
  vor_rpg.kick.PERC          :=StrToDWORDDef(Config.ReadString('vor_rpg','kick_PERC'     ,IntToStr(vor_rpg.kick.PERC          )),vor_rpg.kick.PERC          );
  vor_rpg.kick.in_time       :=StrToDWORDDef(Config.ReadString('vor_rpg','in_time'       ,IntToStr(vor_rpg.kick.in_time       )),vor_rpg.kick.in_time       );
  vor_rpg.kick.out_time      :=StrToDWORDDef(Config.ReadString('vor_rpg','out_time'      ,IntToStr(vor_rpg.kick.out_time      )),vor_rpg.kick.out_time      );
+
+ vor_rpg.xchg.Enable:=Trim(Config.ReadString('vor_rpg','xchg_enable','0'))='1';
+ vor_rpg.xchg.max_count     :=StrToDWORDDef(Config.ReadString('vor_rpg','xchg_max_count',IntToStr(vor_rpg.xchg.max_count     )),vor_rpg.xchg.max_count     );
+ vor_rpg.xchg.max_time      :=StrToDWORDDef(Config.ReadString('vor_rpg','xchg_max_time' ,IntToStr(vor_rpg.xchg.max_time      )),vor_rpg.xchg.max_time      );
 end;
 
 Procedure TFrmVorRpg.Open;
@@ -1775,6 +1785,10 @@ begin
  EdtKickIn.Text         :=IntToStr(vor_rpg.kick.in_time);
  EdtKickOut.Text        :=IntToStr(vor_rpg.kick.out_time);
 
+ CBXchgEnable.Checked   :=vor_rpg.xchg.Enable;
+ EdtXchgMaxCount.Text   :=IntToStr(vor_rpg.xchg.max_count);
+ EdtXchgMaxTime.Text    :=IntToStr(vor_rpg.xchg.max_time);
+
  if ShowModal=1 then
  begin
   vor_rpg.Enable             :=CBVorRpgEnable.Checked;
@@ -1790,6 +1804,10 @@ begin
 
   vor_rpg.kick.in_time       :=StrToDWORDDef(EdtKickin.Text      ,vor_rpg.kick.in_time);
   vor_rpg.kick.out_time      :=StrToDWORDDef(EdtKickOut.Text     ,vor_rpg.kick.out_time);
+
+  vor_rpg.xchg.Enable        :=CBXchgEnable.Checked;
+  vor_rpg.xchg.max_count     :=StrToDWORDDef(EdtXchgMaxCount.Text,vor_rpg.xchg.max_count);
+  vor_rpg.xchg.max_time      :=StrToDWORDDef(EdtXchgMaxTime.Text ,vor_rpg.xchg.max_time);
 
   try
 
@@ -1813,6 +1831,15 @@ begin
    Config.WriteString('vor_rpg','kick_PERC',IntToStr(vor_rpg.kick.PERC));
    Config.WriteString('vor_rpg','in_time'  ,IntToStr(vor_rpg.kick.in_time));
    Config.WriteString('vor_rpg','out_time' ,IntToStr(vor_rpg.kick.out_time));
+
+
+   case vor_rpg.xchg.Enable of
+    True :Config.WriteString('vor_rpg' ,'xchg_enable','1');
+    False:Config.WriteString('vor_rpg' ,'xchg_enable','0');
+   end;
+
+   Config.WriteString('vor_rpg','xchg_max_count',IntToStr(vor_rpg.xchg.max_count));
+   Config.WriteString('vor_rpg','xchg_max_time' ,IntToStr(vor_rpg.xchg.max_time));
 
   except
    on E:Exception do
