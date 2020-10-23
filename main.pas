@@ -78,7 +78,7 @@ type
     procedure SetRoomStates(RS:TRoomStates);
     procedure parse_vips(msg:RawByteString);
     procedure add_to_notice(const id,msg:RawByteString);
-    procedure add_vol_cmd(const user,cmd:RawByteString);
+    procedure add_vol_cmd(const user,cmd,param:RawByteString);
     procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
     procedure add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
     procedure EdtSendKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
@@ -1177,17 +1177,15 @@ begin
  end;
 end;
 
-procedure TFrmMain.add_vol_cmd(const user,cmd:RawByteString);
+procedure TFrmMain.add_vol_cmd(const user,cmd,param:RawByteString);
 var
  i:Integer;
  F,v:RawByteString;
  Volume:ISimpleAudioVolume;
 begin
- F:=LowerCase(Trim(cmd));
+ if (LowerCase(cmd)<>vol_cmd.prefix) then Exit;
 
- v:=FetchAny(F);
-
- if (V<>vol_cmd.prefix) then Exit;
+ F:=LowerCase(param);
 
  try
   if (F<>'') then
@@ -1338,23 +1336,24 @@ end;}
 
 procedure TFrmMain.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
- cmd:RawByteString;
+ cmd,param:RawByteString;
 begin
 
- cmd:=Trim(msg);
+ param:=Trim(msg);
+ cmd:=Trim(FetchAny(param));
 
  if vip_rnd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-  FrmVipParam.vip_time_cmd(cmd);
+  FrmVipParam.vip_time_cmd(user,cmd,param);
 
  if (sub_mod.Enable) then
   FrmSubParam.add_sub_mod_cmd(cmd);
 
  if vol_cmd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-  add_vol_cmd(user,cmd);
+  add_vol_cmd(user,cmd,param);
 
  {$IFDEF VOR_RPG}
  if vor_rpg.Enable then
-  FrmVorRpg.add_to_chat_cmd(PC,user,display_name,msg);
+  FrmVorRpg.add_to_chat_cmd(PC,user,cmd,param);
  {$ENDIF}
 
 

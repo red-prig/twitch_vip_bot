@@ -43,7 +43,7 @@ type
     prev_dw:DWORD;
   public
     Procedure rpg_theif_vip(const s,dst_user,msg:RawByteString);
-    procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
+    procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByteString);
     Procedure InitCfg;
     Procedure LoadCfg;
     Procedure Open;
@@ -1438,16 +1438,14 @@ begin
 
 end;
 
-procedure TFrmVorRpg.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
+procedure TFrmVorRpg.add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByteString);
 var
  F,v:RawByteString;
 
 begin
- F:=LowerCase(Trim(msg));
+ F:=LowerCase(Trim(param));
 
- v:=FetchAny(F);
-
- Case v of
+ Case LowerCase(cmd) of
   '!пнуть':
   if vor_rpg.kick.Enable then
   begin

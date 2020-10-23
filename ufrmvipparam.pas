@@ -67,7 +67,7 @@ type
     procedure OnBtnUnVipClick(Sender:TObject);
     procedure OnBtnUpdateVipClick(Sender:TObject);
     Procedure OnListVips(Sender:TBaseTask);
-    procedure vip_time_cmd(cmd:RawByteString);
+    procedure vip_time_cmd(const user,cmd:RawByteString;param:RawByteString);
     procedure GridKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure OnBtnFind(Sender:TObject);
     Procedure InitCfg;
@@ -721,19 +721,18 @@ begin
  end;
 end;
 
-procedure TFrmVipParam.vip_time_cmd(cmd:RawByteString);
+procedure TFrmVipParam.vip_time_cmd(const user,cmd:RawByteString;param:RawByteString);
 var
  i:Integer;
  D:TDateTime;
- cmd1,cmd2,nick,datebeg,dateend:RawByteString;
+ cmd2,nick,datebeg,dateend:RawByteString;
  L:TStringList;
 begin
- cmd1:=FetchAny(cmd);
- cmd2:=FetchAny(cmd);
- nick:=FetchAny(cmd);
- cmd1:=LowerCase(Trim(cmd1));
+ if LowerCase(cmd)<>'!vip' then Exit;
+
+ cmd2:=FetchAny(param);
+ nick:=FetchAny(param);
  cmd2:=LowerCase(Trim(cmd2));
- if cmd1<>'!vip' then Exit;
 
  Case cmd2 of
   'time':
@@ -757,7 +756,7 @@ begin
       begin
        nick:='???';
       end;
-      push_irc_msg(Format(vip_rnd.viptime_get_info,[nick,datebeg,dateend]));
+      push_irc_msg(Format(vip_rnd.viptime_get_info,[user,nick,datebeg,dateend]));
      end;
   'settime':
      begin
@@ -768,14 +767,14 @@ begin
       dateend:='';
       if (i<>-1) then
       begin
-       cmd:=FetchAny(cmd);
-       if (cmd='') then
+       cmd2:=FetchAny(param);
+       if (cmd2='') then
        begin
         DbUpdateVip_Time(GridVips.FieldValue['user',i],NAN);
         GridVips.FieldValue['datebeg',i]:='';
         GridVips.FieldValue['dateend',i]:='';
        end else
-       if TryGetDateTime_RU(cmd,D) then
+       if TryGetDateTime_RU(cmd2,D) then
        begin
         DbUpdateVip_Time(GridVips.FieldValue['user',i],D);
         GridVips.FieldValue['datebeg',i]:=GetDateTimeStr_US(D);
@@ -797,20 +796,20 @@ begin
       begin
        nick:='???';
       end;
-      push_irc_msg(Format(vip_rnd.viptime_get_info,[nick,datebeg,dateend]));
+      push_irc_msg(Format(vip_rnd.viptime_get_info,[user,nick,datebeg,dateend]));
      end;
   'info':
      begin
       datebeg:='';
       dateend:='';
       getVipStat(datebeg,dateend);
-      push_irc_msg(Format(vip_rnd.vipinfo_get_info,[datebeg,dateend]));
+      push_irc_msg(Format(vip_rnd.vipinfo_get_info,[user,datebeg,dateend]));
      end;
   'perm':
      begin
       L:=getPermVipList;
       L.LineBreak:=',';
-      nick:=L.Text;
+      nick:='@'+user+' '+L.Text;
       if (nick<>'') and (nick[Length(nick)]=',') then
        Delete(nick,Length(nick),1);
       FreeAndNil(L);
@@ -820,7 +819,7 @@ begin
      begin
       L:=getTmpVipList;
       L.LineBreak:=',';
-      nick:=L.Text;
+      nick:='@'+user+' '+L.Text;
       if (nick<>'') and (nick[Length(nick)]=',') then
        Delete(nick,Length(nick),1);
       FreeAndNil(L);
@@ -833,7 +832,7 @@ begin
      end;
   else
      begin
-      push_irc_msg('!vip [time,settime,info,perm,tmp,update]');
+      push_irc_msg('@'+user+' !vip [time,settime,info,perm,tmp,update]');
      end;
  end;
 end;
