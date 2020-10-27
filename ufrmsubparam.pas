@@ -18,6 +18,7 @@ type
     BtnOk: TBitBtn;
     CBSubEnable: TCheckBox;
     CBRevTick: TCheckBox;
+    CBSubDontLog: TCheckBox;
     EdtSubInc: TLabeledEdit;
     EdtSub_max_inc: TLabeledEdit;
     EdtSub_max_dec: TLabeledEdit;
@@ -508,6 +509,7 @@ Procedure TFrmSubParam.LoadCfg;
 begin
  sub_mod.Enable   :=Trim(Config.ReadString('sub_mod','enable','0'))='1';
  sub_mod.Rev_tick :=Trim(Config.ReadString('sub_mod','rev_tick','0'))='1';
+ sub_mod.DontLog  :=Trim(Config.ReadString('sub_mod','dont_log','0'))='1';
  sub_mod.inc_title:=Trim(Config.ReadString('sub_mod','inc_title',sub_mod.inc_title));
  sub_mod.dec_title:=Trim(Config.ReadString('sub_mod','dec_title',sub_mod.dec_title));
  sub_mod.inc_min  :=StrToDWORDDef(Config.ReadString('sub_mod','inc_min',IntToStr(sub_mod.inc_min)),30);
@@ -517,18 +519,20 @@ end;
 
 Procedure TFrmSubParam.Open;
 begin
- CBSubEnable.Checked:=sub_mod.Enable;
- CBRevTick.Checked  :=sub_mod.Rev_tick;
- EdtTitleSubInc.Text:=sub_mod.inc_title;
- EdtTitleSubDec.Text:=sub_mod.dec_title;
- EdtSubInc.Text     :=IntToStr(sub_mod.inc_min);
- EdtSub_max_inc.Text:=IntToStr(sub_mod.max_inc);
- EdtSub_max_dec.Text:=IntToStr(sub_mod.max_dec);
+ CBSubEnable.Checked :=sub_mod.Enable;
+ CBRevTick.Checked   :=sub_mod.Rev_tick;
+ CBSubDontLog.Checked:=sub_mod.DontLog;
+ EdtTitleSubInc.Text :=sub_mod.inc_title;
+ EdtTitleSubDec.Text :=sub_mod.dec_title;
+ EdtSubInc.Text      :=IntToStr(sub_mod.inc_min);
+ EdtSub_max_inc.Text :=IntToStr(sub_mod.max_inc);
+ EdtSub_max_dec.Text :=IntToStr(sub_mod.max_dec);
 
  if ShowModal=1 then
  begin
   sub_mod.Enable   :=CBSubEnable.Checked;
   sub_mod.Rev_tick :=CBRevTick.Checked;
+  sub_mod.DontLog  :=CBSubDontLog.Checked;
   sub_mod.inc_title:=EdtTitleSubInc.Text;
   sub_mod.dec_title:=EdtTitleSubDec.Text;
   sub_mod.inc_min  :=StrToIntDef(EdtSubInc.Text,1);
@@ -543,6 +547,10 @@ begin
    case sub_mod.Rev_tick of
     True :Config.WriteString('sub_mod','rev_tick','1');
     False:Config.WriteString('sub_mod','rev_tick','0');
+   end;
+   case sub_mod.DontLog of
+    True :Config.WriteString('sub_mod','dont_log','1');
+    False:Config.WriteString('sub_mod','dont_log','0');
    end;
    Config.WriteString('sub_mod','inc_title',sub_mod.inc_title);
    Config.WriteString('sub_mod','dec_title',sub_mod.dec_title);

@@ -1,7 +1,7 @@
 object FrmSubParam: TFrmSubParam
-  Left = 458
+  Left = 406
   Height = 309
-  Top = 124
+  Top = 154
   Width = 353
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры саб мода'
@@ -285,5 +285,15 @@ object FrmSubParam: TFrmSubParam
     Anchors = [akTop, akRight]
     Caption = 'Тик отриц. таймера'
     TabOrder = 8
+  end
+  object CBSubDontLog: TCheckBox
+    Left = 190
+    Height = 19
+    Hint = 'Не логировать в историю сабмода'
+    Top = 108
+    Width = 151
+    Anchors = [akTop, akRight]
+    Caption = 'Не сохранять в истории'
+    TabOrder = 9
   end
 end

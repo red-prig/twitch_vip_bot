@@ -744,15 +744,15 @@ begin
       nick:=Trim(nick);
       nick:=Extract_nick(nick);
       i:=FindVipUser(nick);
-      datebeg:='';
-      dateend:='';
+      datebeg:=GridVips.FieldValue['datebeg',i];
+      dateend:=GridVips.FieldValue['dateend',i];
       if (i<>-1) then
       begin
-       if TryGetDateTime_US(GridVips.FieldValue['datebeg',i],D) then
+       if TryGetDateTime_US(datebeg,D) then
        begin
         datebeg:=DateTimeToStr_RU(D);
        end;
-       if TryGetDateTime_US(GridVips.FieldValue['dateend',i],D) then
+       if TryGetDateTime_US(dateend,D) then
        begin
         dateend:=DateTimeToStr_RU(D);
        end;
@@ -787,11 +787,13 @@ begin
         dateend:=DateTimeToStr_RU(GetDateTimeEnd(D));
        end else
        begin
-        if TryGetDateTime_US(GridVips.FieldValue['datebeg',i],D) then
+        datebeg:=GridVips.FieldValue['datebeg',i];
+        dateend:=GridVips.FieldValue['dateend',i];
+        if TryGetDateTime_US(datebeg,D) then
         begin
          datebeg:=DateTimeToStr_RU(D);
         end;
-        if TryGetDateTime_US(GridVips.FieldValue['dateend',i],D) then
+        if TryGetDateTime_US(dateend,D) then
         begin
          dateend:=DateTimeToStr_RU(D);
         end;

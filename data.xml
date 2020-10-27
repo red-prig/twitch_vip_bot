@@ -408,7 +408,7 @@
       SELECT DISTINCT TRIM(user) as uniq FROM story where uniq&lt;&gt;""
      ) WHERE count&lt;&gt;0;
 
-    INSERT OR REPLACE INTO rpg ( user,data  )
+    INSERT OR IGNORE INTO rpg ( user,data  )
      SELECT uniq as user,('{"points":{"EXP":' || count || '}}') as data FROM temp_table;
 
     DROP TABLE temp_table;

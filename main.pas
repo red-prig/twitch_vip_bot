@@ -217,6 +217,7 @@ var
  sub_mod:record
   Enable:Boolean;
   Rev_tick:Boolean;
+  DontLog:Boolean;
   _label:record
    name,_on,off:RawByteString;
   end;
@@ -804,6 +805,11 @@ begin
    if reward_title=sub_mod.dec_title then //dec sub mode
    begin
     FrmSubParam._dec_SubModeTime(cmd,user);
+   end;
+   if sub_mod.DontLog then
+   begin
+    msg2.Free;
+    Exit;
    end;
   end;
 
