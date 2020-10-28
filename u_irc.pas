@@ -1440,6 +1440,11 @@ begin
    end;
 
    Case msg1.Path['type'].AsStr of
+    'RECONNECT':begin
+                 Log(irc_log,1,['RECONNECT']);
+                 ws_pub.reconnect:=true;
+                 bufferevent_shutdown(ws_pub.bev,2);
+                end;
     'PING':begin
             fpWebsocket_session_submit_text(session,PAnsiChar(TW_PONG),Length(TW_PONG));
            end;
