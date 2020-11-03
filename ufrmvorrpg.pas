@@ -1392,7 +1392,7 @@ begin
  end;
  data1.Values['kick._in']:=Now;
 
- if not data2.isAssigned then
+ if not data2.Path['points'].isAssigned then
  begin
   //not found in base
 
@@ -1629,6 +1629,10 @@ begin
   if TryGetDateTime_US(dateend,D) then
   begin
    dateend:=DateTimeToStr_RU(D);
+  end;
+  if vip_rnd.viptime_get_info='' then
+  begin
+   vip_rnd.viptime_get_info:='@%s vip time %s: [%s - %s]';
   end;
   push_irc_msg(Format(vip_rnd.viptime_get_info,[user,user,datebeg,dateend]));
  end;
