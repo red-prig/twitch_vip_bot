@@ -931,6 +931,10 @@ begin
   debuf:=Get_debuf(id);
   time:=abs(vor_rpg.debuf.MIN_TIME)+Random(RCT,abs(vor_rpg.debuf.MAX_TIME-vor_rpg.debuf.MIN_TIME+1));
   Set_debuf(data,id,time);
+  if vor_rpg.stat_msg.on_debuf='' then
+  begin
+   vor_rpg.stat_msg.on_debuf:='@%s set debuf: (%s)';
+  end;
   cmd:=Format(vor_rpg.stat_msg.on_debuf,[user,debuf.text]);
   push_irc_msg(cmd);
   FrmMain._add_reward_2_log(s,cmd);
@@ -1300,27 +1304,58 @@ begin
  Points.Load(data);
  case cmd of
   'dbf',
-  'debuf':push_irc_msg(Format(vor_rpg.stat_msg.debuf_pr,[user,Get_debufs]));
+  'debuf':
+  begin
+   if vor_rpg.stat_msg.debuf_pr='' then
+   begin
+    vor_rpg.stat_msg.debuf_pr:='@%s &lt;%s&gt;';
+   end;
+   push_irc_msg(Format(vor_rpg.stat_msg.debuf_pr,[user,Get_debufs]));
+  end;
 
   'level',
-  'lvl' :push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[user,
+  'lvl' :
+  begin
+   if vor_rpg.stat_msg.lvl_msg='' then
+   begin
+    vor_rpg.stat_msg.lvl_msg:='@%s LVL:%s [%s/%s] </lvl_msg>';
+   end;
+   push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[user,
                                       IntToStr(Points.Points.LVL),
                                       IntToStr(Points.Points.EXP),
                                       IntToStr(Points.Points.GetExpToLvl)]));
+  end;
+
   'points',
-  'pts' :push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[user,
+  'pts' :
+  begin
+   if vor_rpg.stat_msg.pts_msg='' then
+   begin
+    vor_rpg.stat_msg.pts_msg:='@%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s';
+   end;
+   push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[user,
                                       IntToStr(Points.LUK),
                                       IntToStr(Points.DEF),
                                       IntToStr(Points.CHR),
                                       IntToStr(Points.AGL),
                                       IntToStr(Points.STR),
                                       IntToStr(Points.Points.PTS)]));
+  end;
+
   'stats',
-  'stat':push_irc_msg(Format(vor_rpg.stat_msg.stat_msg,[user,
+  'stat':
+  begin
+   if vor_rpg.stat_msg.stat_msg='' then
+   begin
+    vor_rpg.stat_msg.stat_msg:='@%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s';
+   end;
+   push_irc_msg(Format(vor_rpg.stat_msg.stat_msg,[user,
                                       IntToStr(Points.GetLUKPercent),
                                       IntToStr(Points.GetDEFPercent),
                                       IntToStr(Points.GetESCPercent),
                                       IntToStr(Points.GetTime)]));
+  end;
+
  end;
 end;
 
@@ -1361,14 +1396,26 @@ begin
   if do_inc then
   begin
    Dec(Points1.Points.PTS);
+   if vor_rpg.stat_msg.add_msg='' then
+   begin
+    vor_rpg.stat_msg.add_msg:='@%s skill point add to %s';
+   end;
    push_irc_msg(Format(vor_rpg.stat_msg.add_msg,[user1,cmd]));
   end else
   begin
+   if vor_rpg.stat_msg.max_msg='' then
+   begin
+    vor_rpg.stat_msg.max_msg:='@%s max skill points in %s';
+   end;
    push_irc_msg(Format(vor_rpg.stat_msg.max_msg,[user1,cmd]));
   end;
 
  end else
  begin
+  if vor_rpg.stat_msg.not_msg='' then
+  begin
+   vor_rpg.stat_msg.not_msg:='@%s no free skill points';
+  end;
   push_irc_msg(Format(vor_rpg.stat_msg.not_msg,[user1,cmd]));
  end;
 
@@ -1417,6 +1464,10 @@ begin
  begin
   time:=(time+vor_rpg.kick.in_time)-Now;
   time:=time div 60;
+  if vor_rpg.kick.in_msg='' then
+  begin
+   vor_rpg.kick.in_msg:='%s kick in timeout (%s)';
+  end;
   push_irc_msg(Format(vor_rpg.kick.in_msg,[user1,GetLongStrTime(time)]));
   OnUnlock(nil);
   Exit;
@@ -1445,6 +1496,10 @@ begin
  begin
   time:=(time+vor_rpg.kick.out_time)-Now;
   time:=time div 60;
+  if vor_rpg.kick.out_msg='' then
+  begin
+   vor_rpg.kick.out_msg:='%s kick out timeout (%s)';
+  end;
   push_irc_msg(Format(vor_rpg.kick.out_msg,[user2,GetLongStrTime(time)]));
   OnUnlock(nil);
   Exit;
@@ -1560,6 +1615,10 @@ begin
  xchgNode.user:=user;
  if xchgSet.NFind(@xchgNode)<>nil then
  begin
+  if vor_rpg.xchg.exist1_msg='%s exchange request is exist, for cancel try [!vip моя]' then
+  begin
+   vor_rpg.xchg.exist1_msg:=
+  end;
   push_irc_msg(Format(vor_rpg.xchg.exist1_msg,[user]));
   vor_rpg.TickKd:=GetTickCount64;
   Exit;
@@ -1569,6 +1628,10 @@ begin
  xchgNode.user:=nick;
  if xchgSet.NFind(@xchgNode)<>nil then
  begin
+  if vor_rpg.xchg.exist2_msg='' then
+  begin
+   vor_rpg.xchg.exist2_msg:='@%s request for %s is exists';
+  end;
   push_irc_msg(Format(vor_rpg.xchg.exist2_msg,[user,nick]));
   vor_rpg.TickKd:=GetTickCount64;
   Exit;
@@ -1576,6 +1639,10 @@ begin
 
  if (xchgSet.Size>vor_rpg.xchg.max_count*2) then
  begin
+  if vor_rpg.xchg.max_msg='' then
+  begin
+   vor_rpg.xchg.max_msg:='@%s too many requests for exchange';
+  end;
   push_irc_msg(Format(vor_rpg.xchg.max_msg,[user]));
   vor_rpg.TickKd:=GetTickCount64;
   Exit;
@@ -1591,6 +1658,10 @@ begin
  xchgSet.Insert(@link^.src);
  xchgSet.Insert(@link^.dst);
 
+ if vor_rpg.xchg.ready_msg='' then
+ begin
+  vor_rpg.xchg.ready_msg:='@%s input [!vip забрать] in %smin';
+ end;
  push_irc_msg(Format(vor_rpg.xchg.ready_msg,[nick,IntToStr(vor_rpg.xchg.max_time)]));
 
  vor_rpg.TickKd:=GetTickCount64;
@@ -1616,6 +1687,10 @@ begin
    link:=PxchgNode(Node^.Data)^.link;
    if (link^.src.user=user) then
    begin
+    if vor_rpg.xchg.cancel_msg='' then
+    begin
+     vor_rpg.xchg.cancel_msg:='@%s request canceled';
+    end;
 
     push_irc_msg(Format(vor_rpg.xchg.cancel_msg,[user]));
 
@@ -1638,6 +1713,10 @@ begin
   link:=PxchgNode(Node^.Data)^.link;
   if (link^.dst.user=user) then
   begin
+   if vor_rpg.xchg.sucs_msg='' then
+   begin
+    vor_rpg.xchg.sucs_msg:='@%s vip is exchanged TwitchVotes';
+   end;
 
    push_irc_msg(Format(vor_rpg.xchg.sucs_msg,[user]));
    ChangeVip(link^.src.user,link^.dst.user);
