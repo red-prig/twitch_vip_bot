@@ -170,8 +170,8 @@
  </calc>
 
  <DEBUF_PERCENT>20</DEBUF_PERCENT>
- <DEBUF_MIN_TIME>4500</DEBUF_MIN_TIME>
- <DEBUF_MAX_TIME>43200</DEBUF_MAX_TIME>
+ <DEBUF_MIN_TIME>86400</DEBUF_MIN_TIME>
+ <DEBUF_MAX_TIME>259200</DEBUF_MAX_TIME>
 
  <debuf>
   <text>Сломано колено -AGL</text>
@@ -243,8 +243,8 @@
 
  <kick>
   <PERC>30</PERC>
-  <in_time>14400</in_time>
-  <out_time>14400</out_time>
+  <in_time>9000</in_time>
+  <out_time>9000</out_time>
   <not_vor>
    %s был задержан за нарушение правопорядка
    %s вышел голым на площадь и давай всех пинать
