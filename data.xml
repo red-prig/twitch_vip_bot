@@ -132,15 +132,15 @@
 
  <stat_msg>
   <lvl_msg>   @%s LVL:%s [%s/%s] </lvl_msg>
-  <pts_msg>   @%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s </pts_msg>
-  <stat_msg>  @%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s         </stat_msg>
-  <add_msg>   @%s навык вкачен в %s                              </add_msg>
-  <not_msg>   @%s нет свободных очков навыка                     </not_msg>
-  <max_msg>   @%s максимум очков навыка в %s                     </max_msg>
-  <help_msg1> @%s команды вора: [dbf,lvl,pts,stat,add [парам.]]  </help_msg1>
-  <help_msg2> @%s для прокачки: [luk,def,chr,agl,str]            </help_msg2>
-  <on_debuf>  @%s наложен дебаф: (%s)                            </on_debuf>
-  <debuf_pr>  @%s &lt;%s&gt;                                     </debuf_pr>
+  <pts_msg>   @%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s    </pts_msg>
+  <stat_msg>  @%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s            </stat_msg>
+  <add_msg>   @%s навык вкачен в %s                                 </add_msg>
+  <not_msg>   @%s нет свободных очков навыка                        </not_msg>
+  <max_msg>   @%s максимум очков навыка в %s                        </max_msg>
+  <help_msg1> @%s команды вора: !vor [dbf,lvl,pts,stat,add [парам.]]</help_msg1>
+  <help_msg2> @%s для прокачки: !vor add [luk,def,chr,agl,str]      </help_msg2>
+  <on_debuf>  @%s наложен дебаф: (%s)                               </on_debuf>
+  <debuf_pr>  @%s &lt;%s&gt;                                        </debuf_pr>
  </stat_msg>
 
  <calc>
