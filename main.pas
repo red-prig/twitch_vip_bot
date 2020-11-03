@@ -194,6 +194,7 @@ var
   Enable:Boolean;
   Auto_expired:Boolean;
   Enable_vor:Boolean;
+  login_msg:RawByteString;
   vipinfo_get_info:RawByteString;
   viptime_get_info:RawByteString;
   title:RawByteString;
@@ -493,6 +494,8 @@ begin
          BtnInfo .Visible:=True;
          BtnClose.Visible:=True;
          BtnInfo.Left:=0;
+
+         push_irc_msg(vip_rnd.login_msg);
 
          {
          add_reward(
@@ -2658,6 +2661,10 @@ end;
 class procedure TOpenVip_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin
  Case Name of
+  'login_msg':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.login_msg);
+   end;
   'viptime_get_info':
    begin
     Node.Push(TLoadStr_Func ,@vip_rnd.viptime_get_info);
