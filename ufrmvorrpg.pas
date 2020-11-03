@@ -1150,7 +1150,7 @@ end;
 
 type
  TDbcGetUserInfo=class(TDbcStatementScript)
-  user,cmd:RawByteString;
+  src,user,cmd:RawByteString;
   data:TJson;
   Procedure Cleanup; override;
   Procedure OnFin(Sender:TBaseTask);
@@ -1158,7 +1158,7 @@ type
   procedure Print;
  end;
 
-procedure GetDBRpgUserInfo(Const user,cmd:RawByteString);
+procedure GetDBRpgUserInfo(Const src,user,cmd:RawByteString);
 var
  FDbcScript:TDbcGetUserInfo;
 begin
@@ -1167,6 +1167,7 @@ begin
  FDbcScript.Notify.Add(T_FIN,@FDbcScript.OnFin);
  FDbcScript.SetSctipt(FGetRpgUser1);
  FDbcScript.ExecuteScript;
+ FDbcScript.src:=src;
  FDbcScript.user:=user;
  FDbcScript.cmd:=cmd;
  FDbcScript.Params.SetRawByteString('user1',user);
@@ -1310,7 +1311,7 @@ begin
    begin
     vor_rpg.stat_msg.debuf_pr:='@%s &lt;%s&gt;';
    end;
-   push_irc_msg(Format(vor_rpg.stat_msg.debuf_pr,[user,Get_debufs]));
+   push_irc_msg(Format(vor_rpg.stat_msg.debuf_pr,[src,Get_debufs]));
   end;
 
   'level',
@@ -1318,9 +1319,9 @@ begin
   begin
    if vor_rpg.stat_msg.lvl_msg='' then
    begin
-    vor_rpg.stat_msg.lvl_msg:='@%s LVL:%s [%s/%s] </lvl_msg>';
+    vor_rpg.stat_msg.lvl_msg:='@%s LVL:%s [%s/%s]';
    end;
-   push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[user,
+   push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[src,
                                       IntToStr(Points.Points.LVL),
                                       IntToStr(Points.Points.EXP),
                                       IntToStr(Points.Points.GetExpToLvl)]));
@@ -1333,7 +1334,7 @@ begin
    begin
     vor_rpg.stat_msg.pts_msg:='@%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s';
    end;
-   push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[user,
+   push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[src,
                                       IntToStr(Points.LUK),
                                       IntToStr(Points.DEF),
                                       IntToStr(Points.CHR),
@@ -1349,7 +1350,7 @@ begin
    begin
     vor_rpg.stat_msg.stat_msg:='@%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s';
    end;
-   push_irc_msg(Format(vor_rpg.stat_msg.stat_msg,[user,
+   push_irc_msg(Format(vor_rpg.stat_msg.stat_msg,[src,
                                       IntToStr(Points.GetLUKPercent),
                                       IntToStr(Points.GetDEFPercent),
                                       IntToStr(Points.GetESCPercent),
@@ -1362,7 +1363,14 @@ end;
 type
  TAddPtsScript=class(TOneLockScript)
   public
-   cmd:RawByteString;
+   is_mod:Boolean;
+   src,cmd:RawByteString;
+   Procedure OnEvent; override;
+ end;
+
+ TSubPtsScript=class(TOneLockScript)
+  public
+   src,cmd:RawByteString;
    Procedure OnEvent; override;
  end;
 
@@ -1380,11 +1388,64 @@ var
   end;
  end;
 
+ procedure lvl_msg;
+ begin
+  if vor_rpg.stat_msg.lvl_msg='' then
+  begin
+   vor_rpg.stat_msg.lvl_msg:='@%s LVL:%s [%s/%s]';
+  end;
+  push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[src,
+                      IntToStr(Points1.Points.LVL),
+                      IntToStr(Points1.Points.EXP),
+                      IntToStr(Points1.Points.GetExpToLvl)]));
+ end;
+
+ procedure pts_msg;
+ begin
+  if vor_rpg.stat_msg.pts_msg='' then
+  begin
+   vor_rpg.stat_msg.pts_msg:='@%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s';
+  end;
+  push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[src,
+                      IntToStr(Points1.LUK),
+                      IntToStr(Points1.DEF),
+                      IntToStr(Points1.CHR),
+                      IntToStr(Points1.AGL),
+                      IntToStr(Points1.STR),
+                      IntToStr(Points1.Points.PTS)]));
+ end;
+
 begin
  Points1.Load(data1);
 
- if (Points1.Points.PTS>0) then
+ if is_mod then
+  Case cmd of
+   'exp':begin
+          Points1.IncEXP(1);
+          lvl_msg;
+          Points1.Save(data1);
+          SetDBRpgUser1(user1,data1,@OnUnlock);
+          Exit;
+         end;
+   'lvl':begin
+          Inc(Points1.Points.LVL);
+          lvl_msg;
+          Points1.Save(data1);
+          SetDBRpgUser1(user1,data1,@OnUnlock);
+          Exit;
+         end;
+   'pts':begin
+          Dec(Points1.Points.PTS);
+          pts_msg;
+          Points1.Save(data1);
+          SetDBRpgUser1(user1,data1,@OnUnlock);
+          Exit;
+         end;
+  end;
+
+ if (Points1.Points.PTS>0) or is_mod then
  begin
+  do_inc:=False;
   Case cmd of
    'luk':do_inc:=try_inc(Points1.Points.LUK,vor_rpg.calc.MAX_LUK);
    'def':do_inc:=try_inc(Points1.Points.DEF,vor_rpg.calc.MAX_DEF);
@@ -1395,19 +1456,22 @@ begin
 
   if do_inc then
   begin
-   Dec(Points1.Points.PTS);
+   if not is_mod then
+   begin
+    Dec(Points1.Points.PTS);
+   end;
    if vor_rpg.stat_msg.add_msg='' then
    begin
     vor_rpg.stat_msg.add_msg:='@%s skill point add to %s';
    end;
-   push_irc_msg(Format(vor_rpg.stat_msg.add_msg,[user1,cmd]));
+   push_irc_msg(Format(vor_rpg.stat_msg.add_msg,[src,cmd]));
   end else
   begin
    if vor_rpg.stat_msg.max_msg='' then
    begin
     vor_rpg.stat_msg.max_msg:='@%s max skill points in %s';
    end;
-   push_irc_msg(Format(vor_rpg.stat_msg.max_msg,[user1,cmd]));
+   push_irc_msg(Format(vor_rpg.stat_msg.max_msg,[src,cmd]));
   end;
 
  end else
@@ -1416,28 +1480,117 @@ begin
   begin
    vor_rpg.stat_msg.not_msg:='@%s no free skill points';
   end;
-  push_irc_msg(Format(vor_rpg.stat_msg.not_msg,[user1,cmd]));
+  push_irc_msg(Format(vor_rpg.stat_msg.not_msg,[src,cmd]));
  end;
 
  Points1.Save(data1);
  SetDBRpgUser1(user1,data1,@OnUnlock);
-
 end;
 
-Procedure add_pts(Const user,cmd:RawByteString);
+Procedure TSubPtsScript.OnEvent;
+var
+ Points1:TPlayer;
+
+ procedure lvl_msg;
+ begin
+  if vor_rpg.stat_msg.lvl_msg='' then
+  begin
+   vor_rpg.stat_msg.lvl_msg:='@%s LVL:%s [%s/%s]';
+  end;
+  push_irc_msg(Format(vor_rpg.stat_msg.lvl_msg,[src,
+                      IntToStr(Points1.Points.LVL),
+                      IntToStr(Points1.Points.EXP),
+                      IntToStr(Points1.Points.GetExpToLvl)]));
+ end;
+
+ procedure pts_msg;
+ begin
+  if vor_rpg.stat_msg.pts_msg='' then
+  begin
+   vor_rpg.stat_msg.pts_msg:='@%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s';
+  end;
+  push_irc_msg(Format(vor_rpg.stat_msg.pts_msg,[src,
+                      IntToStr(Points1.LUK),
+                      IntToStr(Points1.DEF),
+                      IntToStr(Points1.CHR),
+                      IntToStr(Points1.AGL),
+                      IntToStr(Points1.STR),
+                      IntToStr(Points1.Points.PTS)]));
+ end;
+
+begin
+ Points1.Load(data1);
+
+ Case cmd of
+  'exp':begin
+         Points1.IncEXP(-1);
+         lvl_msg;
+        end;
+  'lvl':begin
+         Dec(Points1.Points.LVL);
+         lvl_msg;
+        end;
+  'pts':begin
+         Dec(Points1.Points.PTS);
+         pts_msg;
+        end;
+  'luk':begin
+         Dec(Points1.Points.LUK);
+         pts_msg;
+        end;
+  'def':begin
+         Dec(Points1.Points.DEF);
+         pts_msg;
+        end;
+  'chr':begin
+         Dec(Points1.Points.CHR);
+         pts_msg;
+        end;
+  'agl':begin
+         Dec(Points1.Points.AGL);
+         pts_msg;
+        end;
+  'str':begin
+         Dec(Points1.Points.STR);
+         pts_msg;
+        end;
+ end;
+
+ Points1.Save(data1);
+ SetDBRpgUser1(user1,data1,@OnUnlock);
+end;
+
+Procedure add_pts(Const src,user,cmd:RawByteString;is_mod:Boolean);
 Var
  FDbcScript:TDbcScriptLock;
  FAddPtsScript:TAddPtsScript;
 begin
 
  FAddPtsScript:=TAddPtsScript.Create;
+ FAddPtsScript.src:=src;
  FAddPtsScript.user1:=user;
  FAddPtsScript.cmd:=cmd;
+ FAddPtsScript.is_mod:=is_mod;
 
  FDbcScript:=TDbcScriptLock.Create;
  FDbcScript.Prepare(FAddPtsScript);
  FDbcScript.AsyncFunc(@FDbcScript.try_start);
+end;
 
+Procedure sub_pts(Const src,user,cmd:RawByteString);
+Var
+ FDbcScript:TDbcScriptLock;
+ FSubPtsScript:TSubPtsScript;
+begin
+
+ FSubPtsScript:=TSubPtsScript.Create;
+ FSubPtsScript.src:=src;
+ FSubPtsScript.user1:=user;
+ FSubPtsScript.cmd:=cmd;
+
+ FDbcScript:=TDbcScriptLock.Create;
+ FDbcScript.Prepare(FSubPtsScript);
+ FDbcScript.AsyncFunc(@FDbcScript.try_start);
 end;
 
 //kick
@@ -1554,7 +1707,7 @@ Var
  src_user:RawByteString;
  FKickScript:TKickScript;
 begin
- src_user:=Extract_nick(msg);
+ src_user:=LowerCase(Extract_nick(msg));
 
  FKickScript:=TKickScript.Create;
  FKickScript.user1:=dst_user;
@@ -1615,9 +1768,9 @@ begin
  xchgNode.user:=user;
  if xchgSet.NFind(@xchgNode)<>nil then
  begin
-  if vor_rpg.xchg.exist1_msg='%s exchange request is exist, for cancel try [!vip моя]' then
+  if vor_rpg.xchg.exist1_msg='' then
   begin
-   vor_rpg.xchg.exist1_msg:=
+   vor_rpg.xchg.exist1_msg:='%s exchange request is exist, for cancel try [!vip моя]'
   end;
   push_irc_msg(Format(vor_rpg.xchg.exist1_msg,[user]));
   vor_rpg.TickKd:=GetTickCount64;
@@ -1830,9 +1983,72 @@ begin
    end else
    begin
 
-    v:=FetchAny(F);
+    v:=LowerCase(FetchAny(F));
 
     case v of
+     'mod':
+      if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+      begin
+       v:=LowerCase(FetchAny(F));
+       Case v of
+        'dbf',
+        'debuf',
+        'level',
+        'lvl' ,
+        'points',
+        'pts' ,
+        'stats',
+        'stat':
+        begin
+         F:=LowerCase(Extract_nick(FetchAny(F)));
+         GetDBRpgUserInfo(user,F,v);
+        end;
+        'add':
+         begin
+          v:=LowerCase(FetchAny(F));
+          Case v of
+           'pts',
+           'lvl',
+           'exp',
+           'luk',
+           'def',
+           'chr',
+           'agl',
+           'str':
+           begin
+            F:=LowerCase(Extract_nick(FetchAny(F)));
+            add_pts(user,F,v,true);
+           end;
+           else
+            push_irc_msg(Format('@%s !vor mod add [pts,lvl,exp,luk,def,chr,agl,str] "nick"',[user]));
+          end;
+         end;
+
+        'sub':
+         begin
+          v:=LowerCase(FetchAny(F));
+          Case v of
+           'pts',
+           'lvl',
+           'exp',
+           'luk',
+           'def',
+           'chr',
+           'agl',
+           'str':
+           begin
+            F:=LowerCase(Extract_nick(FetchAny(F)));
+            sub_pts(user,F,v);
+           end;
+           else
+            push_irc_msg(Format('@%s !vor mod sub [pts,lvl,exp,luk,def,chr,agl,str] "nick"',[user]));
+          end;
+         end;
+
+        else
+         push_irc_msg(Format('@%s !vor mod [dbf,lvl,pts,stat,add [prm],sub [prm]] "nick"',[user]));
+       end;
+      end;
      'dbf',
      'debuf',
      'level',
@@ -1840,15 +2056,15 @@ begin
      'points',
      'pts' ,
      'stats',
-     'stat':GetDBRpgUserInfo(user,v);
+     'stat':GetDBRpgUserInfo(user,user,v);
      'add':begin
-            v:=FetchAny(F);
+            v:=LowerCase(FetchAny(F));
             Case v of
              'luk',
              'def',
              'chr',
              'agl',
-             'str':add_pts(user,v);
+             'str':add_pts(user,user,v,false);
              else
               push_irc_msg(Format(vor_rpg.stat_msg.help_msg2,[user]));
             end;
