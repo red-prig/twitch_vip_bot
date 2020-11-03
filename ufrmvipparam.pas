@@ -738,6 +738,8 @@ begin
  nick:=FetchAny(param);
  cmd2:=LowerCase(Trim(cmd2));
 
+ try
+
  Case cmd2 of
   'time':
      begin
@@ -759,6 +761,10 @@ begin
       end else
       begin
        nick:='???';
+      end;
+      if vip_rnd.viptime_get_info='' then
+      begin
+       vip_rnd.viptime_get_info:='@%s vip time %s: [%s - %s]';
       end;
       push_irc_msg(Format(vip_rnd.viptime_get_info,[user,nick,datebeg,dateend]));
      end;
@@ -802,6 +808,10 @@ begin
       begin
        nick:='???';
       end;
+      if vip_rnd.viptime_get_info='' then
+      begin
+       vip_rnd.viptime_get_info:='@%s vip time %s: [%s - %s]';
+      end;
       push_irc_msg(Format(vip_rnd.viptime_get_info,[user,nick,datebeg,dateend]));
      end;
   'info':
@@ -809,6 +819,10 @@ begin
       datebeg:='';
       dateend:='';
       getVipStat(datebeg,dateend);
+      if vip_rnd.vipinfo_get_info='' then
+      begin
+       vip_rnd.vipinfo_get_info:='@%s vip count: %s permanent: %s';
+      end;
       push_irc_msg(Format(vip_rnd.vipinfo_get_info,[user,datebeg,dateend]));
      end;
   'perm':
@@ -840,6 +854,14 @@ begin
      begin
       push_irc_msg('@'+user+' !vip [time,settime,info,perm,tmp,update]');
      end;
+ end;
+
+ except
+  on E:Exception do
+  begin
+   push_irc_msg(E.Message);
+   DumpExceptionCallStack(E);
+  end;
  end;
 end;
 
