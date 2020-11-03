@@ -3007,6 +3007,14 @@ begin
   begin
    Node.Push(TLoadInt64_Func,@vor_rpg.kick.out_time);
   end;
+  'in_msg':
+  begin
+   Node.Push(TLoadStr_Func,@vor_rpg.kick.in_msg);
+  end;
+  'out_msg':
+  begin
+   Node.Push(TLoadStr_Func,@vor_rpg.kick.out_msg);
+  end;
   'not_vor':
   begin
    Node.Push(TLoadList_Func,@vor_rpg.kick.not_vor);

@@ -134,6 +134,8 @@ var
 
    kick:record
     Enable:Boolean;
+    in_msg:RawByteString;
+    out_msg:RawByteString;
     in_time :Int64;
     out_time:Int64;
     PERC:Byte;
@@ -1221,11 +1223,45 @@ begin
  Print;
 end;
 
+function GetLongStrTime(mn:Int64):RawByteString;
+var
+ hr,dy:Int64;
+begin
+ Result:='';
+ if (mn<0) then
+ begin
+  Result:='-';
+  mn:=abs(mn);
+ end;
+ hr:=mn div 60;
+ dy:=hr div 24;
+ if (dy<>0) then
+ begin
+  if (hr<>0) then
+  begin
+   mn:=mn-(hr*60);
+   hr:=hr-(dy*60);
+   Result:=Result+IntToStr(dy)+'д '+IntToStr(hr)+'ч '+IntToStr(mn)+'м';
+  end else
+  begin
+   Result:=Result+IntToStr(dy)+'д '+IntToStr(mn)+'м';
+  end;
+ end else
+ if (hr<>0) then
+ begin
+  mn:=mn-(hr*60);
+  Result:=Result+IntToStr(hr)+'ч '+IntToStr(mn)+'м';
+ end else
+ begin
+  Result:=Result+IntToStr(mn)+'м';
+ end;
+end;
+
 function TDbcGetUserInfo.Get_debufs:RawByteString;
 Var
  instance,item:TJson;
  i,C:SizeUint;
- now,time,hr,id:Int64;
+ now,time,id:Int64;
  debuf:Tdebuf;
 begin
  Result:='';
@@ -1249,15 +1285,7 @@ begin
     begin
      if (Result<>'') then Result:=Result+', ';
      time:=time div 60;
-     hr:=time div 60;
-     if (hr<>0) then
-     begin
-      time:=time-(hr*60);
-      Result:=Result+debuf.text+'('+IntToStr(hr)+'ч '+IntToStr(time)+'мин)';
-     end else
-     begin
-      Result:=Result+debuf.text+'('+IntToStr(time)+'мин)';
-     end;
+     Result:=Result+debuf.text+'('+GetLongStrTime(time)+')';
     end;
    end;
   end;
@@ -1387,11 +1415,19 @@ begin
  time:=data1.Path['kick._in'].AsInt(0);
  if (time<>0) and ((time+vor_rpg.kick.in_time)>Now) then
  begin
+  time:=(time+vor_rpg.kick.in_time)-Now;
+  time:=time div 60;
+  push_irc_msg(Format(vor_rpg.kick.in_msg,[user1,GetLongStrTime(time)]));
   OnUnlock(nil);
   Exit;
  end;
  data1.Values['kick._in']:=Now;
 
+ if (user1=user2) then
+ begin
+  data2.Free;
+  data2:=data1;
+ end else
  if not data2.Path['points'].isAssigned then
  begin
   //not found in base
@@ -1407,6 +1443,9 @@ begin
  time:=data2.Path['kick._out'].AsInt(0);
  if (time<>0) and ((time+vor_rpg.kick.out_time)>Now) then
  begin
+  time:=(time+vor_rpg.kick.out_time)-Now;
+  time:=time div 60;
+  push_irc_msg(Format(vor_rpg.kick.out_msg,[user2,GetLongStrTime(time)]));
   OnUnlock(nil);
   Exit;
  end;
@@ -1443,7 +1482,14 @@ begin
   try_debuf('',user1,data1);
  end;
 
- SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
+ if (user1=user2) then
+ begin
+  data2:=Default(TJson);
+  SetDBRpgUser1(user1,data1,@OnUnlock);
+ end else
+ begin
+  SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
+ end;
 
 end;
 
@@ -1454,8 +1500,6 @@ Var
  FKickScript:TKickScript;
 begin
  src_user:=Extract_nick(msg);
-
- if src_user=dst_user then Exit;
 
  FKickScript:=TKickScript.Create;
  FKickScript.user1:=dst_user;
