@@ -238,7 +238,8 @@ type
 
  Tws_pub=class(TWebsocketData)
   reconnect:Boolean;
-  msg_timer:Ptimer;
+  ping_timer:Ptimer;
+  pong_timer:Ptimer;
   oAuth,chat_id:RawByteString;
   nonce:RawByteString;
   msg_buf:TMemoryStream;
@@ -674,6 +675,7 @@ begin
   replyConnect_irc(ws_irc.login,ws_irc.oAuth,ws_irc.chat,true);
  end;
  evtimer_del(ws_irc_rt);
+ ws_irc_rt:=nil;
 end;
 
 function Tws_irc.session_reconnect(sec:SizeUInt):Boolean;
@@ -1343,6 +1345,7 @@ begin
   replyConnect_pub(ws_pub.oAuth,ws_pub.chat_id,true);
  end;
  evtimer_del(ws_pub_rt);
+ ws_pub_rt:=nil;
 end;
 
 function Tws_pub.session_reconnect(sec:SizeUInt):Boolean;
@@ -1463,7 +1466,8 @@ begin
             fpWebsocket_session_submit_text(session,PAnsiChar(TW_PONG),Length(TW_PONG));
            end;
     'PONG':begin
-            //pong
+            evtimer_del(ws_pub.pong_timer);
+            ws_pub.pong_timer:=nil;
            end;
     'RESPONSE':if ws_pub.nonce=msg1.Path['nonce'].AsStr then
                begin
@@ -1524,19 +1528,47 @@ begin
 end;
 
 const
- ping_kd=4*60*1000000;
+ _ping_kd=4*60*1000000;
+ _ping_jt=30*1000000;
+ _pong_kd=10*1000000;
+
+function ping_kd:Int64;
+var
+ Context:TMTRandomContext;
+begin
+ Context:=Default(TMTRandomContext);
+ RandomInit(Context);
+ Result:=_ping_kd+Random(Context,_ping_jt);
+end;
+
+Procedure _pong_pub(ev:Ptimer;arg:pointer);
+var
+ ws_pub:Tws_pub;
+begin
+ Pointer(ws_pub):=arg;
+ if Assigned(ws_pub) then
+ begin
+  ws_pub.reconnect:=true;
+  bufferevent_openssl_shutdown(ws_pub.bev);
+ end;
+end;
 
 Procedure _ping_pub(ev:Ptimer;arg:pointer);
 var
  ws_session:PfpWebsocket_session;
  ws_pub:Tws_pub;
 begin
- ws_session:=arg;
+ Pointer(ws_pub):=arg;
+ ws_session:=ws_pub.ws_session;
+
  fpWebsocket_session_submit_text(ws_session,PAnsiChar(TW_PING),Length(TW_PING));
  evtimer_add(ev,ping_kd);
 
- Pointer(ws_pub):=fpWebsocket_session_get_user_data(arg);
  ws_pub.session_send;
+
+ evtimer_reuse(ws_pub.pong_timer,@pool,@_pong_pub,arg);
+ evtimer_add  (ws_pub.pong_timer,_pong_kd);
+
 end;
 
 function _gen_nonce:RawByteString;
@@ -1575,8 +1607,8 @@ begin
 
  fpWebsocket_session_submit_text(ws_session,PAnsiChar(TW_PING),Length(TW_PING));
 
- msg_timer:=evtimer_new(@pool,@_ping_pub,ws_session);
- evtimer_add(msg_timer,ping_kd);
+ ping_timer:=evtimer_new(@pool,@_ping_pub,Pointer(Self));
+ evtimer_add(ping_timer,ping_kd);
 
  nonce:=_gen_nonce;
 
@@ -1663,8 +1695,10 @@ begin
  oAuth  :='';
  chat_id:='';
  nonce  :='';
- evtimer_del(msg_timer);
- msg_timer:=nil;
+ evtimer_del(ping_timer);
+ evtimer_del(pong_timer);
+ ping_timer:=nil;
+ pong_timer:=nil;
  FreeAndNil(msg_buf);
 end;
 
