@@ -1349,6 +1349,10 @@ begin
  cmd:=Trim(FetchAny(param));
 
  if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+  if LowerCase(cmd)='!reconnect' then
+   reply_irc_reconnect;
+
+ if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
   FrmVipParam.vip_time_cmd(user,cmd,param);
 
  if (sub_mod.Enable) then

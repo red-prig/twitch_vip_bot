@@ -60,6 +60,7 @@ type
 procedure reply_irc_Connect(const login,oAuth,chat:RawByteString);
 procedure reply_irc_Disconnect;
 procedure reply_irc_msg(const msg:RawByteString);
+procedure reply_irc_reconnect;
 
 implementation
 
@@ -688,6 +689,7 @@ end;
 
 procedure Tws_irc.Clear;
 begin
+ inherited;
  login:='';
  oAuth:='';
  chat:='';
@@ -1378,6 +1380,13 @@ begin
      end;
      FreeMem(param2);
     end;
+  3:begin
+     if Assigned(ws_pub) then
+     begin
+      ws_pub.reconnect:=true;
+      bufferevent_openssl_shutdown(ws_pub.bev);
+     end;
+    end;
  end;
 end;
 
@@ -1400,6 +1409,11 @@ end;
 procedure reply_irc_msg(const msg:RawByteString);
 begin
  evpool_post(@pool,@_irc_Connect_post,2,CopyPchar(PAnsiChar(msg),Length(msg)));
+end;
+
+procedure reply_irc_reconnect;
+begin
+ evpool_post(@pool,@_irc_Connect_post,3,nil);
 end;
 
 Const
@@ -1443,7 +1457,7 @@ begin
     'RECONNECT':begin
                  Log(irc_log,1,['RECONNECT']);
                  ws_pub.reconnect:=true;
-                 bufferevent_shutdown(ws_pub.bev,2);
+                 bufferevent_openssl_shutdown(ws_pub.bev);
                 end;
     'PING':begin
             fpWebsocket_session_submit_text(session,PAnsiChar(TW_PONG),Length(TW_PONG));
@@ -1645,6 +1659,7 @@ balance\":{\"user_id\":\"436730045\",\"channel_id\":\"54742538\",\"balance\":872
 
 procedure Tws_pub.Clear;
 begin
+ inherited;
  oAuth  :='';
  chat_id:='';
  nonce  :='';
