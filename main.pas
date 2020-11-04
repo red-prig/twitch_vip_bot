@@ -113,6 +113,7 @@ type
     procedure SetViewFlag(f:byte;b:Boolean);
     function  GetViewFlag(f:byte):Boolean;
     procedure FormCreate(Sender: TObject);
+    procedure OnEndStream(Sender:TObject);
     procedure LoadXML;
   private
 
@@ -1988,13 +1989,16 @@ begin
  Result:=view_mask and f<>0;
 end;
 
-//https://docs.microsoft.com/en-us/windows/win32/fileio/volume-management-functions
 procedure TFrmMain.FormCreate(Sender: TObject);
 Var
  Btn,Tmp:TButton;
  Item:TMenuItem;
  D:RawByteString;
  FDbcScript:TDbcStatementScript;
+
+ ClientData:THttpClient;
+ HttpStream:THttpStream2Mem;
+
 begin
 
  RCT:=Default(TMTRandomContext);
@@ -2395,6 +2399,38 @@ begin
  FDbcScript.Start;
  FDbcScript.Release;
 
+ ClientData:=nil;
+ HttpStream:=THttpStream2Mem.Create;
+
+ HttpStream.FOnEndStream:=@OnEndStream;
+
+ HttpStream.AddHeader('User-Agent','Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:82.0) Gecko/20100101 Firefox/82.0');
+ HttpStream.AddHeader('Accept','text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
+ HttpStream.AddHeader('Accept-Language','ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3');
+ HttpStream.AddHeader('Upgrade-Insecure-Requests','1');
+ HttpStream.AddHeader('Pragma','no-cache');
+ HttpStream.AddHeader('Cache-Control','no-cache');
+
+ //HttpStream.SetUrl('https://127.0.0.1');
+ //replyConnect(ClientData,'https://127.0.0.1');
+
+ HttpStream.SetUrl('https://github.com/red-prig/Dish2Macro/releases/');
+ replyConnect(ClientData,'https://github.com/red-prig/Dish2Macro/releases/');
+ ClientData.submit(HttpStream)
+
+
+end;
+
+procedure TFrmMain.OnEndStream(Sender:TObject);
+var
+ ClientData:THttpClient;
+ HttpStream:THttpStream2Mem;
+begin
+ HttpStream:=THttpStream2Mem(Sender);
+ ClientData:=HttpStream.FClientData;
+ TMemoryStream(HttpStream.FRecvs).SaveToFile('test.txt');
+ ClientData.Free;
+ HttpStream.Free;
 end;
 
 procedure SetDBParam(Const fname,fvalue:RawByteString);
