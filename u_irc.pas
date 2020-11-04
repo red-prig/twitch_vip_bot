@@ -17,60 +17,45 @@ uses
  evpool,bufferevent_openssl,openssl;
 
 type
- THttpClient=class;
-
- THttpStream=class
-  FClientData:THttpClient;
-  Method,Host,Path:RawByteString;
-  headers:array of RawByteString;
+ phttp2_stream_data=^http2_stream_data;
+ http2_stream_data=record
+  request_path:PChar;
   stream_id:int32;
-  FSends,FRecvs:TStream;
-  FOnEndStream:TNotifyEvent;
-  Constructor Create;
-  Procedure SetUrl(const url:RawByteString);
-  Procedure AddHeader(Const name,value:RawByteString);
-  procedure on_begin_data; virtual;
-  procedure on_begin_headers(cat:Tnghttp2_headers_category); virtual;
-  procedure on_headers(Const name,value:RawByteString;cat:Tnghttp2_headers_category); virtual;
-  procedure on_end_headers; virtual;
-  procedure on_end_stream; virtual;
+  FStream:TStream;
  end;
 
-type
- THttpStream2Mem=class(THttpStream)
-  Constructor Create;
-  Destructor Destroy; override;
- end;
-
- THttpClient=class
+ TClientData=class
   //private
    bev:Pbufferevent;
    session:pnghttp2_session;
    http2:Boolean;
-   FQueue:TFPList;
+   Method,Host,Path:RawByteString;
+   headers:array of RawByteString;
+   Sends,Recvs:TStream;
   //public
   Constructor Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname:PAnsiChar;port:Word);
 
   Destructor Destroy; override;
 
-  function  get_stream_user_data(stream_id:PtrUInt):THttpStream;
-  procedure set_stream_user_data(stream_id:PtrUInt;stream_data:THttpStream);
-  procedure delete_stream_data(stream_data:THttpStream); virtual;
+  function  get_stream_user_data(stream_id:PtrUInt):phttp2_stream_data;
+  procedure set_stream_user_data(stream_id:PtrUInt;stream_data:phttp2_stream_data);
+  function  create_stream_data(stream_id:int32):Phttp2_stream_data; virtual;
+  procedure delete_stream_data(stream_data:Phttp2_stream_data); virtual;
 
   function  stream_get_state(stream_id:PtrUInt):Tnghttp2_stream_proto_state;
 
   Procedure ALPN;
   procedure NewSession1;
   procedure NewSession2;
-  function  session_connect:integer; virtual;
+  function  session_connect:integer;
   function  session_send:integer;
   function  session_recv:integer;
   procedure session_shutdown(how:Longint);
-  procedure submit_request(stream_data:THttpStream;nva:Pnghttp2_nv;nvlen:size_t);
-  procedure submit(stream_data:THttpStream);
+  procedure submit_request(nva:Pnghttp2_nv;nvlen:size_t;S:TStream);
+  procedure submit_path;
+  procedure on_headers(stream_data:phttp2_stream_data;Const name,value:RawByteString); virtual;
+  procedure on_end_stream(stream_data:phttp2_stream_data); virtual;
  end;
-
-procedure replyConnect(var ClientData:THttpClient;Const Path:RawByteString);
 
 procedure reply_irc_Connect(const login,oAuth,chat:RawByteString);
 procedure reply_irc_Disconnect;
@@ -86,8 +71,7 @@ type
  irc_log=class(app_logic);
 
 var
- wss_ctx:PSSL_CTX;
- https_ctx:PSSL_CTX;
+ app_ctx:PSSL_CTX;
  msg_send_buf:Pevbuffer;
 
  http1_callbacks,http2_callbacks:pnghttp2_session_callbacks;
@@ -100,8 +84,7 @@ Const
 
 Const
  Protos_NPN:string=#8'http/1.1';
- Protos_ALPN1:string=#8'http/1.1'{#2'h2'};
- Protos_ALPN2:string=#8'http/1.1'#2'h2';
+ Protos_ALPN:string=#8'http/1.1'{#2'h2'};
 
 Function GetStr(data:Pchar;size:size_t):String; inline;
 begin
@@ -186,7 +169,7 @@ begin
  Exit(SSL_TLSEXT_ERR_OK);
 end;
 
-Function create_ssl_ctx(support_http2:Boolean):PSSL_CTX;
+Function create_ssl_ctx:PSSL_CTX;
 Var
  M:PSSL_METHOD;
 begin
@@ -207,10 +190,7 @@ begin
  SSL_CTX_set_next_proto_select_cb(Result,Tnext_proto_select_cb(@alpn_select_proto_cb),nil);
  SSL_CTX_set_alpn_select_cb(Result,Tnext_proto_select_cb(@alpn_select_proto_cb),nil);
 
- Case support_http2 of
-  False:SSL_CTX_set_alpn_protos(Result,PByte(PChar(Protos_ALPN1)),Length(Protos_ALPN1));
-  True :SSL_CTX_set_alpn_protos(Result,PByte(PChar(Protos_ALPN2)),Length(Protos_ALPN2));
- end;
+ SSL_CTX_set_alpn_protos(Result,PByte(PChar(Protos_ALPN)),Length(Protos_ALPN));
 
  SSL_CTX_set_options(Result,
                      SSL_OP_ALL or
@@ -634,8 +614,8 @@ begin
         end;
   'wss':begin
          if port=0 then port:=443;
-         if wss_ctx=nil then wss_ctx:=create_ssl_ctx(false);
-         ctx:=wss_ctx;
+         if app_ctx=nil then app_ctx:=create_ssl_ctx;
+         ctx:=app_ctx;
         end;
  end;
  Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
@@ -1332,8 +1312,8 @@ begin
         end;
   'wss':begin
          if port=0 then port:=443;
-         if wss_ctx=nil then wss_ctx:=create_ssl_ctx(false);
-         ctx:=wss_ctx;
+         if app_ctx=nil then app_ctx:=create_ssl_ctx;
+         ctx:=app_ctx;
         end;
  end;
  Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
@@ -1731,7 +1711,7 @@ end;
 
  Procedure client_eventcb(bev:Pbufferevent;events:SizeUInt;ctx:pointer); forward;
 
- Constructor THttpClient.Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname:PAnsiChar;port:Word);
+ Constructor TClientData.Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname:PAnsiChar;port:Word);
  Var
   FSSL:PSSL;
  begin
@@ -1764,10 +1744,12 @@ end;
   end;
  end;
 
- Destructor THttpClient.Destroy;
+ Destructor TClientData.Destroy;
  Var
   FSSL:PSSL;
  begin
+
+  FreeAndNil(Recvs);
 
   FSSL:=bufferevent_openssl_get_ssl(bev);
 
@@ -1787,22 +1769,21 @@ end;
    False:fphttp1_session_del(session);
   end;
   session:=nil;
-  FreeAndNil(FQueue);
   inherited;
  end;
 
- function THttpClient.get_stream_user_data(stream_id:PtrUInt):THttpStream;
+ function TClientData.get_stream_user_data(stream_id:PtrUInt):phttp2_stream_data;
  begin
   if http2 then
   begin
-   Pointer(Result):=nghttp2_session_get_stream_user_data(session,stream_id);
+   Result:=nghttp2_session_get_stream_user_data(session,stream_id);
   end else
   begin
-   Pointer(Result):=fphttp1_session_get_stream_user_data(session,stream_id);
+   Result:=fphttp1_session_get_stream_user_data(session,stream_id);
   end;
  end;
 
- procedure THttpClient.set_stream_user_data(stream_id:PtrUInt;stream_data:THttpStream);
+ procedure TClientData.set_stream_user_data(stream_id:PtrUInt;stream_data:phttp2_stream_data);
  begin
   if http2 then
   begin
@@ -1813,12 +1794,20 @@ end;
   end;
  end;
 
- procedure THttpClient.delete_stream_data(stream_data:THttpStream);
+ function TClientData.create_stream_data(stream_id:int32):Phttp2_stream_data;
  begin
-  stream_data.Free;
+  Result:=AllocMem(sizeof(http2_stream_data));
+  Result^.stream_id:=stream_id;
  end;
 
- function THttpClient.stream_get_state(stream_id:PtrUInt):Tnghttp2_stream_proto_state;
+ procedure TClientData.delete_stream_data(stream_data:Phttp2_stream_data);
+ begin
+  FreeMem(stream_data^.request_path);
+  FreeAndNil(stream_data^.FStream);
+  FreeMem(stream_data);
+ end;
+
+ function TClientData.stream_get_state(stream_id:PtrUInt):Tnghttp2_stream_proto_state;
  begin
   if http2 then
   begin
@@ -1829,7 +1818,7 @@ end;
   end;
  end;
 
- Procedure THttpClient.ALPN;
+ Procedure TClientData.ALPN;
  Var
   FSSL:PSSL;
   _alpn:Pointer;
@@ -1857,7 +1846,7 @@ end;
   end;
  end;
 
- function THttpClient.session_connect:integer;
+ function TClientData.session_connect:integer;
  Var
   val:integer;
   fs:THandle;
@@ -1873,31 +1862,19 @@ end;
    true :NewSession2;
    false:NewSession1;
   end;
-
-  if Assigned(FQueue) then
-   While (FQueue.Count<>0) do
-   begin
-    submit(THttpStream(FQueue.Items[FQueue.Count-1]));
-    FQueue.Delete(FQueue.Count-1);
-   end;
-  FreeAndNil(FQueue);
-
-  Result:=session_send;
+  submit_path;
+  session_recv;
+  session_send;
+  //bufferevent_close(bev:Pbufferevent)
  end;
 
- procedure THttpClient.NewSession1;
+ procedure TClientData.NewSession1;
  Var
   iv:Tnghttp2_settings_entry;
   hdrs:array[0..0] of Tnghttp2_nv;
  begin
   fphttp1_session_client_new(session, http1_callbacks, Pointer(self));
   iv.settings_id:=NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS;
-  iv.value:=100;
-  if fphttp1_submit_settings(session,NGHTTP2_FLAG_NONE,@iv,1)<>0 then
-  begin
-   Log(irc_log,1,'error nghttp2_submit_settings');
-  end;
-  iv.settings_id:=NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE;
   iv.value:=100;
   if fphttp1_submit_settings(session,NGHTTP2_FLAG_NONE,@iv,1)<>0 then
   begin
@@ -1913,7 +1890,7 @@ end;
   fphttp1_submit_headers(session,0,0,nil,@hdrs,Length(hdrs),nil);
  end;
 
- procedure THttpClient.NewSession2;
+ procedure TClientData.NewSession2;
  Var
   iv:Tnghttp2_settings_entry;
  begin
@@ -1926,35 +1903,15 @@ end;
   end;
  end;
 
- function read_callback(session: pnghttp2_session;
-     stream_id: int32; buf: puint8; length: size_t;
-     data_flags: puint32; source: pnghttp2_data_source; user_data: Pointer): ssize_t; cdecl;
- begin
-  if not Assigned(source^.ptr) then
-  begin
-   Result:=0;
-   data_flags^:=data_flags^ or NGHTTP2_DATA_FLAG_EOF;
-  end else
-  begin
-   Result:=TStream(source^.ptr).Read(buf^,length);
-   if Result<=0 then
-   begin
-    data_flags^:=data_flags^ or NGHTTP2_DATA_FLAG_EOF;
-   end;
-  end;
- end;
-
- procedure THttpClient.submit_request(stream_data:THttpStream;nva:Pnghttp2_nv;nvlen:size_t);
+ procedure TClientData.submit_request(nva:Pnghttp2_nv;nvlen:size_t;S:TStream);
  Var
   data_prd:Tnghttp2_data_provider;
   m:integer;
  begin
-  if not Assigned(stream_data) then Exit;
-
-  if Assigned(stream_data.FSends) then
+  if Assigned(S) then
   begin
-   data_prd.source.ptr:=Pointer(stream_data.FSends);
-   data_prd.read_callback:=@read_callback;
+   data_prd.source.ptr:=Pointer(S);
+   //data_prd.read_callback:=@read_callback;
   end else
   begin
    data_prd:=Default(Tnghttp2_data_provider);
@@ -1962,88 +1919,54 @@ end;
 
   if http2 then
   begin
-   m:=nghttp2_submit_request(session,nil,nva,nvlen,@data_prd,Pointer(stream_data));
+   m:=nghttp2_submit_request(session,nil,nva,nvlen,@data_prd,nil);
   end else
   begin
-   m:=fphttp1_submit_request(session,nil,nva,nvlen,@data_prd,Pointer(stream_data));
+   m:=fphttp1_submit_request(session,nil,nva,nvlen,@data_prd,nil);
   end;
 
   if m<0 then
   begin
    Log(irc_log,1,['error nghttp2_submit_request',m]);
-  end else
-  begin
-   stream_data.stream_id:=m;
   end;
  end;
 
- procedure THttpClient.submit(stream_data:THttpStream);
+ procedure TClientData.submit_path;
  const
   M_scheme:array[boolean] of PChar=(Scheme_http,Scheme_https);
  Var
   i,ext_len,hdr_len:SizeUInt;
   hdrs:Pnghttp2_nv;
  begin
-  if not Assigned(stream_data) then Exit;
-
-  stream_data.FClientData:=Self;
-
-  if session=nil then
-  begin
-   if not Assigned(FQueue) then
-   begin
-    FQueue:=TFPList.Create;
-   end;
-   FQueue.Add(stream_data);
-   Exit;
-  end;
-
-  ext_len:=Length(stream_data.headers) div 2;
+  ext_len:=Length(headers) div 2;
   hdr_len:=ext_len+4;
 
   hdrs:=AllocMem(SizeOf(Tnghttp2_nv)*hdr_len);
 
-  hdrs[0]:=make_nv_nocopy_name(NGHTTP2_method,PChar(stream_data.Method));
-  hdrs[1]:=make_nv_nocopy(NGHTTP2_scheme,M_scheme[bufferevent_openssl_get_ssl(bev)<>nil]);
+  hdrs[0]:=make_nv_nocopy_name(NGHTTP2_method,PChar(Method));
+  hdrs[1]:=make_nv_nocopy(NGHTTP2_scheme,M_scheme[http2]);
 
-  hdrs[2]:=make_nv_nocopy_name(NGHTTP2_authority,PChar(stream_data.Host));
-  hdrs[3]:=make_nv_nocopy_name(NGHTTP2_path     ,PChar(stream_data.Path));
+  hdrs[2]:=make_nv_nocopy_name(NGHTTP2_authority,PChar(Host));
+  hdrs[3]:=make_nv_nocopy_name(NGHTTP2_path     ,PChar(Path));
 
   if ext_len>0 then
    For i:=0 to ext_len-1 do
    begin
-    hdrs[4+i]:=MAKE_NV(PChar(stream_data.headers[i*2]),PChar(stream_data.headers[i*2+1]));
+    hdrs[4+i]:=MAKE_NV(PChar(headers[i*2]),PChar(headers[i*2+1]));
    end;
 
-  submit_request(stream_data,hdrs,hdr_len);
-  FreeMem(hdrs);
-
-  session_send;
+  submit_request(hdrs,hdr_len,nil);
  end;
 
- procedure THttpStream.on_begin_data;
+ procedure TClientData.on_headers(stream_data:phttp2_stream_data;Const name,value:RawByteString);
  begin
  end;
 
- procedure THttpStream.on_begin_headers(cat:Tnghttp2_headers_category);
+ procedure TClientData.on_end_stream(stream_data:phttp2_stream_data);
  begin
  end;
 
- procedure THttpStream.on_headers(Const name,value:RawByteString;cat:Tnghttp2_headers_category);
- begin
- end;
-
- procedure THttpStream.on_end_headers;
- begin
- end;
-
- procedure THttpStream.on_end_stream;
- begin
-  if Assigned(FOnEndStream) then
-   FOnEndStream(Self);
- end;
-
- function THttpClient.session_send:integer;
+ function TClientData.session_send:integer;
  Var
   data_ptr:Puint8;
   output:Pevbuffer;
@@ -2082,7 +2005,7 @@ end;
   bufferevent_write(bev);
  end;
 
- function THttpClient.session_recv:integer;
+ function TClientData.session_recv:integer;
  Var
   datapos,datalen:sizeUInt;
   readlen:ssize_t;
@@ -2146,7 +2069,7 @@ end;
   Result:=session_send;
  end;
 
- procedure THttpClient.session_shutdown(how:Longint);
+ procedure TClientData.session_shutdown(how:Longint);
  begin
   if Assigned(bufferevent_openssl_get_ssl(bev)) then
   begin
@@ -2159,9 +2082,9 @@ end;
 
  Procedure client_eventcb(bev:Pbufferevent;events:SizeUInt;ctx:pointer);
  Var
-  ClientData:THttpClient;
+  ClientData:TClientData;
  begin
-  ClientData:=THttpClient(ctx);
+  ClientData:=TClientData(ctx);
   if ClientData=nil then Exit;
 
   if (events and (BEV_EVENT_EOF or BEV_EVENT_ERROR or BEV_EVENT_TIMEOUT))<>0 then
@@ -2203,43 +2126,58 @@ end;
  function on_frame_recv_callback(session: pnghttp2_session;
               frame:pnghttp2_frame; user_data: Pointer): Integer; cdecl;
  Var
-  ClientData:THttpClient;
-  stream_data:THttpStream;
+  ClientData:TClientData;
+  stream_data:phttp2_stream_data;
 
  begin
-  ClientData:=THttpClient(user_data);
 
-  //if frame^.hd.stream_id<>0 then
-  begin
-   if (frame^.hd.flags and NGHTTP2_FLAG_END_HEADERS)<>0 then
-   begin
-    Log(irc_log,0,['NGHTTP2_FLAG_END_HEADERS:',frame^.hd.stream_id]);
-    stream_data:=ClientData.get_stream_user_data(frame^.hd.stream_id);
-    if Assigned(stream_data) then
-     stream_data.on_end_headers;
-   end;
+  ClientData:=TClientData(user_data);
 
-   if (frame^.hd.flags and NGHTTP2_FLAG_END_STREAM)<>0 then
+  //print_flags('frame_f:',frame^.hd.flags);
+
+  case frame^.hd._type of
+   NGHTTP2_DATA   :;
+   NGHTTP2_HEADERS:
    begin
-    Log(irc_log,0,['NGHTTP2_FLAG_END_STREAM:',frame^.hd.stream_id]);
-    stream_data:=ClientData.get_stream_user_data(frame^.hd.stream_id);
-    if Assigned(stream_data) then
-     stream_data.on_end_stream;
+    //print_type('frame_recv:',frame^.hd._type);
+    //print_state('fr:',TClientData(user_data).stream_get_state(frame^.hd.stream_id));
    end;
   end;
 
-  Result:=0;
+
+  if (frame^.hd.flags and NGHTTP2_FLAG_END_HEADERS)<>0 then
+  begin
+   Log(irc_log,0,['NGHTTP2_FLAG_END_HEADERS:',frame^.hd.stream_id]);
+  end;
+
+  if (frame^.hd.flags and NGHTTP2_FLAG_END_STREAM)<>0 then
+  begin
+   Log(irc_log,0,['NGHTTP2_FLAG_END_STREAM:',frame^.hd.stream_id]);
+
+   stream_data:=ClientData.get_stream_user_data(frame^.hd.stream_id);
+   ClientData.on_end_stream(stream_data);
+
+   {stream_data:=SessionData.get_stream_user_data(frame^.hd.stream_id);
+   if stream_data=nil then exit(0);
+   Result:=on_request_recv(SessionData, stream_data);}
+  end;
+
+
+  exit(0);
  end;
 
  function on_stream_close_callback(session: pnghttp2_session;
    stream_id: int32; error_code: uint32; user_data: Pointer): Integer; cdecl;
  Var
-  ClientData:THttpClient;
-  stream_data:THttpStream;
+  ClientData:TClientData;
+  stream_data:phttp2_stream_data;
 
  begin
+
+   //print_state('sc:',TClientData(user_data).stream_get_state(stream_id));
+
   Log(irc_log,0,['stream_close:',stream_id,':',error_code]);
-  ClientData:=THttpClient(user_data);
+  ClientData:=TClientData(user_data);
 
   stream_data:=ClientData.get_stream_user_data(stream_id);
   ClientData.set_stream_user_data(stream_id,nil);
@@ -2255,23 +2193,52 @@ end;
    name: puint8; namelen: size_t; value: puint8; valuelen: size_t;
    flags: uint8; user_data: Pointer): Integer; cdecl;
  Var
-  ClientData:THttpClient;
-  stream_data:THttpStream;
+  ClientData:TClientData;
+  stream_data:phttp2_stream_data;
 
  begin
   Result:=0;
-  ClientData:=THttpClient(user_data);
+
+  //Writeln('on_header_callback');
+  ClientData:=TClientData(user_data);
 
   case frame^.hd._type of
    NGHTTP2_HEADERS:
    begin
+
+    {case frame^.headers.cat of
+     NGHTTP2_HCAT_REQUEST      :Writeln('headers.cat:HCAT_REQUEST      ');
+     NGHTTP2_HCAT_RESPONSE     :Writeln('headers.cat:HCAT_RESPONSE     ');
+     NGHTTP2_HCAT_PUSH_RESPONSE:Writeln('headers.cat:HCAT_PUSH_RESPONSE');
+     NGHTTP2_HCAT_HEADERS      :Writeln('headers.cat:HCAT_HEADERS      ');
+    end;}
+
+    //if (frame^.headers.cat<>NGHTTP2_HCAT_RESPONSE) then Exit;
+
     stream_data:=ClientData.get_stream_user_data(frame^.hd.stream_id);
 
-    Writeln(GetStr(Pointer(name),namelen),' ',GetStr(Pointer(value),valuelen));
+    //Writeln(GetStr(Pointer(name),namelen),' ',GetStr(Pointer(value),valuelen));
+
+    ClientData.on_headers(stream_data,GetStr(Pointer(name),namelen),GetStr(Pointer(value),valuelen));
 
     if (stream_data<>nil) then
     begin
-     stream_data.on_headers(GetStr(Pointer(name),namelen),GetStr(Pointer(value),valuelen),frame^.headers.cat);
+
+     Case LowerCase(GetStr(Pointer(name),namelen)) of
+      {NGHTTP2_method:Case GetStr(Pointer(value),valuelen) of
+                      'HEAD'   :stream_data^.request_type:=0;
+                      'GET'    :stream_data^.request_type:=1;
+                      'POST'   :stream_data^.request_type:=2;
+                      'CONNECT':stream_data^.request_type:=3;
+                      else
+                             stream_data^.request_type:=-1;
+                     end;}
+      NGHTTP2_path:if (stream_data^.request_path=nil) then
+                   begin
+                    //stream_data^.request_path:=CopyPChar(Pointer(value),valuelen);
+                   end;
+     end;
+
     end;
 
    end;
@@ -2286,21 +2253,30 @@ end;
   user_data:Pointer
   ):integer; cdecl;
  Var
-  ClientData:THttpClient;
-  stream_data:THttpStream;
+  ClientData:TClientData;
+  stream_data:phttp2_stream_data;
 
  begin
 
   Result:=0;
-  ClientData:=THttpClient(user_data);
+  ClientData:=TClientData(user_data);
 
-  stream_data:=ClientData.get_stream_user_data(frame^.hd.stream_id);
+  //Writeln('on_begin_headers_callback:',frame^.hd._type);
+  //print_type('begin_header:',frame^.hd._type);
 
-  if (stream_data<>nil) then
-   case frame^.hd._type of
-    NGHTTP2_DATA   :stream_data.on_begin_data;
-    NGHTTP2_HEADERS:stream_data.on_begin_headers(frame^.headers.cat);
-   end;
+
+  //print_state('state:',SessionData.stream_get_state(frame^.hd.stream_id));
+
+  //Writeln('type:',frame^.hd._type,' cat:',frame^.headers.cat);
+
+  if (frame^.hd._type<>NGHTTP2_HEADERS) or
+     (frame^.headers.cat<>NGHTTP2_HCAT_RESPONSE) then Exit(0);
+
+  stream_data:=ClientData.create_stream_data(frame^.hd.stream_id);
+
+  ClientData.set_stream_user_data(frame^.hd.stream_id,stream_data);
+
+  Log(irc_log,0,['create_stream:',frame^.hd.stream_id]);
 
  end;
 
@@ -2308,19 +2284,20 @@ end;
                flags:uint8; stream_id:int32; data:Puint8; len:size_t;
                user_data:pointer):integer;cdecl;
  Var
-  ClientData:THttpClient;
-  stream_data:THttpStream;
+  ClientData:TClientData;
  begin
   Result:=len;
 
-  ClientData:=THttpClient(user_data);
-  stream_data:=ClientData.get_stream_user_data(stream_id);
-
-  if Assigned(stream_data) then
-  if Assigned(stream_data.FRecvs) then
+  ClientData:=TClientData(user_data);
+  if Assigned(ClientData.Recvs) then
   begin
-   stream_data.FRecvs.Write(data^,len);
+   ClientData.Recvs.Write(data^,len);
   end;
+
+  //print_flags(IntToStr(len)+' data_f:',flags);
+  //Writeln('[DATA]:',len);
+  //Write(GetStr(PChar(data),len));
+  //if (flags and NGHTTP2_FLAG_END_STREAM)<>0 then Writeln;
  end;
 
  Procedure Init_Callbacks;
@@ -2362,77 +2339,53 @@ end;
 
  end;
 
-Constructor THttpStream.Create;
-begin
- inherited;
- Method:='GET';
-end;
-
-Procedure THttpStream.SetUrl(const url:RawByteString);
-var
- URI:TURI;
- q:RawByteString;
-begin
- URI:=parse_uri(url);
- Host:=URI.GetHost;
- Path:=URI.GetPath(true);
- if Path='' then Path:='/';
- q:=URI.getQuery(true);
- if (q<>'') then
- begin
-  Path:=Path+'?'+q;
- end;
-end;
-
-Procedure THttpStream.AddHeader(Const name,value:RawByteString);
-var
- i:SizeInt;
-begin
- i:=Length(headers);
- SetLength(headers,i+2);
- headers[i]:=name;
- headers[i+1]:=value;
-end;
-
-Constructor THttpStream2Mem.Create;
-begin
- inherited;
- FRecvs:=TMemoryStream.Create;
-end;
-
-Destructor  THttpStream2Mem.Destroy;
-begin
- FreeAndNil(FRecvs);
- inherited;
-end;
-
- procedure replyConnect(var ClientData:THttpClient;Const Path:RawByteString);
+ procedure replyConnect(var ClientData:TClientData;Const Method,Path:RawByteString);
  Var
   URI:TURI;
   ctx:PSSL_CTX;
   port:Word;
-
+  q:RawByteString;
  begin
   Init_Callbacks;
 
   URI:=parse_uri(Path);
-
-  if not Assigned(ClientData) then
-  begin
-   ctx:=nil;
-   port:=URI.GetPort;
-   Case LowerCase(URI.getProtocol()) of
-    '',
-    'http' :if port=0 then port:=80;
-    'https':begin
-             if port=0 then port:=443;
-             if https_ctx=nil then https_ctx:=create_ssl_ctx(true);
-             ctx:=https_ctx;
-            end;
-   end;
-   Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
-   ClientData:=THttpClient.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),port);
+  ctx:=nil;
+  port:=URI.GetPort;
+  Case LowerCase(URI.getProtocol()) of
+   '',
+   'http' :if port=0 then port:=80;
+   'https':begin
+            if port=0 then port:=443;
+            ctx:=app_ctx;
+           end;
   end;
+  Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
+
+   if not Assigned(ClientData) then
+   begin
+    ClientData:=TClientData.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),port);
+    ClientData.Method:=Method;
+    ClientData.Host:=URI.GetHost;
+    ClientData.Path:=URI.GetPath(true);
+    if ClientData.Path='' then ClientData.Path:='\';
+    q:=URI.getQuery(true);
+    if q<>'' then
+    begin
+     ClientData.Path:=ClientData.Path+'?'+URI.getQuery(true);
+    end;
+   end else
+   begin
+    ClientData.Method:=Method;
+    ClientData.Path:=URI.GetPath(true);
+    if ClientData.Path='' then ClientData.Path:='\';
+    q:=URI.getQuery(true);
+    if q<>'' then
+    begin
+     ClientData.Path:=ClientData.Path+'?'+URI.getQuery(true);
+    end;
+    ClientData.submit_path;
+    ClientData.session_send;
+   end;
 
  end;
 
