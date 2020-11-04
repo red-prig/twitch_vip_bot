@@ -25,6 +25,8 @@ uses
   ujson,
 
   xml_parse,
+  html_parse,
+  fpURI,
 
   TaskManager,DbcEngine,
   ZDbcIntfs,
@@ -113,6 +115,7 @@ type
     procedure SetViewFlag(f:byte;b:Boolean);
     function  GetViewFlag(f:byte):Boolean;
     procedure FormCreate(Sender: TObject);
+    procedure SendReleasesRequest;
     procedure OnEndStream(Sender:TObject);
     procedure LoadXML;
   private
@@ -1996,9 +1999,6 @@ Var
  D:RawByteString;
  FDbcScript:TDbcStatementScript;
 
- ClientData:THttpClient;
- HttpStream:THttpStream2Mem;
-
 begin
 
  RCT:=Default(TMTRandomContext);
@@ -2399,6 +2399,18 @@ begin
  FDbcScript.Start;
  FDbcScript.Release;
 
+ SendReleasesRequest;
+end;
+
+Const
+ releases_url='https://github.com/red-prig/twitch_vip_bot/releases';
+ current_version='1.3.1';
+
+procedure TFrmMain.SendReleasesRequest;
+var
+ ClientData:THttpClient;
+ HttpStream:THttpStream2Mem;
+begin
  ClientData:=nil;
  HttpStream:=THttpStream2Mem.Create;
 
@@ -2411,24 +2423,84 @@ begin
  HttpStream.AddHeader('Pragma','no-cache');
  HttpStream.AddHeader('Cache-Control','no-cache');
 
- //HttpStream.SetUrl('https://127.0.0.1');
- //replyConnect(ClientData,'https://127.0.0.1');
+ HttpStream.SetUrl(releases_url);
+ replyConnect(ClientData,releases_url);
+ ClientData.submit(HttpStream);
+end;
 
- HttpStream.SetUrl('https://github.com/red-prig/Dish2Macro/releases/');
- replyConnect(ClientData,'https://github.com/red-prig/Dish2Macro/releases/');
- ClientData.submit(HttpStream)
+type
+ THtmlLinkParser=packed class(THtmlAttrParser)
+  private
+   is_linka:Boolean;
+  protected
+  public
+   pattern,download_url:RawByteString;
+   Procedure OnAttr;                override;
+   Procedure OnElementName;         override;
+ end;
 
+Procedure THtmlLinkParser.OnAttr;
+const
+ pattern2='download';
+Var
+ url:RawByteString;
+begin
+ if is_linka then
+  Case RawByteString(N) of
+   'href' :begin
+            url:=GetUnescapeHTML(V,StrLen(V));
+            if (url<>'') then
+            begin
+             if Pos(pattern,url)<>0 then
+             if Pos(pattern2,url)<>0 then
+             begin
+              download_url:=url;
+              Abort;
+             end;
+            end;
+           end;
+  end;
+end;
 
+Procedure THtmlLinkParser.OnElementName;
+begin
+ Case RawByteString(N) of
+  'a' :is_linka:=True;
+  else is_linka:=False;
+ end;
 end;
 
 procedure TFrmMain.OnEndStream(Sender:TObject);
 var
  ClientData:THttpClient;
  HttpStream:THttpStream2Mem;
+ Parser:THtmlLinkParser;
+ M:TMemoryStream;
+ URI:TURI;
+ v,fname:RawByteString;
 begin
  HttpStream:=THttpStream2Mem(Sender);
  ClientData:=HttpStream.FClientData;
- TMemoryStream(HttpStream.FRecvs).SaveToFile('test.txt');
+
+ URI:=parse_uri(releases_url);
+ M:=TMemoryStream(HttpStream.FRecvs);
+ Parser:=THtmlLinkParser.Create;
+ Parser.pattern:=URI.GetPath;
+ Parser.Parse(M.Memory,M.Size);
+
+ if (Parser.download_url<>'') then
+ begin
+  v:=Parser.download_url;
+  Parser.download_url:=URI.getProtocol+'://'+URI.getAuthority+Parser.download_url;
+  Writeln(Parser.download_url);
+  fname:=ExtractFileName(v);
+  Writeln(fname);
+  v:=ExtractFileDir(v);
+  v:=ExtractFileName(v);
+  Writeln(v);
+ end;
+
+ Parser.Free;
  ClientData.Free;
  HttpStream.Free;
 end;
