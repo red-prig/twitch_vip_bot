@@ -1897,12 +1897,6 @@ end;
   begin
    Log(irc_log,1,'error nghttp2_submit_settings');
   end;
-  iv.settings_id:=NGHTTP2_SETTINGS_MAX_HEADER_LIST_SIZE;
-  iv.value:=100;
-  if fphttp1_submit_settings(session,NGHTTP2_FLAG_NONE,@iv,1)<>0 then
-  begin
-   Log(irc_log,1,'error nghttp2_submit_settings');
-  end;
   if Assigned(bufferevent_openssl_get_ssl(bev)) then
   begin
    hdrs[0]:=make_nv_nocopy(NGHTTP2_scheme,Scheme_https);
@@ -2267,7 +2261,7 @@ end;
    begin
     stream_data:=ClientData.get_stream_user_data(frame^.hd.stream_id);
 
-    Writeln(GetStr(Pointer(name),namelen),' ',GetStr(Pointer(value),valuelen));
+    //Writeln(GetStr(Pointer(name),namelen),' ',GetStr(Pointer(value),valuelen));
 
     if (stream_data<>nil) then
     begin
