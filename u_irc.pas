@@ -106,7 +106,7 @@ type
   procedure terminate;
  end;
 
-procedure replyConnect(var ClientData:THttpClient;Const Path:RawByteString);
+function replyConnect(var ClientData:THttpClient;Const Path:RawByteString):Boolean;
 
 procedure reply_irc_Connect(const login,oAuth,chat:RawByteString);
 procedure reply_irc_Disconnect;
