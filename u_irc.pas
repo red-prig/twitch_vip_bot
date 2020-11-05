@@ -33,6 +33,7 @@ type
   Procedure AddStdHdr;
   procedure on_begin_data; virtual;
   procedure on_begin_headers(cat:Longint); virtual;
+  procedure on_recv_data(data:pointer;len:size_t); virtual;
   procedure on_headers(Const name,value:RawByteString;cat:Longint); virtual;
   procedure on_end_headers; virtual;
   procedure on_end_stream; virtual;
@@ -44,7 +45,34 @@ type
   Destructor  Destroy; override;
  end;
 
+ TProgInfo=record
+  Load,Size,Speed:QWORD;
+ end;
+
+ TProgXCHG=object
+  private
+   type
+    PBlock=^TBlock;
+    TBlock=record
+     FTime:QWord;
+     Load,Size:QWORD;
+    end;
+   Var
+    FA,FB:TBlock;
+    PFA,PFB:PBlock;
+    FTime:QWord;
+    Prev:TProgInfo;
+  public
+   Procedure Clear;
+   Procedure Write(_Load,_Size:QWORD);
+   function  Read(Offset:QWORD):TProgInfo;
+ end;
+
  THttpStream2File=class(THttpStream)
+  FLen:QWORD;
+  Prog:TProgXCHG;
+  procedure   on_headers(Const name,value:RawByteString;cat:Longint); override;
+  procedure   on_recv_data(data:pointer;len:size_t); override;
   Constructor Create(const AFileName:string;Mode:Word); reintroduce;
   Destructor  Destroy; override;
  end;
@@ -2042,6 +2070,14 @@ end;
  begin
  end;
 
+ procedure THttpStream.on_recv_data(data:pointer;len:size_t);
+ begin
+  if Assigned(FRecvs) then
+  begin
+   FRecvs.Write(data^,len);
+  end;
+ end;
+
  procedure THttpStream.on_headers(Const name,value:RawByteString;cat:Tnghttp2_headers_category);
  begin
   case name of
@@ -2333,9 +2369,8 @@ end;
   stream_data:=ClientData.get_stream_user_data(stream_id);
 
   if Assigned(stream_data) then
-  if Assigned(stream_data.FRecvs) then
   begin
-   stream_data.FRecvs.Write(data^,len);
+   stream_data.on_recv_data(data,len);
   end;
  end;
 
@@ -2432,9 +2467,106 @@ begin
  inherited;
 end;
 
+Procedure TProgXCHG.Clear;
+begin
+ Self:=Default(TProgXCHG);
+ PFA:=@FA;
+ PFB:=@FB;
+end;
+
+Procedure TProgXCHG.Write(_Load,_Size:QWORD);
+Var
+ P:PBlock;
+begin
+ P:=System.InterLockedExchange(PFA,nil);
+ if P<>nil then
+ begin
+  P^.FTime:=GetTickCount64;
+  P^.Load:=_Load;
+  P^.Size:=_Size;
+  P:=System.InterLockedExchange(PFB,P);
+  if P<>nil then
+  begin
+   P:=System.InterLockedExchange(PFA,P);
+  end;
+ end;
+end;
+
+function  TProgXCHG.Read(Offset:QWORD):TProgInfo;
+Var
+ P:PBlock;
+ T:TBlock;
+ Q:QWORD;
+ N:QWORD;
+
+begin
+ P:=System.InterLockedExchange(PFB,nil);
+ if P<>nil then
+ begin
+  T:=P^;
+  P:=System.InterLockedExchange(PFB,P);
+  if P<>nil then
+  begin
+   P:=System.InterLockedExchange(PFA,P);
+  end;
+
+  if FTime=0 then
+  begin
+   prev.Speed:=0;
+  end else
+  begin
+   prev.Speed:=0;
+   Q:=T.FTime-FTime;
+   if T.Load<prev.Load then
+    N:=0
+   else
+    N:=T.Load-prev.Load;
+   if (Q>0) then
+   begin
+    prev.Speed:=N*1000 div Q;
+   end;
+  end;
+
+  FTime:=T.FTime;
+
+  prev.Load:=T.Load;
+  prev.Size:=T.Size;
+ end;
+
+ Result:=prev;
+
+ if offset>0 then
+ begin
+  if (Result.Size>0) then
+   Result.Size:=offset+Result.Size;
+  if (Result.Load>=0) then
+   Result.Load:=offset+Result.Load;
+ end;
+
+end;
+
+procedure THttpStream2File.on_headers(Const name,value:RawByteString;cat:Longint);
+begin
+ inherited;
+ case name of
+  'content-length':
+  begin
+   Flen:=StrToQWordDef(value,0);
+   Prog.Write(0,Flen);
+  end;
+ end;
+end;
+
+procedure THttpStream2File.on_recv_data(data:pointer;len:size_t);
+begin
+ inherited;
+ Prog.Write(FRecvs.Size,Flen);
+end;
+
 Constructor THttpStream2File.Create(const AFileName:string;Mode:Word);
 begin
  inherited Create;
+ Prog.Clear;
  FRecvs:=TFileStream.Create(AFileName,Mode);
 end;
 

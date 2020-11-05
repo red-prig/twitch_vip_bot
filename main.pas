@@ -7,6 +7,7 @@ unit main;
 interface
 
 uses
+  LCLIntf,
   INIFiles,
   evpool,
   Classes, SysUtils, StrUtils,DateUtils,
@@ -66,6 +67,8 @@ type
    Color:DWORD;
    PS:TPrivMsgStates;
   end;
+
+  { TFrmMain }
 
   TFrmMain = class(TForm)
     MIAbout: TMenuItem;
@@ -2500,13 +2503,24 @@ type
   len:SizeUint;
   data:record end;
   Procedure OnParent;
-  procedure OnEndDownload1(Sender:TObject);
-  procedure OnEndDownload2(Sender:TObject);
+ end;
+
+ PQNode_Notify=^TQNode_Notify;
+ TQNode_Notify=object(UAsyncQueue.TQNode)
+  FOnNotify:TNotifyEvent;
+  FSender:TObject;
+  Procedure OnParent;
  end;
 
  THttpStream2Location=class(THttpStream)
   location,fname:RawByteString;
   procedure on_headers(Const name,value:RawByteString;cat:Longint); override;
+ end;
+
+ TStatusInfo=class
+  url,
+  status,
+  fname:RawByteString
  end;
 
 procedure THttpStream2Location.on_headers(Const name,value:RawByteString;cat:Longint);
@@ -2515,6 +2529,42 @@ begin
  case name of
   'location':location:=value;
  end;
+end;
+
+type
+ TProgressBarForm=class(TCustomForm)
+  public
+   Bar:TProgressBar;
+   FClientData:THttpClient;
+   FHttpStream:THttpStream2File;
+   T:TTimer;
+   constructor CreateNew(AOwner: TComponent; Num: Integer = 0); override;
+   procedure   OnEndDownload1_node(Sender:TObject);
+   procedure   OnEndDownload1_main(Sender:TObject);
+   procedure   OnEndDownload2_node(Sender:TObject);
+   procedure   OnEndDownload2_main(Sender:TObject);
+   Procedure   RunTimer;
+   Procedure   StopTimer;
+   Procedure   FOnTimer(Sender:TObject);
+ end;
+
+constructor TProgressBarForm.CreateNew(AOwner: TComponent; Num: Integer = 0);
+begin
+ inherited;
+ BorderIcons:=[biSystemMenu];
+ BorderStyle:=bsNone;
+ Position:=poMainFormCenter;
+ FormStyle:=fsStayOnTop;
+ ShowInTaskBar:=stNever;
+ if Assigned(AOwner) and AOwner.InheritsFrom(TCustomForm) then
+ begin
+  Width:=TCustomForm(AOwner).Width;
+ end;
+ Height:=20;
+ Bar:=TProgressBar.Create(Self);
+ Bar.Align:=alClient;
+ Bar.Style:=pbstMarquee;
+ Bar.Parent:=Self;
 end;
 
 procedure TFrmMain.OnEndStream(Sender:TObject);
@@ -2539,7 +2589,7 @@ begin
  if (Parser.download_url<>'') then
  begin
   S:=URI.getProtocol+'://'+URI.getAuthority+Parser.download_url;
-  P:=AllocMem(SizeOf(TQNode_reward)+Length(S));
+  P:=AllocMem(SizeOf(TQNode_durl)+Length(S));
   P^.Parent:=@P^.OnParent;
   P^.len:=Length(S);
   Move(PAnsiChar(S)^,P^.data,Length(S));
@@ -2556,6 +2606,7 @@ var
  v,fname:RawByteString;
  ClientData:THttpClient;
  HttpStream:THttpStream2Location;
+ Form:TProgressBarForm;
 begin
  SetString(download_url,@data,len);
  FreeMem(@Self);
@@ -2566,7 +2617,7 @@ begin
  v:=ExtractFileDir(download_url);
  v:=ExtractFileName(v);
 
- //if CompareStr(v,current_version)>0 then
+ if CompareStr(v,current_version)>0 then
  begin
   if QuestionDlg('Найдена новая версия!',
                  'Загрузить обновление ('+v+')?',
@@ -2574,73 +2625,173 @@ begin
                  [mrYes,'Да',mrNo,'Нет'],
                  'Загрузить обновление?')=mrYes then
   begin
+   Form:=TProgressBarForm.CreateNew(FrmMain);
+   Form.Show;
+
    ClientData:=nil;
    HttpStream:=THttpStream2Location.Create;
    HttpStream.fname:=fname;
-   HttpStream.FOnEndStream:=@OnEndDownload1;
+   HttpStream.FOnEndStream:=@Form.OnEndDownload1_node;
    HttpStream.AddStdHdr;
    HttpStream.SetUrl(download_url);
    replyConnect(ClientData,download_url);
    ClientData.submit(HttpStream);
+
+   Form.FClientData:=ClientData;
   end;
  end;
 
 end;
 
-procedure TQNode_durl.OnEndDownload1(Sender:TObject);
-var
- download_url:RawByteString;
- status:RawByteString;
- fname:RawByteString;
- ClientData:THttpClient;
- HttpStream1:THttpStream2Location;
- HttpStream2:THttpStream2File;
+Procedure TQNode_Notify.OnParent;
 begin
- HttpStream1 :=THttpStream2Location(Sender);
- download_url:=HttpStream1.location;
- status      :=HttpStream1.status;
- fname       :=HttpStream1.fname;
- ClientData:=HttpStream1.FClientData;
- ClientData.terminate;
- ClientData:=nil;
- HttpStream1:=nil;
-
- if (status='302') and
-    (download_url<>'') then
- begin
-  try
-   HttpStream2:=THttpStream2File.Create(fname,fmCreate);
-  except
-   on E:Exception do
-   begin
-    ShowMessage('Ошибка, не удалось создать файл!');
-    Exit;
-   end;
-  end;
-  HttpStream2.FOnEndStream:=@OnEndDownload2;
-  HttpStream2.AddStdHdr;
-  HttpStream2.SetUrl(download_url);
-  replyConnect(ClientData,download_url);
-  ClientData.submit(HttpStream2);
- end else
- begin
-  ShowMessage('Ошибка, не удалось получить ссылку на файл!');
- end;
+ if Assigned(FOnNotify) then
+  FOnNotify(FSender);
+ FreeMem(@Self);
 end;
 
-procedure TQNode_durl.OnEndDownload2(Sender:TObject);
+procedure TProgressBarForm.OnEndDownload1_node(Sender:TObject);
 var
+ P:PQNode_Notify;
+ StatusInfo:TStatusInfo;
+ HttpStream:THttpStream2Location;
  ClientData:THttpClient;
- HttpStream:THttpStream2File;
- fname:RawByteString;
 begin
- HttpStream:=THttpStream2File(Sender);
- fname:=TFileStream(HttpStream.FRecvs).FileName;
+
+ HttpStream :=THttpStream2Location(Sender);
+ StatusInfo       :=TStatusInfo.Create;
+ StatusInfo.url   :=HttpStream.location;
+ StatusInfo.status:=HttpStream.status;
+ StatusInfo.fname :=HttpStream.fname;
  ClientData:=HttpStream.FClientData;
  ClientData.terminate;
  ClientData:=nil;
  HttpStream:=nil;
- Writeln(fname);
+
+ P:=AllocMem(SizeOf(TQNode_Notify));
+ P^.Parent:=@P^.OnParent;
+ P^.FOnNotify:=@OnEndDownload1_main;
+ P^.FSender:=StatusInfo;
+ SendMainQueue(P);
+end;
+
+procedure TProgressBarForm.OnEndDownload2_node(Sender:TObject);
+var
+ P:PQNode_Notify;
+ StatusInfo:TStatusInfo;
+ ClientData:THttpClient;
+ HttpStream:THttpStream2File;
+begin
+ HttpStream:=THttpStream2File(Sender);
+ StatusInfo       :=TStatusInfo.Create;
+ StatusInfo.status:=HttpStream.status;
+ StatusInfo.fname :=TFileStream(HttpStream.FRecvs).FileName;
+ FreeAndNil(HttpStream.FRecvs);
+ ClientData:=HttpStream.FClientData;
+ ClientData.terminate;
+ ClientData:=nil;
+ HttpStream:=nil;
+
+ P:=AllocMem(SizeOf(TQNode_Notify));
+ P^.Parent:=@P^.OnParent;
+ P^.FOnNotify:=@OnEndDownload2_main;
+ P^.FSender:=StatusInfo;
+ SendMainQueue(P);
+end;
+
+procedure TProgressBarForm.OnEndDownload1_main(Sender:TObject);
+var
+ StatusInfo:TStatusInfo;
+ ClientData:THttpClient;
+ HttpStream:THttpStream2File;
+begin
+ StatusInfo:=TStatusInfo(Sender);
+ ClientData:=nil;
+
+ Bar.Style:=pbstNormal;
+
+ if (StatusInfo.status='302') and
+    (StatusInfo.url<>'') then
+ begin
+  try
+   HttpStream:=THttpStream2File.Create(StatusInfo.fname,fmCreate);
+  except
+   on E:Exception do
+   begin
+    ShowMessage('Ошибка('+E.Message+'), не удалось создать файл!');
+    Release;
+    FreeAndNil(StatusInfo);
+    Exit;
+   end;
+  end;
+  HttpStream.FOnEndStream:=@OnEndDownload2_node;
+  HttpStream.AddStdHdr;
+  HttpStream.SetUrl(StatusInfo.url);
+  replyConnect(ClientData,StatusInfo.url);
+  ClientData.submit(HttpStream);
+
+  FClientData:=ClientData;
+  FHttpStream:=HttpStream;
+
+  RunTimer;
+ end else
+ begin
+  ShowMessage('Ошибка('+StatusInfo.status+'), не удалось получить ссылку на файл!');
+  Release;
+ end;
+
+ FreeAndNil(StatusInfo);
+end;
+
+procedure TProgressBarForm.OnEndDownload2_main(Sender:TObject);
+var
+ StatusInfo:TStatusInfo;
+begin
+ StatusInfo:=TStatusInfo(Sender);
+
+ StopTimer;
+
+ if (StatusInfo.status<>'200') then
+ begin
+  ShowMessage('Ошибка('+StatusInfo.status+'), не удалось загрузить файл!');
+  Release;
+  FreeAndNil(StatusInfo);
+  Exit;
+ end;
+
+ OpenDocument(StatusInfo.fname);
+
+ Halt;
+end;
+
+Procedure TProgressBarForm.RunTimer;
+begin
+ T:=TTimer.Create(Self);
+ T.Interval:=200;
+ T.OnTimer:=@FOnTimer;
+ T.Enabled:=True;
+end;
+
+Procedure TProgressBarForm.StopTimer;
+begin
+ if Assigned(T) then
+ begin
+  T.Enabled:=False;
+  FreeAndNil(T);
+ end;
+end;
+
+Procedure TProgressBarForm.FOnTimer(Sender:TObject);
+var
+ R:TProgInfo;
+begin
+ if Assigned(FHttpStream) then
+ begin
+  R:=FHttpStream.Prog.Read(0);
+  Bar.Min:=0;
+  Bar.Max:=R.Size-1;
+  Bar.Position:=R.Load;
+ end;
 end;
 
 procedure SetDBParam(Const fname,fvalue:RawByteString);
