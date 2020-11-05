@@ -1,7 +1,7 @@
 object FrmMain: TFrmMain
-  Left = 341
+  Left = 388
   Height = 437
-  Top = 239
+  Top = 101
   Width = 639
   Caption = 'Twitch vip bot'
   OnActivate = FormActivate

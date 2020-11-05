@@ -2535,6 +2535,7 @@ type
  TProgressBarForm=class(TCustomForm)
   public
    Bar:TProgressBar;
+   L:TLabel;
    FClientData:THttpClient;
    FHttpStream:THttpStream2File;
    T:TTimer;
@@ -2565,6 +2566,13 @@ begin
  Bar.Align:=alClient;
  Bar.Style:=pbstMarquee;
  Bar.Parent:=Self;
+ L:=TLabel.Create(Self);
+ L.Alignment:=taCenter;
+ L.Align:=alClient;
+ L.Font.Color:=0;
+ L.Font.Size:=12;
+ L.Caption:='Получение ссылки';
+ L.Parent:=Bar;
 end;
 
 procedure TFrmMain.OnEndStream(Sender:TObject);
@@ -2781,6 +2789,20 @@ begin
  end;
 end;
 
+function GetFloatSizeRus(i:SizeUInt):RawByteString;
+Const
+ CKB=1024;
+ CMB=1024*1024;
+ CGB=1024*1024*1024;
+begin
+ Case i of
+  0  ..CKB-1:Result:=IntToStr(i)+'Б';
+  CKB..CMB-1:Result:=FloatToStrF(i/CKB,ffFixed,0,2)+'Кб';
+  CMB..CGB-1:Result:=FloatToStrF(i/CMB,ffFixed,0,2)+'Мб';
+  else       Result:=FloatToStrF(i/CGB,ffFixed,0,2)+'Гб';
+ end;
+end;
+
 Procedure TProgressBarForm.FOnTimer(Sender:TObject);
 var
  R:TProgInfo;
@@ -2791,6 +2813,9 @@ begin
   Bar.Min:=0;
   Bar.Max:=R.Size-1;
   Bar.Position:=R.Load;
+  L.Caption:='Скачивание: '+GetFloatSizeRus(R.Load)
+            +'/'+GetFloatSizeRus(R.Size)
+            +' Скорость:'+GetFloatSizeRus(R.Speed)+'/сек';
  end;
 end;
 
