@@ -2451,7 +2451,11 @@ begin
  HttpStream.FOnEndStream:=@OnEndStream;
  HttpStream.AddStdHdr;
  HttpStream.SetUrl(releases_url);
- replyConnect(ClientData,releases_url);
+ if not replyConnect(ClientData,releases_url) then
+ begin
+  FreeAndNil(HttpStream);
+  Exit;
+ end;
  ClientData.submit(HttpStream);
 end;
 
@@ -2642,7 +2646,13 @@ begin
    HttpStream.FOnEndStream:=@Form.OnEndDownload1_node;
    HttpStream.AddStdHdr;
    HttpStream.SetUrl(download_url);
-   replyConnect(ClientData,download_url);
+   if not replyConnect(ClientData,download_url) then
+   begin
+    ShowMessage('Ошибка: хост не найден!');
+    FreeAndNil(HttpStream);
+    Form.Release;
+    Exit;
+   end;
    ClientData.submit(HttpStream);
 
    Form.FClientData:=ClientData;
@@ -2735,7 +2745,14 @@ begin
   HttpStream.FOnEndStream:=@OnEndDownload2_node;
   HttpStream.AddStdHdr;
   HttpStream.SetUrl(StatusInfo.url);
-  replyConnect(ClientData,StatusInfo.url);
+  if not replyConnect(ClientData,StatusInfo.url) then
+  begin
+   ShowMessage('Ошибка: хост не найден!');
+   Release;
+   FreeAndNil(HttpStream);
+   FreeAndNil(StatusInfo);
+   Exit;
+  end;
   ClientData.submit(HttpStream);
 
   FClientData:=ClientData;

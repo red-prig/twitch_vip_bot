@@ -1796,6 +1796,8 @@ end;
 
   if not bufferevent_socket_connect_hostname(bev,family,hostname,port) then
   begin
+   bufferevent_free(bev);
+   bev:=nil;
    Log(irc_log,1,'error:bufferevent_socket_connect_hostname');
   end;
  end;
@@ -2576,7 +2578,7 @@ begin
  inherited;
 end;
 
- procedure replyConnect(var ClientData:THttpClient;Const Path:RawByteString);
+ function replyConnect(var ClientData:THttpClient;Const Path:RawByteString):Boolean;
  Var
   URI:TURI;
   ctx:PSSL_CTX;
@@ -2602,6 +2604,12 @@ end;
    end;
    Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
    ClientData:=THttpClient.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),port);
+   Result:=(ClientData.bev<>nil);
+   if not Result then
+   begin
+    Log(irc_log,1,['HOST NOT FOUND:',URI.GetHost+':'+URI.GetPath,':',port]);
+    FreeAndNil(ClientData);
+   end;
   end;
 
  end;
