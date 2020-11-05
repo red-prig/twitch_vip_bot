@@ -23,15 +23,17 @@ type
   FClientData:THttpClient;
   Method,Host,Path:RawByteString;
   headers:array of RawByteString;
+  status:RawByteString;
   stream_id:int32;
   FSends,FRecvs:TStream;
   FOnEndStream:TNotifyEvent;
   Constructor Create;
   Procedure SetUrl(const url:RawByteString);
   Procedure AddHeader(Const name,value:RawByteString);
+  Procedure AddStdHdr;
   procedure on_begin_data; virtual;
-  procedure on_begin_headers(cat:Tnghttp2_headers_category); virtual;
-  procedure on_headers(Const name,value:RawByteString;cat:Tnghttp2_headers_category); virtual;
+  procedure on_begin_headers(cat:Longint); virtual;
+  procedure on_headers(Const name,value:RawByteString;cat:Longint); virtual;
   procedure on_end_headers; virtual;
   procedure on_end_stream; virtual;
  end;
@@ -39,7 +41,12 @@ type
 type
  THttpStream2Mem=class(THttpStream)
   Constructor Create;
-  Destructor Destroy; override;
+  Destructor  Destroy; override;
+ end;
+
+ THttpStream2File=class(THttpStream)
+  Constructor Create(const AFileName:string;Mode:Word); reintroduce;
+  Destructor  Destroy; override;
  end;
 
  THttpClient=class
@@ -68,6 +75,7 @@ type
   procedure session_shutdown(how:Longint);
   procedure submit_request(stream_data:THttpStream;nva:Pnghttp2_nv;nvlen:size_t);
   procedure submit(stream_data:THttpStream);
+  procedure terminate;
  end;
 
 procedure replyConnect(var ClientData:THttpClient;Const Path:RawByteString);
@@ -2015,6 +2023,17 @@ end;
   session_send;
  end;
 
+ procedure THttpClient.terminate;
+ begin
+  if http2 then
+  begin
+   nghttp2_session_terminate_session(session,0);
+  end else
+  begin
+   fphttp1_session_terminate_session(session,0);
+  end;
+ end;
+
  procedure THttpStream.on_begin_data;
  begin
  end;
@@ -2025,6 +2044,9 @@ end;
 
  procedure THttpStream.on_headers(Const name,value:RawByteString;cat:Tnghttp2_headers_category);
  begin
+  case name of
+   ':status':status:=value;
+  end;
  end;
 
  procedure THttpStream.on_end_headers;
@@ -2388,6 +2410,16 @@ begin
  headers[i+1]:=value;
 end;
 
+Procedure THttpStream.AddStdHdr;
+begin
+ AddHeader('User-Agent','Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:82.0) Gecko/20100101 Firefox/82.0');
+ AddHeader('Accept','text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
+ AddHeader('Accept-Language','ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3');
+ AddHeader('Upgrade-Insecure-Requests','1');
+ AddHeader('Pragma','no-cache');
+ AddHeader('Cache-Control','no-cache');
+end;
+
 Constructor THttpStream2Mem.Create;
 begin
  inherited;
@@ -2395,6 +2427,18 @@ begin
 end;
 
 Destructor  THttpStream2Mem.Destroy;
+begin
+ FreeAndNil(FRecvs);
+ inherited;
+end;
+
+Constructor THttpStream2File.Create(const AFileName:string;Mode:Word);
+begin
+ inherited Create;
+ FRecvs:=TFileStream.Create(AFileName,Mode);
+end;
+
+Destructor  THttpStream2File.Destroy;
 begin
  FreeAndNil(FRecvs);
  inherited;

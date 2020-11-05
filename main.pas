@@ -33,6 +33,10 @@ uses
   ZDbcSqLite,
   DbcScript;
 
+Const
+ releases_url='https://github.com/red-prig/twitch_vip_bot/releases';
+ current_version='1.3.1';
+
 type
 
   TRoomState=(
@@ -100,6 +104,7 @@ type
     procedure OnPopupClickStory(Sender:TObject);
     procedure OnPopupClickAutoEnter(Sender:TObject);
     procedure OnPopupClickUseTray(Sender:TObject);
+    procedure OnPopupClickCheckUpdate(Sender:TObject);
     procedure OnPopupClickVolParam(Sender:TObject);
     procedure OnPopupClickSubParam(Sender:TObject);
     procedure OnPopupClickVorRpgParam(Sender:TObject);
@@ -146,7 +151,8 @@ type
    Item_Subp,
    Item_Vips,
    Item_AutoEnter,
-   Item_UseTray:TMenuItem;
+   Item_UseTray,
+   Item_CheckUpdate:TMenuItem;
 
    EdtSend:TEdit;
 
@@ -1850,6 +1856,24 @@ begin
  end;
 end;
 
+procedure TFrmMain.OnPopupClickCheckUpdate(Sender:TObject);
+begin
+ Item_CheckUpdate.Checked:=not Item_CheckUpdate.Checked;
+ try
+  Case Item_CheckUpdate.Checked of
+   True :Config.WriteString('view','check_update','1');
+   False:Config.WriteString('view','check_update','0');
+  end;
+ except
+  on E:Exception do
+  begin
+   DumpExceptionCallStack(E);
+  end;
+ end;
+ if Item_CheckUpdate.Checked then
+  SendReleasesRequest;
+end;
+
 procedure TFrmMain.OnPopupClickVolParam(Sender:TObject);
 begin
  FrmVolParam.Open;
@@ -1994,12 +2018,12 @@ end;
 
 procedure TFrmMain.FormCreate(Sender: TObject);
 Var
- Btn,Tmp:TButton;
  Item:TMenuItem;
  D:RawByteString;
  FDbcScript:TDbcStatementScript;
 
 begin
+ Caption:=Caption+' '+current_version;
 
  RCT:=Default(TMTRandomContext);
  RandomInit(RCT);
@@ -2046,6 +2070,7 @@ begin
 
    FrmParam.InitCfg;
 
+   Config.WriteString('view','check_update','1');
    Config.WriteString('view','autologin','0');
    Config.WriteString('view','systray'  ,'1');
    Config.WriteString('view','mask'     ,IntToStr(view_mask));
@@ -2167,6 +2192,15 @@ begin
  Item.OnClick:=@OnExortClick;
  PopupCfg.Items.Add(Item);
 
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='-';
+ PopupCfg.Items.Add(Item);
+
+ Item_CheckUpdate:=TMenuItem.Create(PopupCfg);
+ Item_CheckUpdate.Caption:='Проверка обновлений';
+ Item_CheckUpdate.OnClick:=@OnPopupClickCheckUpdate;
+ PopupCfg.Items.Add(Item_CheckUpdate);
+
  Item_UseTray:=TMenuItem.Create(PopupCfg);
  Item_UseTray.Caption:='Сворачивать в трей';
  Item_UseTray.OnClick:=@OnPopupClickUseTray;
@@ -2204,6 +2238,7 @@ begin
  try
   Item_UseTray  .Checked:=Trim(Config.ReadString('view','systray'  ,'1'))='1';
   Item_AutoEnter.Checked:=Trim(Config.ReadString('view','autologin','0'))='1';
+  Item_CheckUpdate.Checked:=Trim(Config.ReadString('view','check_update','1'))='1';
  except
   on E:Exception do
   begin
@@ -2399,12 +2434,9 @@ begin
  FDbcScript.Start;
  FDbcScript.Release;
 
- SendReleasesRequest;
+ if Item_CheckUpdate.Checked then
+  SendReleasesRequest;
 end;
-
-Const
- releases_url='https://github.com/red-prig/twitch_vip_bot/releases';
- current_version='1.3.1';
 
 procedure TFrmMain.SendReleasesRequest;
 var
@@ -2413,16 +2445,8 @@ var
 begin
  ClientData:=nil;
  HttpStream:=THttpStream2Mem.Create;
-
  HttpStream.FOnEndStream:=@OnEndStream;
-
- HttpStream.AddHeader('User-Agent','Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:82.0) Gecko/20100101 Firefox/82.0');
- HttpStream.AddHeader('Accept','text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8');
- HttpStream.AddHeader('Accept-Language','ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3');
- HttpStream.AddHeader('Upgrade-Insecure-Requests','1');
- HttpStream.AddHeader('Pragma','no-cache');
- HttpStream.AddHeader('Cache-Control','no-cache');
-
+ HttpStream.AddStdHdr;
  HttpStream.SetUrl(releases_url);
  replyConnect(ClientData,releases_url);
  ClientData.submit(HttpStream);
@@ -2470,14 +2494,38 @@ begin
  end;
 end;
 
+type
+ PQNode_durl=^TQNode_durl;
+ TQNode_durl=object(UAsyncQueue.TQNode)
+  len:SizeUint;
+  data:record end;
+  Procedure OnParent;
+  procedure OnEndDownload1(Sender:TObject);
+  procedure OnEndDownload2(Sender:TObject);
+ end;
+
+ THttpStream2Location=class(THttpStream)
+  location,fname:RawByteString;
+  procedure on_headers(Const name,value:RawByteString;cat:Longint); override;
+ end;
+
+procedure THttpStream2Location.on_headers(Const name,value:RawByteString;cat:Longint);
+begin
+ inherited;
+ case name of
+  'location':location:=value;
+ end;
+end;
+
 procedure TFrmMain.OnEndStream(Sender:TObject);
 var
+ P:PQNode_durl;
  ClientData:THttpClient;
  HttpStream:THttpStream2Mem;
  Parser:THtmlLinkParser;
  M:TMemoryStream;
  URI:TURI;
- v,fname:RawByteString;
+ S:RawByteString;
 begin
  HttpStream:=THttpStream2Mem(Sender);
  ClientData:=HttpStream.FClientData;
@@ -2490,19 +2538,109 @@ begin
 
  if (Parser.download_url<>'') then
  begin
-  v:=Parser.download_url;
-  Parser.download_url:=URI.getProtocol+'://'+URI.getAuthority+Parser.download_url;
-  Writeln(Parser.download_url);
-  fname:=ExtractFileName(v);
-  Writeln(fname);
-  v:=ExtractFileDir(v);
-  v:=ExtractFileName(v);
-  Writeln(v);
+  S:=URI.getProtocol+'://'+URI.getAuthority+Parser.download_url;
+  P:=AllocMem(SizeOf(TQNode_reward)+Length(S));
+  P^.Parent:=@P^.OnParent;
+  P^.len:=Length(S);
+  Move(PAnsiChar(S)^,P^.data,Length(S));
+  SendMainQueue(P);
  end;
 
  Parser.Free;
- ClientData.Free;
- HttpStream.Free;
+ ClientData.terminate;
+end;
+
+Procedure TQNode_durl.OnParent;
+var
+ download_url:RawByteString;
+ v,fname:RawByteString;
+ ClientData:THttpClient;
+ HttpStream:THttpStream2Location;
+begin
+ SetString(download_url,@data,len);
+ FreeMem(@Self);
+
+ fname:=ExtractFileExt(download_url);
+ fname:=ChangeFileExt('update',fname);
+
+ v:=ExtractFileDir(download_url);
+ v:=ExtractFileName(v);
+
+ //if CompareStr(v,current_version)>0 then
+ begin
+  if QuestionDlg('Найдена новая версия!',
+                 'Загрузить обновление ('+v+')?',
+                 mtInformation,
+                 [mrYes,'Да',mrNo,'Нет'],
+                 'Загрузить обновление?')=mrYes then
+  begin
+   ClientData:=nil;
+   HttpStream:=THttpStream2Location.Create;
+   HttpStream.fname:=fname;
+   HttpStream.FOnEndStream:=@OnEndDownload1;
+   HttpStream.AddStdHdr;
+   HttpStream.SetUrl(download_url);
+   replyConnect(ClientData,download_url);
+   ClientData.submit(HttpStream);
+  end;
+ end;
+
+end;
+
+procedure TQNode_durl.OnEndDownload1(Sender:TObject);
+var
+ download_url:RawByteString;
+ status:RawByteString;
+ fname:RawByteString;
+ ClientData:THttpClient;
+ HttpStream1:THttpStream2Location;
+ HttpStream2:THttpStream2File;
+begin
+ HttpStream1 :=THttpStream2Location(Sender);
+ download_url:=HttpStream1.location;
+ status      :=HttpStream1.status;
+ fname       :=HttpStream1.fname;
+ ClientData:=HttpStream1.FClientData;
+ ClientData.terminate;
+ ClientData:=nil;
+ HttpStream1:=nil;
+
+ if (status='302') and
+    (download_url<>'') then
+ begin
+  try
+   HttpStream2:=THttpStream2File.Create(fname,fmCreate);
+  except
+   on E:Exception do
+   begin
+    ShowMessage('Ошибка, не удалось создать файл!');
+    Exit;
+   end;
+  end;
+  HttpStream2.FOnEndStream:=@OnEndDownload2;
+  HttpStream2.AddStdHdr;
+  HttpStream2.SetUrl(download_url);
+  replyConnect(ClientData,download_url);
+  ClientData.submit(HttpStream2);
+ end else
+ begin
+  ShowMessage('Ошибка, не удалось получить ссылку на файл!');
+ end;
+end;
+
+procedure TQNode_durl.OnEndDownload2(Sender:TObject);
+var
+ ClientData:THttpClient;
+ HttpStream:THttpStream2File;
+ fname:RawByteString;
+begin
+ HttpStream:=THttpStream2File(Sender);
+ fname:=TFileStream(HttpStream.FRecvs).FileName;
+ ClientData:=HttpStream.FClientData;
+ ClientData.terminate;
+ ClientData:=nil;
+ HttpStream:=nil;
+ Writeln(fname);
 end;
 
 procedure SetDBParam(Const fname,fvalue:RawByteString);
