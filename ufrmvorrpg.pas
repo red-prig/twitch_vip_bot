@@ -1638,6 +1638,12 @@ begin
 
   push_irc_msg(Format(get_random_msg(vor_rpg.kick.not_vor),[user1]));
 
+  if is_mod then
+  begin
+   OnUnlock(nil);
+   Exit;
+  end;
+
   Points1.Load(data1);
 
   SetDBRpgUser1(user1,data1,@OnUnlock);
@@ -1954,7 +1960,8 @@ begin
   '!пнуть':
   if vor_rpg.kick.Enable then
   begin
-   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and
+      (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
    kick(user,F,PC.PS*[pm_broadcaster,pm_moderator]<>[]);
 
@@ -1975,7 +1982,8 @@ begin
 
   '!vor':
   begin
-   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and
+      (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
    if (F='') then
    begin
