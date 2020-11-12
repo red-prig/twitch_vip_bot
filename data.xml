@@ -481,6 +481,10 @@
   SELECT * FROM rpg WHERE user in (@user1,@user2);
  </get_rpg_user2>
 
+ <get_rnd_user1>
+  SELECT user FROM rpg ORDER BY RANDOM() LIMIT 1;
+ </get_rnd_user1>
+
  <set_rpg_user1>
   INSERT OR REPLACE INTO rpg ( user,data  ) VALUES(@user1,@data1);
  </set_rpg_user1>

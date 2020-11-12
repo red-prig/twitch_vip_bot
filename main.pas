@@ -3656,6 +3656,10 @@ begin
    begin
     Node.Push(TLoadSQL_Func,@FGetRpgUser2);
    end;
+  'get_rnd_user1':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRndUser1);
+   end;
   'set_rpg_user1':
    begin
     Node.Push(TLoadSQL_Func,@FSetRpgUser1);

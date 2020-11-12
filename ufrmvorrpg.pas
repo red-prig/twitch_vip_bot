@@ -151,6 +151,7 @@ var
 
   FGetRpgUser1:TSQLScript;
   FGetRpgUser2:TSQLScript;
+  FGetRndUser1:TSQLScript;
 
   FSetRpgUser1:TSQLScript;
   FSetRpgUser2:TSQLScript;
@@ -206,9 +207,10 @@ type
 
  TLockScript=class
   protected
+   FStatement:TDbcStatementScript;
    Function  try_lock:Boolean; virtual; abstract;
    procedure unlock;           virtual; abstract;
-   procedure Prepare(FDbcScript:TDbcStatementScript); virtual; abstract;
+   procedure Prepare(FDbcScript:TDbcStatementScript); virtual;
    procedure OnFin(ResultSet:TZResultSet); virtual; abstract;
    procedure OnUnlock(Sender:TBaseTask);
   public
@@ -260,6 +262,11 @@ begin
  Result:=CompareStr(a^.user,b^.user)<0;
 end;
 
+procedure TLockScript.Prepare(FDbcScript:TDbcStatementScript);
+begin
+ FStatement:=FDbcScript;
+end;
+
 procedure TLockScript.OnUnlock(Sender:TBaseTask);
 begin
  unlock;
@@ -289,6 +296,7 @@ end;
 
 procedure TDualLockScript.Prepare(FDbcScript:TDbcStatementScript);
 begin
+ inherited;
  FDbcScript.SetSctipt(FGetRpgUser2);
  FDbcScript.ExecuteScript;
  FDbcScript.Params.SetRawByteString('user1',user1);
@@ -384,6 +392,7 @@ end;
 
 procedure TOneLockScript.Prepare(FDbcScript:TDbcStatementScript);
 begin
+ inherited;
  FDbcScript.SetSctipt(FGetRpgUser1);
  FDbcScript.ExecuteScript;
  FDbcScript.Params.SetRawByteString('user1',user1);
@@ -1599,8 +1608,39 @@ type
  TKickScript=class(TDualLockScript)
   public
    is_mod:Boolean;
+   procedure OnGetRnd(Sender:TBaseTask);
    Procedure OnEvent; override;
  end;
+
+procedure GetDBRndUser(N:TNotifyTask);
+var
+ FDbcScript:TDbcStatementScript;
+begin
+ FDbcScript:=TDbcStatementScript.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.Notify.Add(T_FIN,N);
+ FDbcScript.SetSctipt(FGetRndUser1);
+ FDbcScript.ExecuteScript;
+ FDbcScript.Start;
+ FDbcScript.Release;
+end;
+
+Procedure kick(const dst_user,msg:RawByteString;is_mod:Boolean); forward;
+
+procedure TKickScript.OnGetRnd(Sender:TBaseTask);
+var
+ ResultSet:TZResultSet;
+ u:RawByteString;
+begin
+ ResultSet:=TDbcStatementScript(Sender).ResultSet;
+ if ResultSet<>nil then
+ if ResultSet.First then
+ begin
+  u:=ResultSet.GetRawByteString(ResultSet.FindColumn('user'));
+  kick(user1,u,is_mod);
+ end;
+ OnUnlock(Sender);
+end;
 
 Procedure TKickScript.OnEvent;
 var
@@ -1626,6 +1666,12 @@ begin
   Exit;
  end;
  data1.Values['kick._in']:=Now;
+
+ if not data2.isAssigned then
+ begin
+  GetDBRndUser(@OnGetRnd);
+  Exit;
+ end;
 
  if (user1=user2) then
  begin
