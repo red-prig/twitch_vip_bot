@@ -7,6 +7,7 @@ object FrmVorRpg: TFrmVorRpg
   Caption = 'Вор Рпг'
   ClientHeight = 236
   ClientWidth = 379
+  OnCreate = FormCreate
   Position = poMainFormCenter
   LCLVersion = '2.0.10.0'
   object BtnCancel: TBitBtn

@@ -37,6 +37,7 @@ type
     procedure BtnOkClick(Sender:TObject);
     procedure BtnCancelClick(Sender:TObject);
     procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
+    procedure FormCreate(Sender: TObject);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure EdtPercMinusVipKeyPress(Sender:TObject;var Key:char);
     procedure EdtPercMinusVipExit(Sender:TObject);
@@ -45,6 +46,7 @@ type
   private
     prev_perc:Byte;
     prev_dw:DWORD;
+    FClearTimer:TTimer;
   public
     Procedure rpg_theif_vip(const s,dst_user,msg:RawByteString);
     procedure check_xchg_vip_time;
@@ -55,6 +57,9 @@ type
     Procedure InitCfg;
     Procedure LoadCfg;
     Procedure Open;
+    procedure SetClearTimer(m:Boolean);
+    procedure OnClearProc(Sender:TObject);
+    procedure OnClearRnd(Sender:TBaseTask);
   end;
 
 var
@@ -1429,6 +1434,11 @@ begin
 
  if is_mod then
   Case cmd of
+   'vacuum':begin
+             Points1.Save(data1);
+             SetDBRpgUser1(user1,data1,@OnUnlock);
+             Exit;
+            end;
    'dbf.add':begin
               do_debuf('',user1,data1);
               Points1.Save(data1);
@@ -2337,6 +2347,7 @@ begin
  vor_rpg.timeout_cmd:='';
  {$ENDIF}
  vor_rpg.Enable:=Trim(Config.ReadString('vor_rpg','enable','0'))='1';
+
  vor_rpg.time_kd            :=StrToDWORDDef(Config.ReadString('vor_rpg','time_kd'       ,IntToStr(vor_rpg.time_kd            )),vor_rpg.time_kd            );
  vor_rpg.calc.BASE_TIME     :=StrToDWORDDef(Config.ReadString('vor_rpg','BASE_TIME'     ,IntToStr(vor_rpg.calc.BASE_TIME     )),vor_rpg.calc.BASE_TIME     );
  vor_rpg.calc.PERC_MINUS_VIP:=StrToDWORDDef(Config.ReadString('vor_rpg','PERC_MINUS_VIP',IntToStr(vor_rpg.calc.PERC_MINUS_VIP)),vor_rpg.calc.PERC_MINUS_VIP);
@@ -2377,6 +2388,8 @@ begin
  if ShowModal=1 then
  begin
   vor_rpg.Enable             :=CBVorRpgEnable.Checked;
+  SetClearTimer(vor_rpg.Enable);
+
   vor_rpg.time_kd            :=StrToDWORDDef(EdtTimeKd.Text      ,vor_rpg.time_kd);
   vor_rpg.calc.BASE_TIME     :=StrToDWORDDef(EdtBaseTime.Text    ,vor_rpg.calc.BASE_TIME);
   vor_rpg.calc.PERC_MINUS_VIP:=StrToDWORDDef(EdtPercMinusVip.Text,vor_rpg.calc.PERC_MINUS_VIP);
@@ -2432,6 +2445,54 @@ begin
     DumpExceptionCallStack(E);
    end;
   end;
+ end;
+end;
+
+procedure TFrmVorRpg.FormCreate(Sender: TObject);
+begin
+ SetClearTimer(vor_rpg.Enable);
+end;
+
+procedure TFrmVorRpg.SetClearTimer(m:Boolean);
+begin
+ Case m of
+  True :
+  begin
+   if (FClearTimer=nil) then
+   begin
+    FClearTimer:=TTimer.Create(Self);
+    FClearTimer.Interval:=30*60*1000; //30min
+    FClearTimer.OnTimer:=@OnClearProc;
+   end;
+   FClearTimer.Enabled:=m;
+  end;
+  False:
+  begin
+   if (FClearTimer<>nil) then
+   begin
+    FClearTimer.Enabled:=m;
+   end;
+  end;
+ end;
+end;
+
+procedure TFrmVorRpg.OnClearProc(Sender:TObject);
+begin
+ check_xchg_vip_time;
+ GetDBRndUser(@OnClearRnd);
+end;
+
+procedure TFrmVorRpg.OnClearRnd(Sender:TBaseTask);
+var
+ ResultSet:TZResultSet;
+ user:RawByteString;
+begin
+ ResultSet:=TDbcStatementScript(Sender).ResultSet;
+ if ResultSet<>nil then
+ if ResultSet.First then
+ begin
+  user:=ResultSet.GetRawByteString(ResultSet.FindColumn('user'));
+  add_pts(user,user,'vacuum',true);
  end;
 end;
 
