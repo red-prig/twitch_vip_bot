@@ -946,7 +946,7 @@ begin
   end;
   cmd:=Format(vor_rpg.stat_msg.on_debuf,[user,debuf.text]);
   push_irc_msg(cmd);
-  FrmMain._add_reward_2_log(s,cmd);
+  //FrmMain._add_reward_2_log(s,cmd);
   Result:=True;
  end;
 end;
@@ -1429,6 +1429,24 @@ begin
 
  if is_mod then
   Case cmd of
+   'dbf.add':begin
+              do_debuf('',user1,data1);
+              Points1.Save(data1);
+              SetDBRpgUser1(user1,data1,@OnUnlock);
+              Exit;
+             end;
+   'dbf.clr':begin
+              Points1.Save(data1);
+              data1.Delete('debuf');
+              SetDBRpgUser1(user1,data1,@OnUnlock);
+              if vor_rpg.stat_msg.debuf_pr='' then
+              begin
+               vor_rpg.stat_msg.debuf_pr:='@%s &lt;%s&gt;';
+              end;
+              push_irc_msg(Format(vor_rpg.stat_msg.debuf_pr,[src,'']));
+              Exit;
+             end;
+
    'exp':begin
           Points1.IncEXP(1);
           lvl_msg;
@@ -1990,10 +2008,13 @@ begin
     'info':if (PC.PS*[pm_broadcaster,pm_moderator]=[]) then
             vip_time(user);
 
+    'give',
     'дать',
     'отдать':if vor_rpg.xchg.Enable then
               add2xchgVip(user,LowerCase(Extract_nick(FetchAny(F))));
 
+    'me',
+    'take',
     'моя',
     'мне',
     'сюда',
@@ -2003,6 +2024,7 @@ begin
 
   end;
 
+  '!kick',
   '!пнуть':
   if vor_rpg.kick.Enable then
   begin
@@ -2045,8 +2067,174 @@ begin
       begin
        v:=LowerCase(FetchAny(F));
        Case v of
-        'dbf',
+        'base':begin
+                v:=LowerCase(FetchAny(F));
+                try
+                 case v of
+                  'pmvip':begin
+                          v:=FetchAny(F);
+                          vor_rpg.calc.PERC_MINUS_VIP:=StrToDWORDDef(v,vor_rpg.calc.PERC_MINUS_VIP);
+                          if vor_rpg.calc.PERC_MINUS_VIP>100 then vor_rpg.calc.PERC_MINUS_VIP:=100;
+                          Config.WriteString('vor_rpg','PERC_MINUS_VIP',IntToStr(vor_rpg.calc.PERC_MINUS_VIP));
+                          push_irc_msg(Format('@%s pmvip %s',[user,IntToStr(vor_rpg.calc.PERC_MINUS_VIP)]));
+                         end;
+                    'kd':begin
+                          v:=FetchAny(F);
+                          vor_rpg.time_kd:=StrToDWORDDef(v,vor_rpg.time_kd);
+                          Config.WriteString('vor_rpg','time_kd',IntToStr(vor_rpg.time_kd));
+                          push_irc_msg(Format('@%s kd %s',[user,IntToStr(vor_rpg.time_kd)]));
+                         end;
+               'timeout':begin
+                          v:=FetchAny(F);
+                          vor_rpg.calc.BASE_TIME:=StrToDWORDDef(v,vor_rpg.calc.BASE_TIME);
+                          Config.WriteString('vor_rpg','BASE_TIME',IntToStr(vor_rpg.calc.BASE_TIME));
+                          push_irc_msg(Format('@%s timeout %s',[user,IntToStr(vor_rpg.calc.BASE_TIME)]));
+                         end;
+
+                  else
+                   push_irc_msg(Format('@%s !vor mod base pmvip,kd,timeout',[user]));
+                 end;
+                except
+                 on E:Exception do
+                 begin
+                  DumpExceptionCallStack(E);
+                 end;
+                end;
+               end;
+
+        'kick':begin
+                v:=LowerCase(FetchAny(F));
+                try
+                 case v of
+                     'on':if not vor_rpg.kick.Enable then
+                          begin
+                           vor_rpg.kick.Enable:=True;
+                           Config.WriteString('vor_rpg' ,'kick_enable','1');
+                           push_irc_msg(Format('@%s kick on',[user]));
+                          end;
+                    'off':if vor_rpg.kick.Enable then
+                          begin
+                           vor_rpg.kick.Enable:=False;
+                           Config.WriteString('vor_rpg' ,'kick_enable','0');
+                           push_irc_msg(Format('@%s kick off',[user]));
+                          end;
+                   'perc':begin
+                           v:=FetchAny(F);
+                           vor_rpg.kick.PERC:=StrToDWORDDef(v,vor_rpg.kick.PERC);
+                           if vor_rpg.kick.PERC>100 then vor_rpg.kick.PERC:=100;
+                           Config.WriteString('vor_rpg','kick_PERC',IntToStr(vor_rpg.kick.PERC));
+                           push_irc_msg(Format('@%s perc %s',[user,IntToStr(vor_rpg.kick.PERC)]));
+                          end;
+                     'in':begin
+                           v:=FetchAny(F);
+                           vor_rpg.kick.in_time:=StrToDWORDDef(v,vor_rpg.kick.in_time);
+                           Config.WriteString('vor_rpg','in_time'  ,IntToStr(vor_rpg.kick.in_time));
+                           push_irc_msg(Format('@%s in %s',[user,IntToStr(vor_rpg.kick.in_time)]));
+                          end;
+                    'out':begin
+                           v:=FetchAny(F);
+                           vor_rpg.kick.out_time:=StrToDWORDDef(v,vor_rpg.kick.out_time);
+                           Config.WriteString('vor_rpg','out_time'  ,IntToStr(vor_rpg.kick.out_time));
+                           push_irc_msg(Format('@%s out %s',[user,IntToStr(vor_rpg.kick.out_time)]));
+                          end;
+
+                  else
+                   push_irc_msg(Format('@%s !vor mod kick on/off,perc,in,out',[user]));
+                 end;
+                except
+                 on E:Exception do
+                 begin
+                  DumpExceptionCallStack(E);
+                 end;
+                end;
+               end;
+
+        'xchg':begin
+                v:=LowerCase(FetchAny(F));
+                try
+                 case v of
+                     'on':if not vor_rpg.xchg.Enable then
+                          begin
+                           vor_rpg.xchg.Enable:=True;
+                           Config.WriteString('vor_rpg' ,'xchg_enable','1');
+                           push_irc_msg(Format('@%s xchg on',[user]));
+                          end;
+                    'off':if vor_rpg.xchg.Enable then
+                          begin
+                           vor_rpg.xchg.Enable:=False;
+                           Config.WriteString('vor_rpg' ,'xchg_enable','0');
+                           push_irc_msg(Format('@%s xchg off',[user]));
+                          end;
+                  'count':begin
+                           v:=FetchAny(F);
+                           vor_rpg.xchg.max_count:=StrToDWORDDef(v,vor_rpg.xchg.max_count);
+                           Config.WriteString('vor_rpg','xchg_max_count',IntToStr(vor_rpg.xchg.max_count));
+                           push_irc_msg(Format('@%s count %s',[user,IntToStr(vor_rpg.xchg.max_count)]));
+                          end;
+                   'time':begin
+                           v:=FetchAny(F);
+                           vor_rpg.xchg.max_time:=StrToDWORDDef(v,vor_rpg.xchg.max_time);
+                           Config.WriteString('vor_rpg','xchg_max_time',IntToStr(vor_rpg.xchg.max_time));
+                           push_irc_msg(Format('@%s time %s',[user,IntToStr(vor_rpg.xchg.max_time)]));
+                          end;
+                  else
+                   push_irc_msg(Format('@%s !vor mod xchg on/off,count,time',[user]));
+                 end;
+                except
+                 on E:Exception do
+                 begin
+                  DumpExceptionCallStack(E);
+                 end;
+                end;
+               end;
+
+
         'debuf',
+        'dbf':begin
+               v:=LowerCase(FetchAny(F));
+               try
+                case v of
+                  'add':begin
+                         F:=LowerCase(Extract_nick(FetchAny(F)));
+                         add_pts(user,F,'dbf.add',true);
+                        end;
+                  'clr':begin
+                         F:=LowerCase(Extract_nick(FetchAny(F)));
+                         add_pts(user,F,'dbf.clr',true);
+                        end;
+                 'info':begin
+                         F:=LowerCase(Extract_nick(FetchAny(F)));
+                         GetDBRpgUserInfo(user,F,'dbf');
+                        end;
+                 'perc':begin
+                         v:=FetchAny(F);
+                         vor_rpg.debuf.PERC:=StrToDWORDDef(v,vor_rpg.debuf.PERC);
+                         if vor_rpg.debuf.PERC>100 then vor_rpg.debuf.PERC:=100;
+                         Config.WriteString('vor_rpg','DEBUF_PERCENT' ,IntToStr(vor_rpg.debuf.PERC));
+                         push_irc_msg(Format('@%s perc %s',[user,IntToStr(vor_rpg.debuf.PERC)]));
+                        end;
+                  'min':begin
+                         v:=FetchAny(F);
+                         vor_rpg.debuf.MIN_TIME:=StrToDWORDDef(v,vor_rpg.debuf.MIN_TIME);
+                         Config.WriteString('vor_rpg','DEBUF_MIN_TIME',IntToStr(vor_rpg.debuf.MIN_TIME));
+                         push_irc_msg(Format('@%s min %s',[user,IntToStr(vor_rpg.debuf.MIN_TIME)]));
+                        end;
+                  'max':begin
+                         v:=FetchAny(F);
+                         vor_rpg.debuf.MAX_TIME:=StrToDWORDDef(v,vor_rpg.debuf.MAX_TIME);
+                         Config.WriteString('vor_rpg','DEBUF_MAX_TIME',IntToStr(vor_rpg.debuf.MAX_TIME));
+                         push_irc_msg(Format('@%s max %s',[user,IntToStr(vor_rpg.debuf.MAX_TIME)]));
+                        end;
+                 else
+                  push_irc_msg(Format('@%s !vor mod dbf [perc,min,max,info/add/clr "user"]',[user]));
+                end;
+               except
+                on E:Exception do
+                begin
+                 DumpExceptionCallStack(E);
+                end;
+               end;
+              end;
         'level',
         'lvl' ,
         'points',
@@ -2100,7 +2288,7 @@ begin
          end;
 
         else
-         push_irc_msg(Format('@%s !vor mod [dbf,lvl,pts,stat,add [prm],sub [prm]] "nick"',[user]));
+         push_irc_msg(Format('@%s !vor mod [base,kick,xchg,dbf,lvl,pts,stat,add [prm],sub [prm]] "nick"',[user]));
        end;
       end;
      'dbf',
