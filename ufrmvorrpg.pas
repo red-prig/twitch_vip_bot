@@ -53,6 +53,8 @@ type
     procedure add2xchgVip(const user,nick:RawByteString);
     Procedure vip_time(const user:RawByteString);
     procedure catch_vip(const user:RawByteString);
+    procedure check_duel_time;
+    procedure add2duel(const user,nick:RawByteString);
     procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByteString);
     Procedure InitCfg;
     Procedure LoadCfg;
@@ -80,6 +82,17 @@ var
     ready_msg,
     cancel_msg,
     sucs_msg:RawByteString;
+   end;
+
+   duel:record
+    Enable:Boolean;
+    max_count:DWORD;
+    max_time:DWORD;
+    exist1_msg,
+    exist2_msg,
+    max_msg,
+    ready_msg,
+    cancel_msg:RawByteString;
    end;
 
    jail_vip:TStringList;
@@ -256,6 +269,7 @@ type
 Var
  LockStr:TRawByteStringSet;
  xchgSet:TxchgNodeSet;
+ duelSet:TxchgNodeSet;
 
 class function TRawStrCompare.c(const a,b:RawByteString):boolean;
 begin
@@ -1996,6 +2010,261 @@ begin
  vor_rpg.TickKd:=GetTickCount64;
 end;
 
+procedure TFrmVorRpg.check_duel_time;
+var
+ i:TxchgNodeSet.TIterator;
+ link:PxchgVip;
+begin
+ repeat
+  i:=duelSet.Min;
+  if not Assigned(i) then Exit;
+  repeat
+   link:=PxchgNode(i.Data)^.link;
+   if Assigned(link) then
+   begin
+    if (GetTickCount64>link^.time+vor_rpg.duel.max_time*(1000*60)) then
+    begin
+     FreeAndNil(i);
+     duelSet.Delete(@link^.src);
+     duelSet.Delete(@link^.dst);
+     Finalize(link^);
+     FreeMem(link);
+     Break;
+    end;
+   end;
+   if not i.Next then
+   begin
+    FreeAndNil(i);
+    Exit;
+   end;
+  until false;
+ until false;
+end;
+
+type
+ TDuelScript=class(TDualLockScript)
+  public
+   Procedure OnEvent; override;
+ end;
+
+Procedure TDuelScript.OnEvent;
+var
+ Points:array[0..1] of TPlayer;
+ Users:array[0..1] of RawByteString;
+ HP:array[0..1] of Integer;
+ i,osrc,odst,rnd:Integer;
+ Val:Int64;
+begin
+ Points[0].Load(data1);
+ Points[1].Load(data2);
+ Users[0]:=user1;
+ Users[1]:=user2;
+ HP[0]:=10;
+ HP[1]:=10;
+ osrc:=1;
+ odst:=0;
+ For i:=0 to 9 do
+ begin
+  Val:=50;
+  val:=Val+Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent+Points[osrc].GetESCPercent;
+  val:=Val-Points[odst].GetLUKPercent-Points[odst].GetSTRPercent-Points[odst].GetESCPercent;
+  val:=MMP(val);
+  rnd:=Random(RCT,100);
+  if (rnd<Val) then
+  begin
+   Dec(HP[odst]);
+  end;
+  case osrc of
+   0:begin
+      osrc:=1;
+      odst:=0;
+     end;
+   1:begin
+      osrc:=0;
+      odst:=1;
+     end;
+  end;
+ end;
+ if (HP[0]=HP[1]) then
+ begin
+  push_irc_msg(Format('Результат дуэли %s и %s: ничья!',[User1,User2]));
+  try_debuf('',User1,data1);
+  try_debuf('',User2,data2);
+  Points[0].Save(data1);
+  Points[1].Save(data2);
+  SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
+  Exit;
+ end else
+ if (HP[0]>HP[1]) then
+ begin
+  osrc:=0;
+  odst:=1;
+ end else
+ begin
+  osrc:=1;
+  odst:=0;
+ end;
+
+ Points[osrc].IncEXP(1);
+ Dec(Points[odst].Points.EXP);
+
+ if (HP[odst]<=0) then
+ begin
+  if (FrmVipParam.FindVipUser(Users[odst])<>-1) and
+     (FrmVipParam.FindVipUser(Users[osrc])=-1) then
+  begin
+   push_irc_msg(Format('/me Силач %s отобрал випку у %s!',[Users[osrc],Users[odst]]));
+   ChangeVip(Users[odst],Users[osrc]);
+  end else
+  begin
+   Val:=Points[osrc].GetLUKPercent;
+   val:=MMP(val);
+   if val=0 then val:=1;
+   rnd:=Random(RCT,100);
+   if (rnd<val) then
+   begin
+    Points[osrc].IncEXP(1);
+   end;
+  end;
+ end;
+
+ push_irc_msg(Format('Победа в дуэли достаётся: %s! а неудачника %s выкинули у амбара!',[Users[osrc]]));
+
+ case odst of
+  0:try_debuf('',User1,data1);
+  1:try_debuf('',User2,data2);
+ end;
+ Points[0].Save(data1);
+ Points[1].Save(data2);
+ SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
+ Exit;
+end;
+
+procedure TFrmVorRpg.add2duel(const user,nick:RawByteString);
+var
+ P:TxchgNodeSet.PNode;
+ Node:TxchgNode;
+ link:PxchgVip;
+
+ Procedure _go2duel;
+ var
+  FDbcScript:TDbcScriptLock;
+  FDuelScript:TDuelScript;
+ begin
+  FDuelScript:=TDuelScript.Create;
+  FDuelScript.user1:=user;
+  FDuelScript.user2:=link^.src.user;
+
+  FDbcScript:=TDbcScriptLock.Create;
+  FDbcScript.Prepare(FDuelScript);
+  FDbcScript.AsyncFunc(@FDbcScript.try_start);
+
+  //push_irc_msg(Format('@%s go to duel with %s (test complite)',[user,link^.src.user]));
+  duelSet.Delete(@link^.src);
+  duelSet.Delete(@link^.dst);
+  Finalize(link^);
+  FreeMem(link);
+ end;
+
+begin
+ if (user=nick) then Exit;
+
+ check_duel_time;
+
+ Node:=Default(TxchgNode);
+ Node.user:=user;
+ P:=duelSet.NFind(@Node);
+ if (P<>nil) then
+ begin
+  link:=PxchgNode(P^.Data)^.link;
+  if (PxchgNode(P^.Data)=@link^.src) then
+  begin
+   if (vor_rpg.duel.cancel_msg='') then
+   begin
+    vor_rpg.duel.cancel_msg:='@%s duel is canceled';
+   end;
+   push_irc_msg(Format(vor_rpg.duel.cancel_msg,[user]));
+   duelSet.Delete(@link^.src);
+   duelSet.Delete(@link^.dst);
+   Finalize(link^);
+   FreeMem(link);
+  end else
+  if (nick='') or (link^.src.user=nick) then
+  begin
+   _go2duel;
+  end else
+  begin
+   if (vor_rpg.duel.exist1_msg='') then
+   begin
+    vor_rpg.duel.exist1_msg:='@%s you are challenged to a duel with %s';
+   end;
+   push_irc_msg(Format(vor_rpg.duel.exist1_msg,[user,link^.src.user]));
+  end;
+  vor_rpg.TickKd:=GetTickCount64;
+  Exit;
+ end;
+
+ Node:=Default(TxchgNode);
+ Node.user:=nick;
+ P:=duelSet.NFind(@Node);
+ if (P<>nil) then
+ begin
+  if (nick<>'') then
+  begin
+   if (vor_rpg.duel.exist2_msg='') then
+   begin
+    vor_rpg.duel.exist2_msg:='@%s this man is already waiting duel';
+   end;
+   push_irc_msg(Format(vor_rpg.duel.exist2_msg,[user]));
+  end else
+  begin
+   link:=PxchgNode(P^.Data)^.link;
+   if (PxchgNode(P^.Data)=@link^.dst) then
+   begin
+    _go2duel;
+   end;
+  end;
+  vor_rpg.TickKd:=GetTickCount64;
+  Exit;
+ end;
+
+ if (duelSet.Size>vor_rpg.duel.max_count*2) then
+ begin
+  if (vor_rpg.duel.max_msg='') then
+  begin
+   vor_rpg.duel.max_msg:='@%s too many requests for duel';
+  end;
+  push_irc_msg(Format(vor_rpg.duel.max_msg,[user]));
+  vor_rpg.TickKd:=GetTickCount64;
+  Exit;
+ end;
+
+ link:=AllocMem(SizeOf(TxchgVip));
+ link^.src.user:=user;
+ link^.src.link:=link;
+ link^.dst.user:=nick;
+ link^.dst.link:=link;
+ link^.time:=GetTickCount64;
+
+ duelSet.Insert(@link^.src);
+ duelSet.Insert(@link^.dst);
+
+ if (vor_rpg.duel.ready_msg='') then
+ begin
+  vor_rpg.duel.ready_msg:='@%s input [!duel] in %smin to begin';
+ end;
+
+ if (nick='') then
+ begin
+  push_irc_msg(Format(vor_rpg.duel.ready_msg,['Any',IntToStr(vor_rpg.duel.max_time)]));
+ end else
+ begin
+  push_irc_msg(Format(vor_rpg.duel.ready_msg,[nick,IntToStr(vor_rpg.duel.max_time)]));
+ end;
+
+ vor_rpg.TickKd:=GetTickCount64;
+end;
+
 procedure TFrmVorRpg.add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByteString);
 var
  F,v:RawByteString;
@@ -2044,6 +2313,17 @@ begin
    kick(user,F,PC.PS*[pm_broadcaster,pm_moderator]<>[]);
 
    vor_rpg.TickKd:=GetTickCount64;
+  end;
+
+  '!duel',
+  '!дуэль',
+  '!дуель':
+  if vor_rpg.duel.Enable then
+  begin
+   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and
+      (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+
+   add2duel(user,LowerCase(Extract_nick(FetchAny(F))));
   end;
 
   {$IFOPT D+}
@@ -2479,6 +2759,7 @@ end;
 procedure TFrmVorRpg.OnClearProc(Sender:TObject);
 begin
  check_xchg_vip_time;
+ check_duel_time;
  GetDBRndUser(@OnClearRnd);
 end;
 
@@ -2580,7 +2861,10 @@ end;
 initialization
  LockStr:=TRawByteStringSet.Create;
  xchgSet:=TxchgNodeSet.Create;
+ duelSet:=TxchgNodeSet.Create;
  vor_rpg.time_kd:=8;
+
+ vor_rpg.duel.Enable:=True;
 
 end.
 

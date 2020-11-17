@@ -2956,6 +2956,10 @@ type
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
+ TVorRpg_duel_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
  {$ENDIF}
 
  TOpenSub_Func=class(TNodeFunc)
@@ -3261,6 +3265,10 @@ begin
    begin
     Node.Push(TVorRpg_xchg_Func,nil);
    end;
+  'duel':
+   begin
+    Node.Push(TVorRpg_duel_Func,nil);
+   end;
  end;
 end;
 
@@ -3524,6 +3532,40 @@ begin
   'sucs_msg':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.xchg.sucs_msg);
+   end;
+ end;
+end;
+
+class procedure TVorRpg_duel_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'max_count':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.duel.max_count);
+   end;
+  'max_time':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.duel.max_time);
+   end;
+  'exist1_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.exist1_msg);
+   end;
+  'exist2_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.exist2_msg);
+   end;
+  'max_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.max_msg);
+   end;
+  'ready_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.ready_msg);
+   end;
+  'cancel_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.cancel_msg);
    end;
  end;
 end;
