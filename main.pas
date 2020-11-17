@@ -655,10 +655,19 @@ function TFrmMain.getRandomTmpVip(const msg:RawByteString):SizeInt;
 var
  i:integer;
  s:SizeInt;
- L:TStringList;
+ L,P,T:TStringList;
 begin
  Result:=-1;
- L:=FrmVipParam.getTmpVipList;
+ P:=nil;
+ T:=nil;
+ FrmVipParam.getTmpVipList2(P,T);
+ if (T.Count=0) then
+ begin
+  L:=P;
+ end else
+ begin
+  L:=T;
+ end;
  s:=L.Count;
  if (s<>0) then
  begin
@@ -669,7 +678,8 @@ begin
   end;
   Result:=TKGridRow(L.Objects[i]).Index;
  end;
- FreeAndNil(L);
+ FreeAndNil(P);
+ FreeAndNil(T);
 end;
 
 Function Extract_nick(const s:RawByteString):RawByteString;

@@ -49,6 +49,7 @@ type
     function  FindPosVipUser(Const FValue:RawByteString):Integer;
     procedure getVipStat(var All,Tmp:RawByteString);
     function  getTmpVipList:TStringList;
+    procedure getTmpVipList2(Var P,T:TStringList);
     function  getPermVipList:TStringList;
     function  DoVipInsert(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
     function  DoVipUpdate(Const FName,FValue:RawByteString;ACol,ARow:Integer;AEditor:TWinControl):Boolean;
@@ -262,7 +263,39 @@ begin
  end;
 end;
 
- function TFrmVipParam.getPermVipList:TStringList;
+procedure TFrmVipParam.getTmpVipList2(Var P,T:TStringList);
+Var
+ N,D:TDateTime;
+ i:integer;
+ s,u,b:SizeInt;
+begin
+ P:=TStringList.Create;
+ P.Sorted:=True;
+ T:=TStringList.Create;
+ T.Sorted:=True;
+ s:=GridVips.RowCount;
+ if s>1 then
+ begin
+  u:=GridVips.FindColumn('user');
+  b:=GridVips.FindColumn('datebeg');
+  N:=Now;
+  if (u<>-1) and (b<>-1) then
+   For i:=1 to s-1 do
+    if TryGetDateTime_US(GridVips.Cells[b,i],D) then
+    begin
+     if DateTimeInRange(N,D,IncDay(D)) or
+        DateTimeInRange(N,IncDay(GetDateTimeEnd(D),-1),GetDateTimeEnd(D)) then
+     begin
+      P.AddObject(LowerCase(GridVips.Cells[u,i]),GridVips.Rows[i]);
+     end else
+     begin
+      T.AddObject(LowerCase(GridVips.Cells[u,i]),GridVips.Rows[i]);
+     end;
+    end;
+ end;
+end;
+
+function TFrmVipParam.getPermVipList:TStringList;
 var
  i:integer;
  s,u,e:SizeInt;
