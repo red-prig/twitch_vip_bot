@@ -3547,6 +3547,14 @@ begin
    begin
     Node.Push(TLoadDWORD_Func,@vor_rpg.duel.max_time);
    end;
+  'kd_time':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.duel.kd_time);
+   end;
+  'any_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.any_msg);
+   end;
   'exist1_msg':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.duel.exist1_msg);

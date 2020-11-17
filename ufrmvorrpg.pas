@@ -88,6 +88,8 @@ var
     Enable:Boolean;
     max_count:DWORD;
     max_time:DWORD;
+    kd_time:DWORD;
+    any_msg,
     exist1_msg,
     exist2_msg,
     max_msg,
@@ -1256,16 +1258,17 @@ begin
  Print;
 end;
 
-function GetLongStrTime(mn:Int64):RawByteString;
+function GetLongStrTime(sc:Int64):RawByteString;
 var
- hr,dy:Int64;
+ mn,hr,dy:Int64;
 begin
  Result:='';
- if (mn<0) then
+ if (sc<0) then
  begin
   Result:='-';
-  mn:=abs(mn);
+  sc:=abs(sc);
  end;
+ mn:=sc div 60;
  hr:=mn div 60;
  dy:=hr div 24;
  if (dy<>0) then
@@ -1285,8 +1288,12 @@ begin
   mn:=mn-(hr*60);
   Result:=Result+IntToStr(hr)+'ч '+IntToStr(mn)+'м';
  end else
+ if (mn<>0) then
  begin
   Result:=Result+IntToStr(mn)+'м';
+ end else
+ begin
+  Result:=Result+IntToStr(sc)+'c';
  end;
 end;
 
@@ -1317,7 +1324,6 @@ begin
     if (debuf.text<>'') then
     begin
      if (Result<>'') then Result:=Result+', ';
-     time:=time div 60;
      Result:=Result+debuf.text+'('+GetLongStrTime(time)+')';
     end;
    end;
@@ -1443,12 +1449,39 @@ var
                       IntToStr(Points1.Points.PTS)]));
  end;
 
+ procedure vacuum;
+ var
+  now,time:Int64;
+ begin
+  now:=DateTimeToUnix(sysutils.Now,False);
+  time:=data1.Path['duel.time'].AsInt(0);
+  if (time=0) or ((time+vor_rpg.duel.kd_time)<=Now) then
+  begin
+   Save40nul(data1,'duel.time',0);
+  end;
+  time:=data1.Path['kick._in'].AsInt(0);
+  if (time=0) or ((time+vor_rpg.kick.in_time)<=Now) then
+  begin
+   Save40nul(data1,'kick._in',0);
+  end;
+  time:=data1.Path['kick._out'].AsInt(0);
+  if (time=0) or ((time+vor_rpg.kick.out_time)<=Now) then
+  begin
+   Save40nul(data1,'kick._out',0);
+  end;
+  if (data1.Path['kick'].Count=0) then
+  begin
+   data1.Delete('kick');
+  end;
+ end;
+
 begin
  Points1.Load(data1);
 
  if is_mod then
   Case cmd of
    'vacuum':begin
+             vacuum;
              Points1.Save(data1);
              SetDBRpgUser1(user1,data1,@OnUnlock);
              Exit;
@@ -1698,7 +1731,6 @@ begin
  if (time<>0) and ((time+vor_rpg.kick.in_time)>Now) then
  begin
   time:=(time+vor_rpg.kick.in_time)-Now;
-  time:=time div 60;
   if vor_rpg.kick.in_msg='' then
   begin
    vor_rpg.kick.in_msg:='%s kick in timeout (%s)';
@@ -1742,7 +1774,6 @@ begin
  if (time<>0) and ((time+vor_rpg.kick.out_time)>Now) then
  begin
   time:=(time+vor_rpg.kick.out_time)-Now;
-  time:=time div 60;
   if vor_rpg.kick.out_msg='' then
   begin
    vor_rpg.kick.out_msg:='%s kick out timeout (%s)';
@@ -2042,6 +2073,13 @@ begin
 end;
 
 type
+ TDuelAddScript=class(TOneLockScript)
+  public
+   nick:RawByteString;
+   Procedure OnEvent; override;
+ end;
+
+type
  TDuelScript=class(TDualLockScript)
   public
    Procedure OnEvent; override;
@@ -2053,26 +2091,43 @@ var
  Users:array[0..1] of RawByteString;
  HP:array[0..1] of Integer;
  i,osrc,odst,rnd:Integer;
- Val:Int64;
+ Val,Now:Int64;
 begin
+
+ Now:=DateTimeToUnix(sysutils.Now,False);
+ data1.Values['duel.time']:=Now;
+ data2.Values['duel.time']:=Now;
+
  Points[0].Load(data1);
  Points[1].Load(data2);
  Users[0]:=user1;
  Users[1]:=user2;
- HP[0]:=10;
- HP[1]:=10;
+ HP[0]:=6;
+ HP[1]:=6;
  osrc:=1;
  odst:=0;
  For i:=0 to 9 do
  begin
   Val:=50;
   val:=Val+Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent+Points[osrc].GetESCPercent;
-  val:=Val-Points[odst].GetLUKPercent-Points[odst].GetSTRPercent-Points[odst].GetESCPercent;
+  val:=Val-Points[odst].GetLUKPercent-Points[odst].GetDEFPercent-Points[odst].GetESCPercent;
   val:=MMP(val);
   rnd:=Random(RCT,100);
   if (rnd<Val) then
   begin
    Dec(HP[odst]);
+  end else
+  begin
+   Val:=10;
+   val:=Val+Points[odst].GetLUKPercent+Points[odst].GetESCPercent;
+   val:=Val-Points[osrc].GetDEFPercent-Points[osrc].GetESCPercent;
+   val:=MMP(val);
+   rnd:=Random(RCT,100);
+   if (rnd<Val) then
+   begin
+    Dec(HP[osrc]);
+    Dec(HP[osrc]);
+   end;
   end;
   case osrc of
    0:begin
@@ -2085,6 +2140,7 @@ begin
      end;
   end;
  end;
+
  if (HP[0]=HP[1]) then
  begin
   push_irc_msg(Format('Результат дуэли %s и %s: ничья!',[User1,User2]));
@@ -2108,11 +2164,13 @@ begin
  Points[osrc].IncEXP(1);
  Dec(Points[odst].Points.EXP);
 
+ i:=0;
  if (HP[odst]<=0) then
  begin
   if (FrmVipParam.FindVipUser(Users[odst])<>-1) and
      (FrmVipParam.FindVipUser(Users[osrc])=-1) then
   begin
+   i:=1;
    push_irc_msg(Format('/me Силач %s отобрал випку у %s!',[Users[osrc],Users[odst]]));
    ChangeVip(Users[odst],Users[osrc]);
   end else
@@ -2128,7 +2186,8 @@ begin
   end;
  end;
 
- push_irc_msg(Format('Победа в дуэли достаётся: %s! а неудачника %s выкинули у амбара!',[Users[osrc]]));
+ if (i=0) then
+  push_irc_msg(Format('Победа в дуэли достаётся: %s! а неудачника %s выкинули за амбаром!',[Users[osrc],Users[odst]]));
 
  case odst of
   0:try_debuf('',User1,data1);
@@ -2140,11 +2199,12 @@ begin
  Exit;
 end;
 
-procedure TFrmVorRpg.add2duel(const user,nick:RawByteString);
+Procedure TDuelAddScript.OnEvent;
 var
  P:TxchgNodeSet.PNode;
  Node:TxchgNode;
  link:PxchgVip;
+ Now,time:Int64;
 
  Procedure _go2duel;
  var
@@ -2152,14 +2212,13 @@ var
   FDuelScript:TDuelScript;
  begin
   FDuelScript:=TDuelScript.Create;
-  FDuelScript.user1:=user;
+  FDuelScript.user1:=user1;
   FDuelScript.user2:=link^.src.user;
 
   FDbcScript:=TDbcScriptLock.Create;
   FDbcScript.Prepare(FDuelScript);
   FDbcScript.AsyncFunc(@FDbcScript.try_start);
 
-  //push_irc_msg(Format('@%s go to duel with %s (test complite)',[user,link^.src.user]));
   duelSet.Delete(@link^.src);
   duelSet.Delete(@link^.dst);
   Finalize(link^);
@@ -2167,12 +2226,8 @@ var
  end;
 
 begin
- if (user=nick) then Exit;
-
- check_duel_time;
-
  Node:=Default(TxchgNode);
- Node.user:=user;
+ Node.user:=user1;
  P:=duelSet.NFind(@Node);
  if (P<>nil) then
  begin
@@ -2183,7 +2238,7 @@ begin
    begin
     vor_rpg.duel.cancel_msg:='@%s duel is canceled';
    end;
-   push_irc_msg(Format(vor_rpg.duel.cancel_msg,[user]));
+   push_irc_msg(Format(vor_rpg.duel.cancel_msg,[user1]));
    duelSet.Delete(@link^.src);
    duelSet.Delete(@link^.dst);
    Finalize(link^);
@@ -2198,9 +2253,9 @@ begin
    begin
     vor_rpg.duel.exist1_msg:='@%s you are challenged to a duel with %s';
    end;
-   push_irc_msg(Format(vor_rpg.duel.exist1_msg,[user,link^.src.user]));
+   push_irc_msg(Format(vor_rpg.duel.exist1_msg,[user1,link^.src.user]));
   end;
-  vor_rpg.TickKd:=GetTickCount64;
+  OnUnlock(nil);
   Exit;
  end;
 
@@ -2215,7 +2270,7 @@ begin
    begin
     vor_rpg.duel.exist2_msg:='@%s this man is already waiting duel';
    end;
-   push_irc_msg(Format(vor_rpg.duel.exist2_msg,[user]));
+   push_irc_msg(Format(vor_rpg.duel.exist2_msg,[user1]));
   end else
   begin
    link:=PxchgNode(P^.Data)^.link;
@@ -2224,7 +2279,7 @@ begin
     _go2duel;
    end;
   end;
-  vor_rpg.TickKd:=GetTickCount64;
+  OnUnlock(nil);
   Exit;
  end;
 
@@ -2234,13 +2289,25 @@ begin
   begin
    vor_rpg.duel.max_msg:='@%s too many requests for duel';
   end;
-  push_irc_msg(Format(vor_rpg.duel.max_msg,[user]));
-  vor_rpg.TickKd:=GetTickCount64;
+  push_irc_msg(Format(vor_rpg.duel.max_msg,[user1]));
+  OnUnlock(nil);
   Exit;
  end;
 
+ Now:=DateTimeToUnix(sysutils.Now,False);
+
+ time:=data1.Path['duel.time'].AsInt(0);
+ if (time<>0) and ((time+vor_rpg.duel.kd_time)>Now) then
+ begin
+  time:=(time+vor_rpg.duel.kd_time)-Now;
+  push_irc_msg(Format('%s duel in timeout (%s)',[user1,GetLongStrTime(time)]));
+  OnUnlock(nil);
+  Exit;
+ end;
+ //data1.Values['duel.time']:=Now;
+
  link:=AllocMem(SizeOf(TxchgVip));
- link^.src.user:=user;
+ link^.src.user:=user1;
  link^.src.link:=link;
  link^.dst.user:=nick;
  link^.dst.link:=link;
@@ -2254,13 +2321,38 @@ begin
   vor_rpg.duel.ready_msg:='@%s input [!duel] in %smin to begin';
  end;
 
+ if (vor_rpg.duel.any_msg='') then
+ begin
+  vor_rpg.duel.any_msg:='Any';
+ end;
+
  if (nick='') then
  begin
-  push_irc_msg(Format(vor_rpg.duel.ready_msg,['Any',IntToStr(vor_rpg.duel.max_time)]));
+  push_irc_msg(Format(vor_rpg.duel.ready_msg,[vor_rpg.duel.any_msg,IntToStr(vor_rpg.duel.max_time)]));
  end else
  begin
   push_irc_msg(Format(vor_rpg.duel.ready_msg,[nick,IntToStr(vor_rpg.duel.max_time)]));
  end;
+
+ OnUnlock(nil);
+end;
+
+procedure TFrmVorRpg.add2duel(const user,nick:RawByteString);
+var
+ FDbcScript:TDbcScriptLock;
+ FDuelScript:TDuelAddScript;
+begin
+ if (user=nick) then Exit;
+
+ check_duel_time;
+
+ FDuelScript:=TDuelAddScript.Create;
+ FDuelScript.user1:=user;
+ FDuelScript.nick :=nick;
+
+ FDbcScript:=TDbcScriptLock.Create;
+ FDbcScript.Prepare(FDuelScript);
+ FDbcScript.AsyncFunc(@FDbcScript.try_start);
 
  vor_rpg.TickKd:=GetTickCount64;
 end;
@@ -2865,6 +2957,7 @@ initialization
  vor_rpg.time_kd:=8;
 
  vor_rpg.duel.Enable:=True;
+ vor_rpg.duel.kd_time:=60;
 
 end.
 

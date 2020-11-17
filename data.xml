@@ -73,7 +73,9 @@
 
  <duel>
   <max_count>10</max_count>
-  <max_time>5</max_time>  
+  <max_time>5</max_time> 
+  <kd_time>60</kd_time> 
+  <any_msg>Любой</any_msg>
   <cancel_msg>@%s дуэль отменёна                        </cancel_msg>
   <exist1_msg>@%s вы уже вызванны на дэль:%s            </exist1_msg>
   <exist2_msg>@%s этот пользователь уже ожидает дуэль   </exist2_msg>
