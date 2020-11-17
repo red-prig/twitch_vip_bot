@@ -598,6 +598,9 @@ type
   function  GetExpToLvl:Int64;
   procedure CheckNewLvl;
   procedure CheckMaxPts;
+  function  TryDecAnyPts:Boolean; inline;
+  function  TryDecLvl:Boolean; inline;
+  function  TryDecExp:Boolean;
   procedure Load(J:TJson);
   procedure Save(var J:TJson);
  end;
@@ -656,6 +659,74 @@ begin
    Break;
   end;
  until false;
+end;
+
+function TUserPoints.TryDecAnyPts:Boolean; inline;
+var
+ RNDM:array of Byte;
+
+ procedure tadd(p:Byte;val:Int64);
+ begin
+  if (val>0) then
+  begin
+   SetLength(RNDM,Length(RNDM)+1);
+   RNDM[Length(RNDM)-1]:=p;
+  end;
+ end;
+
+begin
+ Result:=False;
+ if (PTS>0) then
+ begin
+  Dec(PTS);
+ end else
+ begin
+  SetLength(RNDM,0);
+  tadd(0,STR);
+  tadd(1,LUK);
+  tadd(2,DEF);
+  tadd(3,CHR);
+  tadd(4,AGL);
+  if (Length(RNDM)=0) then Exit;
+  case RNDM[Random(RCT,Length(RNDM))] of
+   0:Dec(STR);
+   1:Dec(LUK);
+   2:Dec(DEF);
+   3:Dec(CHR);
+   4:Dec(AGL);
+  end;
+  Result:=True;
+ end;
+end;
+
+function TUserPoints.TryDecLvl:Boolean; inline;
+begin
+ Result:=False;
+ if (LVL>0) then
+ begin
+  Result:=TryDecAnyPts;
+  if Result then
+  begin
+   Dec(LVL);
+  end;
+ end;
+end;
+
+function TUserPoints.TryDecExp:Boolean;
+begin
+ Result:=False;
+ if (EXP>0) then
+ begin
+  Dec(EXP);
+  Result:=True;
+ end else
+ begin
+  Result:=TryDecLvl;
+  if Result then
+  begin
+   EXP:=GetExpToLvl-1;
+  end;
+ end;
 end;
 
 procedure TUserPoints.CheckMaxPts;
@@ -1276,7 +1347,7 @@ begin
   if (hr<>0) then
   begin
    mn:=mn-(hr*60);
-   hr:=hr-(dy*60);
+   hr:=hr-(dy*24);
    Result:=Result+IntToStr(dy)+'д '+IntToStr(hr)+'ч '+IntToStr(mn)+'м';
   end else
   begin
@@ -2161,8 +2232,10 @@ begin
   odst:=0;
  end;
 
- Points[osrc].IncEXP(1);
- Dec(Points[odst].Points.EXP);
+ if Points[odst].Points.TryDecExp then
+ begin
+  Points[osrc].IncEXP(1);
+ end;
 
  i:=0;
  if (HP[odst]<=0) then
