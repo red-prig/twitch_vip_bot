@@ -36,7 +36,7 @@ uses
 
 Const
  releases_url='https://github.com/red-prig/twitch_vip_bot/releases';
- current_version='1.3.1';
+ current_version='1.3.2';
 
 type
 
