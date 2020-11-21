@@ -1,17 +1,17 @@
 object FrmVorRpg: TFrmVorRpg
-  Left = 551
+  Left = 466
   Height = 236
-  Top = 200
-  Width = 379
+  Top = 141
+  Width = 403
   BorderIcons = [biSystemMenu]
   Caption = 'Вор Рпг'
   ClientHeight = 236
-  ClientWidth = 379
+  ClientWidth = 403
   OnCreate = FormCreate
   Position = poMainFormCenter
   LCLVersion = '2.0.10.0'
   object BtnCancel: TBitBtn
-    Left = 277
+    Left = 301
     Height = 30
     Top = 202
     Width = 91
@@ -166,7 +166,7 @@ object FrmVorRpg: TFrmVorRpg
     Left = 1
     Height = 190
     Top = 8
-    Width = 378
+    Width = 402
     ActivePage = TabSheet1
     Anchors = [akTop, akLeft, akRight, akBottom]
     TabIndex = 0
@@ -175,16 +175,16 @@ object FrmVorRpg: TFrmVorRpg
     object TabSheet1: TTabSheet
       Caption = 'Общее'
       ClientHeight = 162
-      ClientWidth = 370
+      ClientWidth = 394
       object EdtTimeKd: TLabeledEdit
         Left = 0
         Height = 25
         Hint = 'Общий кд для команд в чате (сек)'
         Top = 32
-        Width = 362
+        Width = 386
         Anchors = [akTop, akLeft, akRight]
         EditLabel.Height = 21
-        EditLabel.Width = 362
+        EditLabel.Width = 386
         EditLabel.Caption = 'Общий кд для команд (сек):'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
@@ -203,10 +203,10 @@ object FrmVorRpg: TFrmVorRpg
         Height = 25
         Hint = 'Базовое время таймача'
         Top = 80
-        Width = 362
+        Width = 386
         Anchors = [akTop, akLeft, akRight]
         EditLabel.Height = 21
-        EditLabel.Width = 362
+        EditLabel.Width = 386
         EditLabel.Caption = 'Базовое время таймача:'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
@@ -225,10 +225,10 @@ object FrmVorRpg: TFrmVorRpg
         Height = 25
         Hint = 'Обозначаяеться вероятность потерять випку при попытке своровать, когда уже ВИП'
         Top = 128
-        Width = 362
+        Width = 386
         Anchors = [akTop, akLeft, akRight]
         EditLabel.Height = 21
-        EditLabel.Width = 362
+        EditLabel.Width = 386
         EditLabel.Caption = 'Вер. минус VIP при ВОР для уже VIP %0-%100:'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
@@ -317,16 +317,16 @@ object FrmVorRpg: TFrmVorRpg
     object TabSheet3: TTabSheet
       Caption = '!пнуть'
       ClientHeight = 162
-      ClientWidth = 370
+      ClientWidth = 394
       object EdtKickPerc: TLabeledEdit
         Left = 0
         Height = 25
         Hint = 'Обозначаяеться базовая вероятность пнуть вора и наложить дебаф'
         Top = 32
-        Width = 363
+        Width = 387
         Anchors = [akTop, akLeft, akRight]
         EditLabel.Height = 21
-        EditLabel.Width = 363
+        EditLabel.Width = 387
         EditLabel.Caption = 'Базовая вероятность попасть %0-%100:'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
@@ -345,10 +345,10 @@ object FrmVorRpg: TFrmVorRpg
         Height = 25
         Hint = 'Кд для того кто пинает (сек)'
         Top = 80
-        Width = 363
+        Width = 387
         Anchors = [akTop, akLeft, akRight]
         EditLabel.Height = 21
-        EditLabel.Width = 363
+        EditLabel.Width = 387
         EditLabel.Caption = 'Кд для того кто пинает (сек):'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
@@ -367,10 +367,10 @@ object FrmVorRpg: TFrmVorRpg
         Height = 25
         Hint = 'Кд для того кого пинают (сек)'
         Top = 128
-        Width = 363
+        Width = 387
         Anchors = [akTop, akLeft, akRight]
         EditLabel.Height = 21
-        EditLabel.Width = 363
+        EditLabel.Width = 387
         EditLabel.Caption = 'Кд для того кого пинают (сек):'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
@@ -385,7 +385,7 @@ object FrmVorRpg: TFrmVorRpg
         OnKeyPress = EdtDwKeyPress
       end
       object CBKickEnable: TCheckBox
-        Left = 288
+        Left = 312
         Height = 19
         Top = 8
         Width = 77
@@ -398,9 +398,9 @@ object FrmVorRpg: TFrmVorRpg
     object TabSheet4: TTabSheet
       Caption = 'Обмен випок'
       ClientHeight = 162
-      ClientWidth = 370
+      ClientWidth = 394
       object CBXchgEnable: TCheckBox
-        Left = 288
+        Left = 312
         Height = 19
         Top = 8
         Width = 77
@@ -412,12 +412,12 @@ object FrmVorRpg: TFrmVorRpg
       object EdtXchgMaxCount: TLabeledEdit
         Left = 0
         Height = 25
-        Hint = 'Максимальное количесто обменов'
+        Hint = 'Максимальное количесто одновременных обменов'
         Top = 32
-        Width = 363
+        Width = 387
         Anchors = [akTop, akLeft, akRight]
         EditLabel.Height = 21
-        EditLabel.Width = 363
+        EditLabel.Width = 387
         EditLabel.Caption = 'Максимальное количесто обменов:'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
@@ -436,11 +436,11 @@ object FrmVorRpg: TFrmVorRpg
         Height = 25
         Hint = 'Максимальное время для обмена (мин)'
         Top = 80
-        Width = 363
+        Width = 387
         Anchors = [akTop, akLeft, akRight]
         EditLabel.Height = 21
-        EditLabel.Width = 363
-        EditLabel.Caption = 'Максимальное время для обмена (мин):'
+        EditLabel.Width = 387
+        EditLabel.Caption = 'Максимальное время ожидания для обмена (мин):'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
         EditLabel.Font.Height = -16
@@ -454,9 +454,90 @@ object FrmVorRpg: TFrmVorRpg
         OnKeyPress = EdtDwKeyPress
       end
     end
+    object TabSheet5: TTabSheet
+      Caption = 'Дуэль'
+      ClientHeight = 162
+      ClientWidth = 394
+      object CBduelEnable: TCheckBox
+        Left = 312
+        Height = 19
+        Top = 8
+        Width = 77
+        Anchors = [akTop, akRight]
+        Caption = 'Включено'
+        OnKeyDown = FormKeyDown
+        TabOrder = 0
+      end
+      object EdtduelMaxCount: TLabeledEdit
+        Left = 0
+        Height = 25
+        Hint = 'Максимальное количесто одновременных дуэлей'
+        Top = 32
+        Width = 387
+        Anchors = [akTop, akLeft, akRight]
+        EditLabel.Height = 21
+        EditLabel.Width = 387
+        EditLabel.Caption = 'Максимальное количесто дуэлей:'
+        EditLabel.ParentColor = False
+        EditLabel.ParentFont = False
+        EditLabel.Font.Height = -16
+        Font.Height = -13
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 1
+        OnExit = EdtDwExit
+        OnKeyDown = FormKeyDown
+        OnKeyPress = EdtDwKeyPress
+      end
+      object EdtduelMaxTime: TLabeledEdit
+        Left = 0
+        Height = 25
+        Hint = 'Максимальное время ожидания для дуэли (мин)'
+        Top = 80
+        Width = 387
+        Anchors = [akTop, akLeft, akRight]
+        EditLabel.Height = 21
+        EditLabel.Width = 387
+        EditLabel.Caption = 'Максимальное время для дуэли (мин):'
+        EditLabel.ParentColor = False
+        EditLabel.ParentFont = False
+        EditLabel.Font.Height = -16
+        Font.Height = -13
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 2
+        OnExit = EdtDwExit
+        OnKeyDown = FormKeyDown
+        OnKeyPress = EdtDwKeyPress
+      end
+      object EdtDuelKd: TLabeledEdit
+        Left = 0
+        Height = 25
+        Hint = 'Индивидуальный кд для дуэли (сек)'
+        Top = 128
+        Width = 387
+        Anchors = [akTop, akLeft, akRight]
+        EditLabel.Height = 21
+        EditLabel.Width = 387
+        EditLabel.Caption = 'Кд для дуэли (сек):'
+        EditLabel.ParentColor = False
+        EditLabel.ParentFont = False
+        EditLabel.Font.Height = -16
+        Font.Height = -13
+        ParentFont = False
+        ParentShowHint = False
+        ShowHint = True
+        TabOrder = 3
+        OnExit = EdtDwExit
+        OnKeyDown = FormKeyDown
+        OnKeyPress = EdtDwKeyPress
+      end
+    end
   end
   object CBVorRpgEnable: TCheckBox
-    Left = 293
+    Left = 317
     Height = 19
     Top = 8
     Width = 77

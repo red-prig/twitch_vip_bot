@@ -18,22 +18,27 @@ type
     CBKickEnable: TCheckBox;
     CBXchgEnable: TCheckBox;
     CBVorRpgEnable: TCheckBox;
+    CBduelEnable: TCheckBox;
     EdtBaseTime: TLabeledEdit;
     EdtDebufMaxTime: TLabeledEdit;
     EdtDebufMinTime: TLabeledEdit;
     EdtDebufPerc: TLabeledEdit;
     EdtKickIn: TLabeledEdit;
+    EdtDuelKd: TLabeledEdit;
     EdtXchgMaxCount: TLabeledEdit;
     EdtKickOut: TLabeledEdit;
     EdtKickPerc: TLabeledEdit;
     EdtPercMinusVip: TLabeledEdit;
     EdtTimeKd: TLabeledEdit;
+    EdtduelMaxCount: TLabeledEdit;
     EdtXchgMaxTime: TLabeledEdit;
+    EdtduelMaxTime: TLabeledEdit;
     PageCtrl: TPageControl;
     TabSheet1: TTabSheet;
     TabSheet2: TTabSheet;
     TabSheet3: TTabSheet;
     TabSheet4: TTabSheet;
+    TabSheet5: TTabSheet;
     procedure BtnOkClick(Sender:TObject);
     procedure BtnCancelClick(Sender:TObject);
     procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
@@ -94,7 +99,11 @@ var
     exist2_msg,
     max_msg,
     ready_msg,
-    cancel_msg:RawByteString;
+    cancel_msg,
+    time_msg:RawByteString;
+    stand_msg:TStringList;
+    vip_msg:TStringList;
+    win_msg:TStringList;
    end;
 
    jail_vip:TStringList;
@@ -2160,6 +2169,7 @@ Procedure TDuelScript.OnEvent;
 var
  Points:array[0..1] of TPlayer;
  Users:array[0..1] of RawByteString;
+ datas:array[0..1] of TJson;
  HP:array[0..1] of Integer;
  i,osrc,odst,rnd:Integer;
  Val,Now:Int64;
@@ -2173,11 +2183,14 @@ begin
  Points[1].Load(data2);
  Users[0]:=user1;
  Users[1]:=user2;
- HP[0]:=6;
- HP[1]:=6;
+ datas[0]:=data1;
+ datas[1]:=data1;
+
+ HP[0]:=10;
+ HP[1]:=10;
  osrc:=1;
  odst:=0;
- For i:=0 to 9 do
+ For i:=0 to 99 do
  begin
   Val:=50;
   val:=Val+Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent+Points[osrc].GetESCPercent;
@@ -2187,6 +2200,7 @@ begin
   if (rnd<Val) then
   begin
    Dec(HP[odst]);
+   if HP[odst]<=0 then Break;
   end else
   begin
    Val:=10;
@@ -2198,6 +2212,7 @@ begin
    begin
     Dec(HP[osrc]);
     Dec(HP[osrc]);
+    if HP[osrc]<=0 then Break;
    end;
   end;
   case osrc of
@@ -2214,9 +2229,7 @@ begin
 
  if (HP[0]=HP[1]) then
  begin
-  push_irc_msg(Format('Результат дуэли %s и %s: ничья!',[User1,User2]));
-  try_debuf('',User1,data1);
-  try_debuf('',User2,data2);
+  push_irc_msg(Format(get_random_msg(vor_rpg.duel.stand_msg),[User1,User2]));
   Points[0].Save(data1);
   Points[1].Save(data2);
   SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
@@ -2240,19 +2253,19 @@ begin
  i:=0;
  if (HP[odst]<=0) then
  begin
-  if (FrmVipParam.FindVipUser(Users[odst])<>-1) and
-     (FrmVipParam.FindVipUser(Users[osrc])=-1) then
+  Val:=Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent;
+  val:=MMP(val);
+  if val=0 then val:=1;
+  rnd:=Random(RCT,100);
+  if (rnd<val) then
   begin
-   i:=1;
-   push_irc_msg(Format('/me Силач %s отобрал випку у %s!',[Users[osrc],Users[odst]]));
-   ChangeVip(Users[odst],Users[osrc]);
-  end else
-  begin
-   Val:=Points[osrc].GetLUKPercent;
-   val:=MMP(val);
-   if val=0 then val:=1;
-   rnd:=Random(RCT,100);
-   if (rnd<val) then
+   if (FrmVipParam.FindVipUser(Users[odst])<>-1) and
+      (FrmVipParam.FindVipUser(Users[osrc])=-1) then
+   begin
+    i:=1;
+    push_irc_msg(Format(get_random_msg(vor_rpg.duel.vip_msg),[Users[osrc],Users[odst]]));
+    ChangeVip(Users[odst],Users[osrc]);
+   end else
    begin
     Points[osrc].IncEXP(1);
    end;
@@ -2260,12 +2273,10 @@ begin
  end;
 
  if (i=0) then
-  push_irc_msg(Format('Победа в дуэли достаётся: %s! а неудачника %s выкинули за амбаром!',[Users[osrc],Users[odst]]));
+  push_irc_msg(Format(get_random_msg(vor_rpg.duel.win_msg),[Users[osrc],Users[odst]]));
 
- case odst of
-  0:try_debuf('',User1,data1);
-  1:try_debuf('',User2,data2);
- end;
+ try_debuf('',Users[odst],datas[odst]);
+
  Points[0].Save(data1);
  Points[1].Save(data2);
  SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
@@ -2373,11 +2384,14 @@ begin
  if (time<>0) and ((time+vor_rpg.duel.kd_time)>Now) then
  begin
   time:=(time+vor_rpg.duel.kd_time)-Now;
-  push_irc_msg(Format('%s duel in timeout (%s)',[user1,GetLongStrTime(time)]));
+  if (vor_rpg.duel.time_msg='') then
+  begin
+   vor_rpg.duel.time_msg:='@%s duel in timeout (%s)';
+  end;
+  push_irc_msg(Format(vor_rpg.duel.time_msg,[user1,GetLongStrTime(time)]));
   OnUnlock(nil);
   Exit;
  end;
- //data1.Values['duel.time']:=Now;
 
  link:=AllocMem(SizeOf(TxchgVip));
  link^.src.user:=user1;
@@ -2643,6 +2657,53 @@ begin
                 end;
                end;
 
+        'duel':begin
+                v:=LowerCase(FetchAny(F));
+                try
+                 case v of
+                     'on':if not vor_rpg.duel.Enable then
+                          begin
+                           vor_rpg.duel.Enable:=True;
+                           Config.WriteString('vor_rpg' ,'duel_enable','1');
+                           push_irc_msg(Format('@%s duel on',[user]));
+                          end;
+                    'off':if vor_rpg.duel.Enable then
+                          begin
+                           vor_rpg.duel.Enable:=False;
+                           Config.WriteString('vor_rpg' ,'duel_enable','0');
+                           push_irc_msg(Format('@%s duel off',[user]));
+                          end;
+                  'count':begin
+                           v:=FetchAny(F);
+                           vor_rpg.duel.max_count:=StrToDWORDDef(v,vor_rpg.duel.max_count);
+                           Config.WriteString('vor_rpg','duel_max_count',IntToStr(vor_rpg.duel.max_count));
+                           push_irc_msg(Format('@%s count %s',[user,IntToStr(vor_rpg.duel.max_count)]));
+                          end;
+                   'time':begin
+                           v:=FetchAny(F);
+                           vor_rpg.duel.max_time:=StrToDWORDDef(v,vor_rpg.duel.max_time);
+                           Config.WriteString('vor_rpg','duel_max_time',IntToStr(vor_rpg.duel.max_time));
+                           push_irc_msg(Format('@%s max time %s',[user,IntToStr(vor_rpg.duel.max_time)]));
+                          end;
+                     'kd':begin
+                           v:=FetchAny(F);
+                           vor_rpg.duel.kd_time:=StrToDWORDDef(v,vor_rpg.duel.kd_time);
+                           Config.WriteString('vor_rpg','duel_kd_time',IntToStr(vor_rpg.duel.kd_time));
+                           push_irc_msg(Format('@%s time kd %s',[user,IntToStr(vor_rpg.duel.kd_time)]));
+                          end;
+
+
+                  else
+                   push_irc_msg(Format('@%s !vor mod duel on/off,count,time,kd',[user]));
+                 end;
+                except
+                 on E:Exception do
+                 begin
+                  DumpExceptionCallStack(E);
+                 end;
+                end;
+               end;
+
 
         'debuf',
         'dbf':begin
@@ -2743,7 +2804,7 @@ begin
          end;
 
         else
-         push_irc_msg(Format('@%s !vor mod [base,kick,xchg,dbf,lvl,pts,stat,add [prm],sub [prm]] "nick"',[user]));
+         push_irc_msg(Format('@%s !vor mod [base,kick,xchg,duel,dbf,lvl,pts,stat,add [prm],sub [prm]] "nick"',[user]));
        end;
       end;
      'dbf',
@@ -2782,8 +2843,10 @@ Procedure TFrmVorRpg.InitCfg;
 begin
  vor_rpg.Enable:=False;
  vor_rpg.xchg.Enable:=False;
+ vor_rpg.duel.Enable:=False;
  Config.WriteString('vor_rpg' ,'enable','0');
  Config.WriteString('vor_rpg' ,'xchg_enable','0');
+ Config.WriteString('vor_rpg' ,'duel_enable','0');
 end;
 
 Procedure TFrmVorRpg.LoadCfg;
@@ -2808,6 +2871,12 @@ begin
  vor_rpg.xchg.Enable:=Trim(Config.ReadString('vor_rpg','xchg_enable','0'))='1';
  vor_rpg.xchg.max_count     :=StrToDWORDDef(Config.ReadString('vor_rpg','xchg_max_count',IntToStr(vor_rpg.xchg.max_count     )),vor_rpg.xchg.max_count     );
  vor_rpg.xchg.max_time      :=StrToDWORDDef(Config.ReadString('vor_rpg','xchg_max_time' ,IntToStr(vor_rpg.xchg.max_time      )),vor_rpg.xchg.max_time      );
+
+ vor_rpg.duel.Enable:=Trim(Config.ReadString('vor_rpg','duel_enable','0'))='1';
+ vor_rpg.duel.max_count     :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_max_count',IntToStr(vor_rpg.duel.max_count     )),vor_rpg.duel.max_count     );
+ vor_rpg.duel.max_time      :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_max_time' ,IntToStr(vor_rpg.duel.max_time      )),vor_rpg.duel.max_time      );
+ vor_rpg.duel.kd_time       :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_kd_time'  ,IntToStr(vor_rpg.duel.kd_time      )) ,vor_rpg.duel.kd_time       );
+
 end;
 
 Procedure TFrmVorRpg.Open;
@@ -2830,6 +2899,11 @@ begin
  EdtXchgMaxCount.Text   :=IntToStr(vor_rpg.xchg.max_count);
  EdtXchgMaxTime.Text    :=IntToStr(vor_rpg.xchg.max_time);
 
+ CBduelEnable.Checked   :=vor_rpg.duel.Enable;
+ EdtduelMaxCount.Text   :=IntToStr(vor_rpg.duel.max_count);
+ EdtduelMaxTime.Text    :=IntToStr(vor_rpg.duel.max_time);
+ EdtDuelKd.Text         :=IntToStr(vor_rpg.duel.kd_time);
+
  if ShowModal=1 then
  begin
   vor_rpg.Enable             :=CBVorRpgEnable.Checked;
@@ -2851,6 +2925,11 @@ begin
   vor_rpg.xchg.Enable        :=CBXchgEnable.Checked;
   vor_rpg.xchg.max_count     :=StrToDWORDDef(EdtXchgMaxCount.Text,vor_rpg.xchg.max_count);
   vor_rpg.xchg.max_time      :=StrToDWORDDef(EdtXchgMaxTime.Text ,vor_rpg.xchg.max_time);
+
+  vor_rpg.duel.Enable        :=CBduelEnable.Checked;
+  vor_rpg.duel.max_count     :=StrToDWORDDef(EdtduelMaxCount.Text,vor_rpg.duel.max_count);
+  vor_rpg.duel.max_time      :=StrToDWORDDef(EdtduelMaxTime.Text ,vor_rpg.duel.max_time);
+  vor_rpg.duel.kd_time       :=StrToDWORDDef(EdtDuelKd.Text      ,vor_rpg.duel.kd_time);
 
   try
 
@@ -2875,7 +2954,6 @@ begin
    Config.WriteString('vor_rpg','in_time'  ,IntToStr(vor_rpg.kick.in_time));
    Config.WriteString('vor_rpg','out_time' ,IntToStr(vor_rpg.kick.out_time));
 
-
    case vor_rpg.xchg.Enable of
     True :Config.WriteString('vor_rpg' ,'xchg_enable','1');
     False:Config.WriteString('vor_rpg' ,'xchg_enable','0');
@@ -2883,6 +2961,15 @@ begin
 
    Config.WriteString('vor_rpg','xchg_max_count',IntToStr(vor_rpg.xchg.max_count));
    Config.WriteString('vor_rpg','xchg_max_time' ,IntToStr(vor_rpg.xchg.max_time));
+
+   case vor_rpg.duel.Enable of
+    True :Config.WriteString('vor_rpg' ,'duel_enable','1');
+    False:Config.WriteString('vor_rpg' ,'duel_enable','0');
+   end;
+
+   Config.WriteString('vor_rpg','duel_max_count',IntToStr(vor_rpg.duel.max_count));
+   Config.WriteString('vor_rpg','duel_max_time' ,IntToStr(vor_rpg.duel.max_time));
+   Config.WriteString('vor_rpg','duel_kd_time'  ,IntToStr(vor_rpg.duel.kd_time));
 
   except
    on E:Exception do
@@ -3028,9 +3115,6 @@ initialization
  xchgSet:=TxchgNodeSet.Create;
  duelSet:=TxchgNodeSet.Create;
  vor_rpg.time_kd:=8;
-
- vor_rpg.duel.Enable:=True;
- vor_rpg.duel.kd_time:=60;
 
 end.
 

@@ -3575,6 +3575,22 @@ begin
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.duel.cancel_msg);
    end;
+  'time_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.time_msg);
+   end;
+  'stand_msg':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.duel.stand_msg);
+   end;
+  'vip_msg':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.duel.vip_msg);
+   end;
+  'win_msg':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.duel.win_msg);
+   end;
  end;
 end;
 
