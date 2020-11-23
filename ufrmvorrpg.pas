@@ -2184,7 +2184,7 @@ begin
  Users[0]:=user1;
  Users[1]:=user2;
  datas[0]:=data1;
- datas[1]:=data1;
+ datas[1]:=data2;
 
  HP[0]:=10;
  HP[1]:=10;
@@ -2288,7 +2288,6 @@ var
  P:TxchgNodeSet.PNode;
  Node:TxchgNode;
  link:PxchgVip;
- Now,time:Int64;
 
  Procedure _go2duel;
  var
@@ -2307,6 +2306,26 @@ var
   duelSet.Delete(@link^.dst);
   Finalize(link^);
   FreeMem(link);
+ end;
+
+ function _check_time:Boolean;
+ var
+  Now,time:Int64;
+ begin
+  Result:=False;
+  Now:=DateTimeToUnix(sysutils.Now,False);
+  time:=data1.Path['duel.time'].AsInt(0);
+  if (time<>0) and ((time+vor_rpg.duel.kd_time)>Now) then
+  begin
+   time:=(time+vor_rpg.duel.kd_time)-Now;
+   if (vor_rpg.duel.time_msg='') then
+   begin
+    vor_rpg.duel.time_msg:='@%s duel in timeout (%s)';
+   end;
+   push_irc_msg(Format(vor_rpg.duel.time_msg,[user1,GetLongStrTime(time)]));
+   OnUnlock(nil);
+   Result:=True;
+  end;
  end;
 
 begin
@@ -2330,6 +2349,7 @@ begin
   end else
   if (nick='') or (link^.src.user=nick) then
   begin
+   if _check_time then Exit;
    _go2duel;
   end else
   begin
@@ -2378,20 +2398,7 @@ begin
   Exit;
  end;
 
- Now:=DateTimeToUnix(sysutils.Now,False);
-
- time:=data1.Path['duel.time'].AsInt(0);
- if (time<>0) and ((time+vor_rpg.duel.kd_time)>Now) then
- begin
-  time:=(time+vor_rpg.duel.kd_time)-Now;
-  if (vor_rpg.duel.time_msg='') then
-  begin
-   vor_rpg.duel.time_msg:='@%s duel in timeout (%s)';
-  end;
-  push_irc_msg(Format(vor_rpg.duel.time_msg,[user1,GetLongStrTime(time)]));
-  OnUnlock(nil);
-  Exit;
- end;
+ if _check_time then Exit;
 
  link:=AllocMem(SizeOf(TxchgVip));
  link^.src.user:=user1;
@@ -2405,7 +2412,7 @@ begin
 
  if (vor_rpg.duel.ready_msg='') then
  begin
-  vor_rpg.duel.ready_msg:='@%s input [!duel] in %smin to begin';
+  vor_rpg.duel.ready_msg:='@%s input [!duel] in %smin to begin with %s';
  end;
 
  if (vor_rpg.duel.any_msg='') then
@@ -2415,10 +2422,10 @@ begin
 
  if (nick='') then
  begin
-  push_irc_msg(Format(vor_rpg.duel.ready_msg,[vor_rpg.duel.any_msg,IntToStr(vor_rpg.duel.max_time)]));
+  push_irc_msg(Format(vor_rpg.duel.ready_msg,[vor_rpg.duel.any_msg,IntToStr(vor_rpg.duel.max_time),user1]));
  end else
  begin
-  push_irc_msg(Format(vor_rpg.duel.ready_msg,[nick,IntToStr(vor_rpg.duel.max_time)]));
+  push_irc_msg(Format(vor_rpg.duel.ready_msg,[nick,IntToStr(vor_rpg.duel.max_time),user1]));
  end;
 
  OnUnlock(nil);

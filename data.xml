@@ -80,7 +80,7 @@
   <exist1_msg>@%s вы уже вызванны на дэль:%s            </exist1_msg>
   <exist2_msg>@%s этот пользователь уже ожидает дуэль   </exist2_msg>
   <max_msg>   @%s слишком много запросов на дуэль       </max_msg>
-  <ready_msg> @%s введите [!duel] в течение %sмин чтобы начать дуэль</ready_msg>
+  <ready_msg> @%s введите [!duel] в течение %sмин чтобы начать дуэль с %s</ready_msg>
   <time_msg>  @%s ожидайте следующей дуэли (%s)</time_msg>
 
   <stand_msg>
