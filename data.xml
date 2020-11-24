@@ -276,6 +276,14 @@
   </chr>
  </debuf>
 
+ <debuf>
+  <text>Сгорел пукан -CHR +STR</text>
+  <chr>
+   <CHR>-1</CHR>
+   <STR>1</STR>
+  </chr>
+ </debuf>
+
  <kick>
   <PERC>30</PERC>
   <in_time>9000</in_time>
