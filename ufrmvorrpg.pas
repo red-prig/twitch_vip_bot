@@ -688,6 +688,7 @@ begin
  if (PTS>0) then
  begin
   Dec(PTS);
+  Result:=True;
  end else
  begin
   SetLength(RNDM,0);
@@ -2380,6 +2381,7 @@ begin
    link:=PxchgNode(P^.Data)^.link;
    if (PxchgNode(P^.Data)=@link^.dst) then
    begin
+    if _check_time then Exit;
     _go2duel;
    end;
   end;
@@ -2719,15 +2721,18 @@ begin
                 case v of
                   'add':begin
                          F:=LowerCase(Extract_nick(FetchAny(F)));
-                         add_pts(user,F,'dbf.add',true);
+                         if F<>'' then
+                          add_pts(user,F,'dbf.add',true);
                         end;
                   'clr':begin
                          F:=LowerCase(Extract_nick(FetchAny(F)));
+                          if F<>'' then
                          add_pts(user,F,'dbf.clr',true);
                         end;
                  'info':begin
                          F:=LowerCase(Extract_nick(FetchAny(F)));
-                         GetDBRpgUserInfo(user,F,'dbf');
+                         if F<>'' then
+                          GetDBRpgUserInfo(user,F,'dbf');
                         end;
                  'perc':begin
                          v:=FetchAny(F);
@@ -2766,7 +2771,8 @@ begin
         'stat':
         begin
          F:=LowerCase(Extract_nick(FetchAny(F)));
-         GetDBRpgUserInfo(user,F,v);
+         if F<>'' then
+          GetDBRpgUserInfo(user,F,v);
         end;
         'add':
          begin
@@ -2782,7 +2788,8 @@ begin
            'str':
            begin
             F:=LowerCase(Extract_nick(FetchAny(F)));
-            add_pts(user,F,v,true);
+            if F<>'' then
+             add_pts(user,F,v,true);
            end;
            else
             push_irc_msg(Format('@%s !vor mod add [pts,lvl,exp,luk,def,chr,agl,str] "nick"',[user]));
@@ -2803,7 +2810,8 @@ begin
            'str':
            begin
             F:=LowerCase(Extract_nick(FetchAny(F)));
-            sub_pts(user,F,v);
+            if F<>'' then
+             sub_pts(user,F,v);
            end;
            else
             push_irc_msg(Format('@%s !vor mod sub [pts,lvl,exp,luk,def,chr,agl,str] "nick"',[user]));
