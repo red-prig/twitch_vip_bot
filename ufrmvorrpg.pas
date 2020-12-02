@@ -59,7 +59,7 @@ type
     Procedure vip_time(const user:RawByteString);
     procedure catch_vip(const user:RawByteString);
     procedure check_duel_time;
-    procedure add2duel(const user,nick:RawByteString);
+    procedure add2duel(const user,nick:RawByteString;is_mod:Boolean);
     procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByteString);
     Procedure InitCfg;
     Procedure LoadCfg;
@@ -220,6 +220,7 @@ type
  TxchgVip=record
   src,dst:TxchgNode;
   time:Int64;
+  is_mod:Boolean;
  end;
 
  TxchgNodeCompare=class
@@ -248,8 +249,8 @@ type
 
  TDualLockScript=class(TLockScript)
   public
-   user1,user2:RawByteString;
-   data1,data2:TJson;
+   user:array[0..1] of RawByteString;
+   data:array[0..1] of TJson;
    Destructor Destroy; override;
   protected
    Function   try_lock:Boolean; override;
@@ -260,8 +261,8 @@ type
 
  TOneLockScript=class(TLockScript)
   public
-   user1:RawByteString;
-   data1:TJson;
+   user:RawByteString;
+   data:TJson;
    Destructor Destroy; override;
   protected
    Function   try_lock:Boolean; override;
@@ -307,21 +308,21 @@ end;
 
 Function  TDualLockScript.try_lock:Boolean;
 begin
- Result:=((user1='') or (LockStr.NFind(user1)=nil)) and
-         ((user2='') or (LockStr.NFind(user2)=nil));
+ Result:=((user[0]='') or (LockStr.NFind(user[0])=nil)) and
+         ((user[1]='') or (LockStr.NFind(user[1])=nil));
  if Result then
  begin
-  if (user1<>'') then
-   LockStr.Insert(user1);
-  if (user2<>'') then
-   LockStr.Insert(user2);
+  if (user[0]<>'') then
+   LockStr.Insert(user[0]);
+  if (user[1]<>'') then
+   LockStr.Insert(user[1]);
  end;
 end;
 
 procedure TDualLockScript.unlock;
 begin
- LockStr.Delete(user1);
- LockStr.Delete(user2);
+ LockStr.Delete(user[0]);
+ LockStr.Delete(user[1]);
 end;
 
 procedure TDualLockScript.Prepare(FDbcScript:TDbcStatementScript);
@@ -329,8 +330,8 @@ begin
  inherited;
  FDbcScript.SetSctipt(FGetRpgUser2);
  FDbcScript.ExecuteScript;
- FDbcScript.Params.SetRawByteString('user1',user1);
- FDbcScript.Params.SetRawByteString('user2',user2);
+ FDbcScript.Params.SetRawByteString('user1',user[0]);
+ FDbcScript.Params.SetRawByteString('user2',user[1]);
 end;
 
 procedure TDualLockScript.OnFin(ResultSet:TZResultSet);
@@ -358,12 +359,12 @@ begin
     u:=ResultSet.GetRawByteString(user_f);
     d:=ResultSet.GetRawByteString(data_f);
 
-    if user1=u then
+    if user[0]=u then
     begin
      ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
-     data1:=Default(TJson);
+     data[0]:=Default(TJson);
      try
-      data1:=TJson.New(ms);
+      data[0]:=TJson.New(ms);
      except
       on E:Exception do
       begin
@@ -372,12 +373,12 @@ begin
      end;
      FreeAndNil(ms);
     end else
-    if user2=u then
+    if user[1]=u then
     begin
      ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
-     data2:=Default(TJson);
+     data[1]:=Default(TJson);
      try
-      data2:=TJson.New(ms);
+      data[1]:=TJson.New(ms);
      except
       on E:Exception do
       begin
@@ -396,8 +397,8 @@ end;
 
 Destructor TDualLockScript.Destroy;
 begin
- data1.Free;
- data2.Free;
+ data[0].Free;
+ data[1].Free;
  inherited;
 end;
 
@@ -407,17 +408,17 @@ end;
 
 Function  TOneLockScript.try_lock:Boolean;
 begin
- Result:=((user1='') or (LockStr.NFind(user1)=nil));
+ Result:=((user='') or (LockStr.NFind(user)=nil));
  if Result then
  begin
-  if (user1<>'') then
-   LockStr.Insert(user1);
+  if (user<>'') then
+   LockStr.Insert(user);
  end;
 end;
 
 procedure TOneLockScript.unlock;
 begin
- LockStr.Delete(user1);
+ LockStr.Delete(user);
 end;
 
 procedure TOneLockScript.Prepare(FDbcScript:TDbcStatementScript);
@@ -425,7 +426,7 @@ begin
  inherited;
  FDbcScript.SetSctipt(FGetRpgUser1);
  FDbcScript.ExecuteScript;
- FDbcScript.Params.SetRawByteString('user1',user1);
+ FDbcScript.Params.SetRawByteString('user1',user);
 end;
 
 procedure TOneLockScript.OnFin(ResultSet:TZResultSet);
@@ -453,12 +454,12 @@ begin
     u:=ResultSet.GetRawByteString(user_f);
     d:=ResultSet.GetRawByteString(data_f);
 
-    if user1=u then
+    if user=u then
     begin
      ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
-     data1:=Default(TJson);
+     data:=Default(TJson);
      try
-      data1:=TJson.New(ms);
+      data:=TJson.New(ms);
      except
       on E:Exception do
       begin
@@ -477,7 +478,7 @@ end;
 
 Destructor TOneLockScript.Destroy;
 begin
- data1.Free;
+ data.Free;
  inherited;
 end;
 
@@ -585,8 +586,8 @@ begin
  src_user:=GridVips.FieldValue['user',ARow];
 
  FVorScript:=TVorScript.Create;
- FVorScript.user1:=dst_user;
- FVorScript.user2:=src_user;
+ FVorScript.user[0]:=dst_user;
+ FVorScript.user[1]:=src_user;
  FVorScript.s:=s;
 
  FDbcScript:=TDbcScriptLock.Create;
@@ -1072,9 +1073,9 @@ var
  rnd:Integer;
  Val:Int64;
 begin
- Points1.Load(data1);
- Points2.Load(data2);
- if (FrmVipParam.FindVipUser(user1)<>-1) then
+ Points1.Load(data[0]);
+ Points2.Load(data[1]);
+ if (FrmVipParam.FindVipUser(user[0])<>-1) then
  begin
   rnd:=Random(RCT,100);
   if (rnd<vor_rpg.calc.PERC_MINUS_VIP) then
@@ -1082,15 +1083,15 @@ begin
 
    cmd:=get_random_msg(vor_rpg.minus_vip);
 
-   cmd:=Format(cmd,[user1]);
+   cmd:=Format(cmd,[user[0]]);
    push_irc_msg(cmd);
 
-   FrmVipParam.DeleteAndUnVip(user1);
+   FrmVipParam.DeleteAndUnVip(user[0]);
 
    FrmMain._add_reward_2_log(s,cmd);
    Points1.IncExp(1);
 
-   try_debuf(s,user1,data1);
+   try_debuf(s,user[0],data[0]);
 
   end else
   begin
@@ -1100,7 +1101,7 @@ begin
 
     cmd:=get_random_msg(vor_rpg.chist_vip);
 
-    cmd:=Format(cmd,[user1]);
+    cmd:=Format(cmd,[user[0]]);
     push_irc_msg(cmd);
     FrmMain._add_reward_2_log(s,cmd);
     Points1.IncExp(1);
@@ -1110,21 +1111,21 @@ begin
 
     cmd:=get_random_msg(vor_rpg.neudc_vip);
 
-    cmd:=Format(cmd,[user1]);
+    cmd:=Format(cmd,[user[0]]);
     push_irc_msg(cmd);
     if (Val<>0) then
     begin
-     push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
+     push_irc_msg(Format(vor_rpg.timeout_cmd,[user[0],IntToStr(Val)]));
     end;
     FrmMain._add_reward_2_log(s,cmd);
     Points1.IncExp(2);
 
-    try_debuf(s,user1,data1);
+    try_debuf(s,user[0],data[0]);
 
    end;
   end;
-  Points1.Save(data1);
-  SetDBRpgUser1(user1,data1,@OnUnlock);
+  Points1.Save(data[0]);
+  SetDBRpgUser1(user[0],data[0],@OnUnlock);
  end else
  begin
   Val:=(vip_rnd.perc_vor+Points1.GetLUKPercent-Points2.GetDEFPercent);
@@ -1146,15 +1147,15 @@ begin
 
     cmd:=get_random_msg(vor_rpg.norm_vor);
 
-    cmd:=Format(cmd,[user1,user2]);
+    cmd:=Format(cmd,[user[0],user[1]]);
     push_irc_msg(cmd);
 
-    ChangeVip(user2,user1);
+    ChangeVip(user[1],user[0]);
 
     Points1.IncExp(4);
     Points2.IncExp(1);
 
-    try_debuf(s,user2,data2);
+    try_debuf(s,user[1],data[1]);
 
    end else
    begin
@@ -1162,21 +1163,21 @@ begin
 
     cmd:=get_random_msg(vor_rpg.time4_vip);
 
-    cmd:=Format(cmd,[user1,user2]);
+    cmd:=Format(cmd,[user[0],user[1]]);
     push_irc_msg(cmd);
 
-    ChangeVip(user2,user1);
+    ChangeVip(user[1],user[0]);
 
     Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
     if (Val<>0) then
     begin
-     push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
+     push_irc_msg(Format(vor_rpg.timeout_cmd,[user[0],IntToStr(Val)]));
     end;
 
     Points1.IncExp(3);
     Points2.IncExp(1);
 
-    try_debuf(s,user1,data1);
+    try_debuf(s,user[0],data[0]);
 
    end;
 
@@ -1194,10 +1195,10 @@ begin
 
     cmd:=get_random_msg(vor_rpg.str_vip);
 
-    cmd:=Format(cmd,[user1,user2]);
+    cmd:=Format(cmd,[user[0],user[1]]);
     push_irc_msg(cmd);
 
-    ChangeVip(user2,user1);
+    ChangeVip(user[1],user[0]);
 
     Points1.IncExp(3);
     Points2.IncExp(2);
@@ -1217,7 +1218,7 @@ begin
 
      cmd:=get_random_msg(vor_rpg.esc_vip);
 
-     cmd:=Format(cmd,[user1,user2]);
+     cmd:=Format(cmd,[user[0],user[1]]);
      push_irc_msg(cmd);
 
      Points1.IncExp(3);
@@ -1229,19 +1230,19 @@ begin
 
      cmd:=get_random_msg(vor_rpg.jail_vip);
 
-     cmd:=Format(cmd,[user1,user2]);
+     cmd:=Format(cmd,[user[0],user[1]]);
      push_irc_msg(cmd);
 
      Val:=Max(vor_rpg.calc.BASE_TIME-Points1.GetTime,0);
      if (Val<>0) then
      begin
-      push_irc_msg(Format(vor_rpg.timeout_cmd,[user1,IntToStr(Val)]));
+      push_irc_msg(Format(vor_rpg.timeout_cmd,[user[0],IntToStr(Val)]));
      end;
 
      Points1.IncExp(1);
      Points2.IncExp(2);
 
-     try_debuf(s,user1,data1);
+     try_debuf(s,user[0],data[0]);
 
     end;
 
@@ -1250,9 +1251,9 @@ begin
 
   end;
 
-  Points1.Save(data1);
-  Points2.Save(data2);
-  SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
+  Points1.Save(data[0]);
+  Points2.Save(data[1]);
+  SetDBRpgUser2(user[0],user[1],data[0],data[1],@OnUnlock);
 
  end;
 
@@ -1535,48 +1536,48 @@ var
   now,time:Int64;
  begin
   now:=DateTimeToUnix(sysutils.Now,False);
-  time:=data1.Path['duel.time'].AsInt(0);
+  time:=data.Path['duel.time'].AsInt(0);
   if (time=0) or ((time+vor_rpg.duel.kd_time)<=Now) then
   begin
-   Save40nul(data1,'duel.time',0);
+   Save40nul(data,'duel.time',0);
   end;
-  time:=data1.Path['kick._in'].AsInt(0);
+  time:=data.Path['kick._in'].AsInt(0);
   if (time=0) or ((time+vor_rpg.kick.in_time)<=Now) then
   begin
-   Save40nul(data1,'kick._in',0);
+   Save40nul(data,'kick._in',0);
   end;
-  time:=data1.Path['kick._out'].AsInt(0);
+  time:=data.Path['kick._out'].AsInt(0);
   if (time=0) or ((time+vor_rpg.kick.out_time)<=Now) then
   begin
-   Save40nul(data1,'kick._out',0);
+   Save40nul(data,'kick._out',0);
   end;
-  if (data1.Path['kick'].Count=0) then
+  if (data.Path['kick'].Count=0) then
   begin
-   data1.Delete('kick');
+   data.Delete('kick');
   end;
  end;
 
 begin
- Points1.Load(data1);
+ Points1.Load(data);
 
  if is_mod then
   Case cmd of
    'vacuum':begin
              vacuum;
-             Points1.Save(data1);
-             SetDBRpgUser1(user1,data1,@OnUnlock);
+             Points1.Save(data);
+             SetDBRpgUser1(user,data,@OnUnlock);
              Exit;
             end;
    'dbf.add':begin
-              do_debuf('',user1,data1);
-              Points1.Save(data1);
-              SetDBRpgUser1(user1,data1,@OnUnlock);
+              do_debuf('',user,data);
+              Points1.Save(data);
+              SetDBRpgUser1(user,data,@OnUnlock);
               Exit;
              end;
    'dbf.clr':begin
-              Points1.Save(data1);
-              data1.Delete('debuf');
-              SetDBRpgUser1(user1,data1,@OnUnlock);
+              Points1.Save(data);
+              data.Delete('debuf');
+              SetDBRpgUser1(user,data,@OnUnlock);
               if vor_rpg.stat_msg.debuf_pr='' then
               begin
                vor_rpg.stat_msg.debuf_pr:='@%s &lt;%s&gt;';
@@ -1588,22 +1589,22 @@ begin
    'exp':begin
           Points1.IncEXP(1);
           lvl_msg;
-          Points1.Save(data1);
-          SetDBRpgUser1(user1,data1,@OnUnlock);
+          Points1.Save(data);
+          SetDBRpgUser1(user,data,@OnUnlock);
           Exit;
          end;
    'lvl':begin
           Inc(Points1.Points.LVL);
           lvl_msg;
-          Points1.Save(data1);
-          SetDBRpgUser1(user1,data1,@OnUnlock);
+          Points1.Save(data);
+          SetDBRpgUser1(user,data,@OnUnlock);
           Exit;
          end;
    'pts':begin
           Dec(Points1.Points.PTS);
           pts_msg;
-          Points1.Save(data1);
-          SetDBRpgUser1(user1,data1,@OnUnlock);
+          Points1.Save(data);
+          SetDBRpgUser1(user,data,@OnUnlock);
           Exit;
          end;
   end;
@@ -1648,8 +1649,8 @@ begin
   push_irc_msg(Format(vor_rpg.stat_msg.not_msg,[src,cmd]));
  end;
 
- Points1.Save(data1);
- SetDBRpgUser1(user1,data1,@OnUnlock);
+ Points1.Save(data);
+ SetDBRpgUser1(user,data,@OnUnlock);
 end;
 
 Procedure TSubPtsScript.OnEvent;
@@ -1684,7 +1685,7 @@ var
  end;
 
 begin
- Points1.Load(data1);
+ Points1.Load(data);
 
  Case cmd of
   'exp':begin
@@ -1721,8 +1722,8 @@ begin
         end;
  end;
 
- Points1.Save(data1);
- SetDBRpgUser1(user1,data1,@OnUnlock);
+ Points1.Save(data);
+ SetDBRpgUser1(user,data,@OnUnlock);
 end;
 
 Procedure add_pts(Const src,user,cmd:RawByteString;is_mod:Boolean);
@@ -1733,7 +1734,7 @@ begin
 
  FAddPtsScript:=TAddPtsScript.Create;
  FAddPtsScript.src:=src;
- FAddPtsScript.user1:=user;
+ FAddPtsScript.user:=user;
  FAddPtsScript.cmd:=cmd;
  FAddPtsScript.is_mod:=is_mod;
 
@@ -1750,7 +1751,7 @@ begin
 
  FSubPtsScript:=TSubPtsScript.Create;
  FSubPtsScript.src:=src;
- FSubPtsScript.user1:=user;
+ FSubPtsScript.user:=user;
  FSubPtsScript.cmd:=cmd;
 
  FDbcScript:=TDbcScriptLock.Create;
@@ -1793,7 +1794,7 @@ begin
  if ResultSet.First then
  begin
   u:=ResultSet.GetRawByteString(ResultSet.FindColumn('user'));
-  kick(user1,u,is_mod);
+  kick(user[0],u,is_mod);
  end;
  OnUnlock(Sender);
 end;
@@ -1808,7 +1809,7 @@ begin
 
  Now:=DateTimeToUnix(sysutils.Now,False);
 
- time:=data1.Path['kick._in'].AsInt(0);
+ time:=data[0].Path['kick._in'].AsInt(0);
  if (time<>0) and ((time+vor_rpg.kick.in_time)>Now) then
  begin
   time:=(time+vor_rpg.kick.in_time)-Now;
@@ -1816,28 +1817,28 @@ begin
   begin
    vor_rpg.kick.in_msg:='%s kick in timeout (%s)';
   end;
-  push_irc_msg(Format(vor_rpg.kick.in_msg,[user1,GetLongStrTime(time)]));
+  push_irc_msg(Format(vor_rpg.kick.in_msg,[user[0],GetLongStrTime(time)]));
   OnUnlock(nil);
   Exit;
  end;
- data1.Values['kick._in']:=Now;
+ data[0].Values['kick._in']:=Now;
 
- if not data2.isAssigned then
+ if not data[1].isAssigned then
  begin
   GetDBRndUser(@OnGetRnd);
   Exit;
  end;
 
- if (user1=user2) then
+ if (user[0]=user[1]) then
  begin
-  data2.Free;
-  data2:=data1;
+  data[1].Free;
+  data[1]:=data[0];
  end else
- if not data2.Path['points'].isAssigned then
+ if not data[1].Path['points'].isAssigned then
  begin
   //not found in base
 
-  push_irc_msg(Format(get_random_msg(vor_rpg.kick.not_vor),[user1]));
+  push_irc_msg(Format(get_random_msg(vor_rpg.kick.not_vor),[user[0]]));
 
   if is_mod then
   begin
@@ -1845,13 +1846,13 @@ begin
    Exit;
   end;
 
-  Points1.Load(data1);
+  Points1.Load(data[0]);
 
-  SetDBRpgUser1(user1,data1,@OnUnlock);
+  SetDBRpgUser1(user[0],data[0],@OnUnlock);
   Exit;
  end;
 
- time:=data2.Path['kick._out'].AsInt(0);
+ time:=data[1].Path['kick._out'].AsInt(0);
  if (time<>0) and ((time+vor_rpg.kick.out_time)>Now) then
  begin
   time:=(time+vor_rpg.kick.out_time)-Now;
@@ -1859,14 +1860,14 @@ begin
   begin
    vor_rpg.kick.out_msg:='%s kick out timeout (%s)';
   end;
-  push_irc_msg(Format(vor_rpg.kick.out_msg,[user2,GetLongStrTime(time)]));
+  push_irc_msg(Format(vor_rpg.kick.out_msg,[user[1],GetLongStrTime(time)]));
   OnUnlock(nil);
   Exit;
  end;
- data2.Values['kick._out']:=Now;
+ data[1].Values['kick._out']:=Now;
 
- Points1.Load(data1);
- Points2.Load(data2);
+ Points1.Load(data[0]);
+ Points2.Load(data[1]);
 
  val:=vor_rpg.kick.PERC+Points1.GetESCPercent-Points2.GetESCPercent;
  if is_mod then val:=val+10;
@@ -1881,28 +1882,28 @@ begin
   if (rnd<val) then
   begin
    //kick is
-   push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_kick),[user1,user2]));
-   do_debuf('',user2,data2);
+   push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_kick),[user[0],user[1]]));
+   do_debuf('',user[1],data[1]);
   end else
   begin
    //do def
-   push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_def),[user1,user2]));
-   try_debuf('',user1,data1);
+   push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_def),[user[0],user[1]]));
+   try_debuf('',user[0],data[0]);
   end;
  end else
  begin
   //escape
-  push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_esc),[user1,user2]));
-  try_debuf('',user1,data1);
+  push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_esc),[user[0],user[1]]));
+  try_debuf('',user[0],data[0]);
  end;
 
- if (user1=user2) then
+ if (user[0]=user[1]) then
  begin
-  data2:=Default(TJson);
-  SetDBRpgUser1(user1,data1,@OnUnlock);
+  data[1]:=Default(TJson);
+  SetDBRpgUser1(user[0],data[0],@OnUnlock);
  end else
  begin
-  SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
+  SetDBRpgUser2(user[0],user[1],data[0],data[1],@OnUnlock);
  end;
 
 end;
@@ -1916,8 +1917,8 @@ begin
  src_user:=LowerCase(Extract_nick(msg));
 
  FKickScript:=TKickScript.Create;
- FKickScript.user1:=dst_user;
- FKickScript.user2:=src_user;
+ FKickScript.user[0]:=dst_user;
+ FKickScript.user[1]:=src_user;
  FKickScript.is_mod:=is_mod;
 
  FDbcScript:=TDbcScriptLock.Create;
@@ -2156,6 +2157,7 @@ end;
 type
  TDuelAddScript=class(TOneLockScript)
   public
+   is_mod:Boolean;
    nick:RawByteString;
    Procedure OnEvent; override;
  end;
@@ -2163,29 +2165,24 @@ type
 type
  TDuelScript=class(TDualLockScript)
   public
+   is_mod:array[0..1] of Boolean;
    Procedure OnEvent; override;
  end;
 
 Procedure TDuelScript.OnEvent;
 var
  Points:array[0..1] of TPlayer;
- Users:array[0..1] of RawByteString;
- datas:array[0..1] of TJson;
  HP:array[0..1] of Integer;
  i,osrc,odst,rnd:Integer;
  Val,Now:Int64;
 begin
 
  Now:=DateTimeToUnix(sysutils.Now,False);
- data1.Values['duel.time']:=Now;
- data2.Values['duel.time']:=Now;
+ data[0].Values['duel.time']:=Now;
+ data[1].Values['duel.time']:=Now;
 
- Points[0].Load(data1);
- Points[1].Load(data2);
- Users[0]:=user1;
- Users[1]:=user2;
- datas[0]:=data1;
- datas[1]:=data2;
+ Points[0].Load(data[0]);
+ Points[1].Load(data[1]);
 
  HP[0]:=10;
  HP[1]:=10;
@@ -2230,10 +2227,10 @@ begin
 
  if (HP[0]=HP[1]) then
  begin
-  push_irc_msg(Format(get_random_msg(vor_rpg.duel.stand_msg),[User1,User2]));
-  Points[0].Save(data1);
-  Points[1].Save(data2);
-  SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
+  push_irc_msg(Format(get_random_msg(vor_rpg.duel.stand_msg),[User[0],User[1]]));
+  Points[0].Save(data[0]);
+  Points[1].Save(data[1]);
+  SetDBRpgUser2(user[0],user[1],data[0],data[1],@OnUnlock);
   Exit;
  end else
  if (HP[0]>HP[1]) then
@@ -2260,12 +2257,13 @@ begin
   rnd:=Random(RCT,100);
   if (rnd<val) then
   begin
-   if (FrmVipParam.FindVipUser(Users[odst])<>-1) and
-      (FrmVipParam.FindVipUser(Users[osrc])=-1) then
+   if (not is_mod[0]) and (not is_mod[1]) and
+      (FrmVipParam.FindVipUser(User[odst])<>-1) and
+      (FrmVipParam.FindVipUser(User[osrc])=-1) then
    begin
     i:=1;
-    push_irc_msg(Format(get_random_msg(vor_rpg.duel.vip_msg),[Users[osrc],Users[odst]]));
-    ChangeVip(Users[odst],Users[osrc]);
+    push_irc_msg(Format(get_random_msg(vor_rpg.duel.vip_msg),[User[osrc],User[odst]]));
+    ChangeVip(User[odst],User[osrc]);
    end else
    begin
     Points[osrc].IncEXP(1);
@@ -2274,13 +2272,13 @@ begin
  end;
 
  if (i=0) then
-  push_irc_msg(Format(get_random_msg(vor_rpg.duel.win_msg),[Users[osrc],Users[odst]]));
+  push_irc_msg(Format(get_random_msg(vor_rpg.duel.win_msg),[User[osrc],User[odst]]));
 
- try_debuf('',Users[odst],datas[odst]);
+ try_debuf('',User[odst],data[odst]);
 
- Points[0].Save(data1);
- Points[1].Save(data2);
- SetDBRpgUser2(user1,user2,data1,data2,@OnUnlock);
+ Points[0].Save(data[0]);
+ Points[1].Save(data[1]);
+ SetDBRpgUser2(user[0],user[1],data[0],data[1],@OnUnlock);
  Exit;
 end;
 
@@ -2296,8 +2294,11 @@ var
   FDuelScript:TDuelScript;
  begin
   FDuelScript:=TDuelScript.Create;
-  FDuelScript.user1:=user1;
-  FDuelScript.user2:=link^.src.user;
+  FDuelScript.user[0]:=user;
+  FDuelScript.user[1]:=link^.src.user;
+
+  FDuelScript.is_mod[0]:=is_mod;
+  FDuelScript.is_mod[1]:=link^.is_mod;
 
   FDbcScript:=TDbcScriptLock.Create;
   FDbcScript.Prepare(FDuelScript);
@@ -2315,7 +2316,7 @@ var
  begin
   Result:=False;
   Now:=DateTimeToUnix(sysutils.Now,False);
-  time:=data1.Path['duel.time'].AsInt(0);
+  time:=data.Path['duel.time'].AsInt(0);
   if (time<>0) and ((time+vor_rpg.duel.kd_time)>Now) then
   begin
    time:=(time+vor_rpg.duel.kd_time)-Now;
@@ -2323,7 +2324,7 @@ var
    begin
     vor_rpg.duel.time_msg:='@%s duel in timeout (%s)';
    end;
-   push_irc_msg(Format(vor_rpg.duel.time_msg,[user1,GetLongStrTime(time)]));
+   push_irc_msg(Format(vor_rpg.duel.time_msg,[user,GetLongStrTime(time)]));
    OnUnlock(nil);
    Result:=True;
   end;
@@ -2331,7 +2332,7 @@ var
 
 begin
  Node:=Default(TxchgNode);
- Node.user:=user1;
+ Node.user:=user;
  P:=duelSet.NFind(@Node);
  if (P<>nil) then
  begin
@@ -2342,7 +2343,7 @@ begin
    begin
     vor_rpg.duel.cancel_msg:='@%s duel is canceled';
    end;
-   push_irc_msg(Format(vor_rpg.duel.cancel_msg,[user1]));
+   push_irc_msg(Format(vor_rpg.duel.cancel_msg,[user]));
    duelSet.Delete(@link^.src);
    duelSet.Delete(@link^.dst);
    Finalize(link^);
@@ -2358,7 +2359,7 @@ begin
    begin
     vor_rpg.duel.exist1_msg:='@%s you are challenged to a duel with %s';
    end;
-   push_irc_msg(Format(vor_rpg.duel.exist1_msg,[user1,link^.src.user]));
+   push_irc_msg(Format(vor_rpg.duel.exist1_msg,[user,link^.src.user]));
   end;
   OnUnlock(nil);
   Exit;
@@ -2375,7 +2376,7 @@ begin
    begin
     vor_rpg.duel.exist2_msg:='@%s this man is already waiting duel';
    end;
-   push_irc_msg(Format(vor_rpg.duel.exist2_msg,[user1]));
+   push_irc_msg(Format(vor_rpg.duel.exist2_msg,[user]));
   end else
   begin
    link:=PxchgNode(P^.Data)^.link;
@@ -2395,7 +2396,7 @@ begin
   begin
    vor_rpg.duel.max_msg:='@%s too many requests for duel';
   end;
-  push_irc_msg(Format(vor_rpg.duel.max_msg,[user1]));
+  push_irc_msg(Format(vor_rpg.duel.max_msg,[user]));
   OnUnlock(nil);
   Exit;
  end;
@@ -2403,7 +2404,8 @@ begin
  if _check_time then Exit;
 
  link:=AllocMem(SizeOf(TxchgVip));
- link^.src.user:=user1;
+ link^.is_mod:=is_mod;
+ link^.src.user:=user;
  link^.src.link:=link;
  link^.dst.user:=nick;
  link^.dst.link:=link;
@@ -2424,16 +2426,16 @@ begin
 
  if (nick='') then
  begin
-  push_irc_msg(Format(vor_rpg.duel.ready_msg,[vor_rpg.duel.any_msg,IntToStr(vor_rpg.duel.max_time),user1]));
+  push_irc_msg(Format(vor_rpg.duel.ready_msg,[vor_rpg.duel.any_msg,IntToStr(vor_rpg.duel.max_time),user]));
  end else
  begin
-  push_irc_msg(Format(vor_rpg.duel.ready_msg,[nick,IntToStr(vor_rpg.duel.max_time),user1]));
+  push_irc_msg(Format(vor_rpg.duel.ready_msg,[nick,IntToStr(vor_rpg.duel.max_time),user]));
  end;
 
  OnUnlock(nil);
 end;
 
-procedure TFrmVorRpg.add2duel(const user,nick:RawByteString);
+procedure TFrmVorRpg.add2duel(const user,nick:RawByteString;is_mod:Boolean);
 var
  FDbcScript:TDbcScriptLock;
  FDuelScript:TDuelAddScript;
@@ -2443,8 +2445,9 @@ begin
  check_duel_time;
 
  FDuelScript:=TDuelAddScript.Create;
- FDuelScript.user1:=user;
- FDuelScript.nick :=nick;
+ FDuelScript.user:=user;
+ FDuelScript.nick:=nick;
+ FDuelScript.is_mod:=is_mod;
 
  FDbcScript:=TDbcScriptLock.Create;
  FDbcScript.Prepare(FDuelScript);
@@ -2511,7 +2514,7 @@ begin
    if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and
       (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
-   add2duel(user,LowerCase(Extract_nick(FetchAny(F))));
+   add2duel(user,LowerCase(Extract_nick(FetchAny(F))),PC.PS*[pm_broadcaster,pm_moderator]<>[]);
   end;
 
   {$IFOPT D+}
@@ -2829,7 +2832,17 @@ begin
      'points',
      'pts' ,
      'stats',
-     'stat':GetDBRpgUserInfo(user,user,v);
+     'stat':
+     begin
+      F:=LowerCase(Extract_nick(FetchAny(F)));
+      if (F<>'') then
+      begin
+       GetDBRpgUserInfo(user,F,v);
+      end else
+      begin
+       GetDBRpgUserInfo(user,user,v);
+      end;
+     end;
      'add':begin
             v:=LowerCase(FetchAny(F));
             Case v of
