@@ -2251,9 +2251,8 @@ begin
  i:=0;
  if (HP[odst]<=0) then
  begin
-  Val:=Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent;
+  Val:=10+Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent;
   val:=MMP(val);
-  if val=0 then val:=1;
   rnd:=Random(RCT,100);
   if (rnd<val) then
   begin
