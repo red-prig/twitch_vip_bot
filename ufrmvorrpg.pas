@@ -100,7 +100,8 @@ var
     max_msg,
     ready_msg,
     cancel_msg,
-    time_msg:RawByteString;
+    time_msg,
+    zero_msg:RawByteString;
     stand_msg:TStringList;
     vip_msg:TStringList;
     win_msg:TStringList;
@@ -2283,6 +2284,7 @@ end;
 
 Procedure TDuelAddScript.OnEvent;
 var
+ Points:TPlayer;
  P:TxchgNodeSet.PNode;
  Node:TxchgNode;
  link:PxchgVip;
@@ -2330,6 +2332,19 @@ var
  end;
 
 begin
+ Points.Load(data);
+ if (Points.Points.LVL>=0) and
+    (Points.Points.EXP>=0) then
+ begin
+  if (vor_rpg.duel.zero_msg='') then
+  begin
+   vor_rpg.duel.zero_msg:='@%s you exp is zero, try theif vip!';
+  end;
+  push_irc_msg(Format(vor_rpg.duel.zero_msg,[user]));
+  OnUnlock(nil);
+  Exit;
+ end;
+
  Node:=Default(TxchgNode);
  Node.user:=user;
  P:=duelSet.NFind(@Node);
