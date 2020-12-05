@@ -160,9 +160,11 @@
       </Options>
     </Linking>
     <Other>
-      <CustomOptions Value="-dDisableMemoryLeakReporting"/>
-      <OtherDefines Count="1">
+      <CustomOptions Value="-dDisableMemoryLeakReporting
+-dUSE_STATIC_NGHTTP2"/>
+      <OtherDefines Count="2">
         <Define0 Value="DisableMemoryLeakReporting"/>
+        <Define1 Value="USE_STATIC_NGHTTP2"/>
       </OtherDefines>
     </Other>
   </CompilerOptions>
