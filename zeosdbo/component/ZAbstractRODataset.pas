@@ -5457,7 +5457,11 @@ procedure TZAbstractRODataset.CheckFieldCompatibility(Field: TField; AFieldDef: 
 const
   {EH: hint all commented types are the fields the RowAccessor can't handle -> avoid stack killing moves in Get/SetFieldData()
   this Error trapping is made for User-added fields like calculated's ....}
+  {$IFDEF FPC}
+  BaseFieldTypes: array[ftUnknown..ftWideMemo] of TFieldType = (
+  {$ELSE}
   BaseFieldTypes: array[TFieldType] of TFieldType = (
+  {$ENDIF}
     //generic TFieldTypes of FPC and Delphi(since D7, of course):
     ftUnknown, ftString, ftSmallint, ftInteger, ftWord, // 0..4
     ftBoolean, ftFloat, ftCurrency, ftBCD, ftDate,  ftTime, ftDateTime, // 5..11
