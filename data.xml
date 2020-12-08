@@ -62,7 +62,7 @@
 
  <xchg>
   <max_count>10</max_count>
-  <max_time>5</max_time>  
+  <max_time>5</max_time>
   <exist1_msg>@%s ваш запрос на обмен уже существует, для отмены обмена введите [!vip моя]</exist1_msg>
   <exist2_msg>@%s запрос на обмен для %s уже существует             </exist2_msg>
   <max_msg>   @%s слишком много запросов на обмен випок             </max_msg>
@@ -76,29 +76,29 @@
   <max_time>2</max_time> 
   <kd_time>9000</kd_time> 
   <any_msg>Любой</any_msg>
-  <cancel_msg>@%s дуэль отменёна                        </cancel_msg>
-  <exist1_msg>@%s вы уже вызванны на дэль:%s            </exist1_msg>
-  <exist2_msg>@%s этот пользователь уже ожидает дуэль   </exist2_msg>
-  <max_msg>   @%s слишком много запросов на дуэль       </max_msg>
-  <ready_msg> @%s введите [!duel] в течение %sмин чтобы начать дуэль с %s</ready_msg>
-  <time_msg>  @%s ожидайте следующей дуэли (%s)</time_msg>
-  <zero_msg>  @%s, на вашем счету нет опыта. Попробуйте сначала украсть VIP, а потом лезьте в драку!</zero_msg>
+  <cancel_msg>@%s дуэль отменёна NotLikeThis                  </cancel_msg>
+  <exist1_msg>@%s imGlitch вы уже вызванны на дэль:%s         </exist1_msg>
+  <exist2_msg>@%s imGlitch этот пользователь уже ожидает дуэль</exist2_msg>
+  <max_msg>   @%s imGlitch слишком много запросов на дуэль    </max_msg>
+  <ready_msg> @%s введите [!duel] в течение %sмин чтобы начать дуэль с %s karmikRaid</ready_msg>
+  <time_msg>  @%s ожидайте следующей дуэли karmikFeels (%s)</time_msg>
+  <zero_msg>  @%s, на вашем счету нет опыта. Попробуйте сначала украсть VIP, либо дерись с себе подобным!</zero_msg>
 
   <stand_msg>
-   Результат дуэли %s и %s: ничья!
-   Дуэлянты %s и %s разошлись миром!
+   Результат дуэли %s и %s: ничья! karmikS
+   Дуэлянты %s и %s разошлись миром! karmikS
   </stand_msg>
   
   <vip_msg>
-   /me Силач %s отобрал випку у %s!
-   /me Дуэлянт %s нашёл в кармане у %s випку!
-   /me Злодей %s вырвал випку из рук %s!
+   /me Силач %s отобрал випку у %s! karmik3
+   /me Дуэлянт %s нашёл в кармане у %s випку! karmik3
+   /me Злодей %s вырвал випку из рук %s! karmik3
   </vip_msg>
   
   <win_msg>
-   Победа в дуэли достаётся: %s, а неудачника %s выкинули за амбаром!
-   Победил в дуэли %s, а %s отправили делать скип туалета!
-   Дуэль закончилась победой: %s и провалом %s
+   Победа в дуэли достаётся: %s, а неудачника %s выкинули за амбаром! karmikRip
+   Победил в дуэли %s, а %s отправили делать скип туалета! karmikFeels
+   Дуэль закончилась победой: %s и провалом %s karmikClown
   </win_msg>
 
  </duel>
@@ -178,7 +178,7 @@
   <help_msg1> @%s команды вора: !vor [dbf,lvl,pts,stat,add [парам.]]</help_msg1>
   <help_msg2> @%s для прокачки: !vor add [luk,def,chr,agl,str]      </help_msg2>
   <on_debuf>  @%s наложен дебаф: (%s)                               </on_debuf>
-  <debuf_pr>  @%s &lt;%s&gt;                                        </debuf_pr>
+  <debuf_pr>  @%s &lt; %s &gt;                                      </debuf_pr>
  </stat_msg>
 
  <calc>
@@ -272,7 +272,7 @@
  </debuf>
 
  <debuf>
-  <text> 3 часа закрепа туалета -STR +CHR</text>
+  <text>3 часа закрепа туалета -STR +CHR</text>
   <chr>
    <STR>-1</STR>
    <CHR>1</CHR>

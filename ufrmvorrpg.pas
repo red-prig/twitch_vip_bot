@@ -222,6 +222,7 @@ type
   src,dst:TxchgNode;
   time:Int64;
   is_mod:Boolean;
+  is_zero:Boolean;
  end;
 
  TxchgNodeCompare=class
@@ -2288,6 +2289,7 @@ var
  P:TxchgNodeSet.PNode;
  Node:TxchgNode;
  link:PxchgVip;
+ cur_zero:Boolean;
 
  Procedure _go2duel;
  var
@@ -2331,19 +2333,36 @@ var
   end;
  end;
 
+ function _check_zero:Boolean;
+ begin
+  Result:=((not link^.is_zero) and cur_zero);
+  if Result then
+  begin
+   if (vor_rpg.duel.zero_msg='') then
+   begin
+    vor_rpg.duel.zero_msg:='@%s you exp is zero, try theif vip!';
+   end;
+   push_irc_msg(Format(vor_rpg.duel.zero_msg,[user]));
+   OnUnlock(nil);
+   Exit;
+  end;
+
+  Result:=(link^.is_zero and (not cur_zero));
+  if Result then
+  begin
+   if (vor_rpg.duel.zero_msg='') then
+   begin
+    vor_rpg.duel.zero_msg:='@%s you exp is zero, try theif vip!';
+   end;
+   push_irc_msg(Format(vor_rpg.duel.zero_msg,[link^.src.user]));
+   OnUnlock(nil);
+   Exit;
+  end;
+ end;
+
 begin
  Points.Load(data);
- if (Points.Points.LVL>=0) and
-    (Points.Points.EXP>=0) then
- begin
-  if (vor_rpg.duel.zero_msg='') then
-  begin
-   vor_rpg.duel.zero_msg:='@%s you exp is zero, try theif vip!';
-  end;
-  push_irc_msg(Format(vor_rpg.duel.zero_msg,[user]));
-  OnUnlock(nil);
-  Exit;
- end;
+ cur_zero:=(Points.Points.LVL<=0) and (Points.Points.EXP<=0);
 
  Node:=Default(TxchgNode);
  Node.user:=user;
@@ -2366,6 +2385,7 @@ begin
   if (nick='') or (link^.src.user=nick) then
   begin
    if _check_time then Exit;
+   if _check_zero then Exit;
    _go2duel;
   end else
   begin
@@ -2397,6 +2417,7 @@ begin
    if (PxchgNode(P^.Data)=@link^.dst) then
    begin
     if _check_time then Exit;
+    if _check_zero then Exit;
     _go2duel;
    end;
   end;
@@ -2419,6 +2440,8 @@ begin
 
  link:=AllocMem(SizeOf(TxchgVip));
  link^.is_mod:=is_mod;
+ link^.is_zero:=cur_zero;
+
  link^.src.user:=user;
  link^.src.link:=link;
  link^.dst.user:=nick;
