@@ -629,6 +629,7 @@ type
   Function  GetDEFPercent:Int64;
   Function  GetSTRPercent:Int64;
   Function  GetESCPercent:Int64;
+  Function  GetAGLPercent:Int64;
   Function  GetTime:Int64;
   procedure IncEXP(val:Int64);
   procedure Load(J:TJson);
@@ -833,6 +834,18 @@ begin
   Result:=Trunc(Log2(_AGL*3-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL)
  else
   Result:=-Trunc(Log2(abs(_AGL)*3-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL);
+end;
+
+Function TPlayer.GetAGLPercent:Int64;
+var
+ _AGL:Int64;
+begin
+ _AGL:=AGL;
+ if (_AGL=0) then Exit(0) else
+ if (_AGL>0) then
+  Result:=Trunc(Log2((_AGL+1)*4-2)*vor_rpg.calc.MUL_STR+vor_rpg.calc.DEC_STR)
+ else
+  Result:=-Trunc(Log2((abs(_AGL)+1)*4-2)*vor_rpg.calc.MUL_STR+vor_rpg.calc.DEC_STR);
 end;
 
 Function TPlayer.GetTime:Int64;
@@ -2193,8 +2206,8 @@ begin
  For i:=0 to 99 do
  begin
   Val:=50;
-  val:=Val+Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent+Points[osrc].GetESCPercent;
-  val:=Val-Points[odst].GetLUKPercent-Points[odst].GetDEFPercent-Points[odst].GetESCPercent;
+  val:=Val+Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent+Points[osrc].GetAGLPercent;
+  val:=Val-Points[odst].GetLUKPercent-Points[odst].GetDEFPercent-Points[odst].GetAGLPercent;
   val:=MMP(val);
   rnd:=Random(RCT,100);
   if (rnd<Val) then
@@ -2204,8 +2217,8 @@ begin
   end else
   begin
    Val:=10;
-   val:=Val+Points[odst].GetLUKPercent+Points[odst].GetESCPercent;
-   val:=Val-Points[osrc].GetDEFPercent-Points[osrc].GetESCPercent;
+   val:=Val+Points[odst].GetLUKPercent+Points[odst].GetAGLPercent;
+   val:=Val-Points[osrc].GetDEFPercent-Points[osrc].GetAGLPercent;
    val:=MMP(val);
    rnd:=Random(RCT,100);
    if (rnd<Val) then
