@@ -85,7 +85,7 @@ begin
  Node^.time_:=Now;
  Node^.type_:=type_;
  Node^.code_:=code_;
- Move(S[1],Node^.text_,Len);
+ Move(PAnsiChar(S)^,Node^.text_,Len);
  SendMainQueue(Node);
 end;
 
