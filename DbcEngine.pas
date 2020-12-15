@@ -555,6 +555,7 @@ begin
   if rc=0 then Break;
   Dec(rc);
   if rc=0 then Break;
+  if FState then Exit;
  end;
 
  rc:=FQueue.Count;
@@ -605,11 +606,12 @@ begin
   if rc=0 then Break;
   Dec(rc);
   if rc=0 then Break;
+  if FState then Exit;
  end;
 
- if FQueue.IsEmpty then
+ if FQueue.IsEmpty and (not FState) then
  begin
-  RTLeventWaitFor(FQueue.hEvent,{2*60*}10*1000);
+  RTLeventWaitFor(FQueue.hEvent,RtlWaitTime);
   if (not FState) and FPingSupport and FQueue.IsEmpty then
   begin
    if not DBPing then
