@@ -76,7 +76,7 @@
   <max_time>2</max_time> 
   <kd_time>9000</kd_time> 
   <any_msg>Любой</any_msg>
-  <cancel_msg>@%s дуэль отменёна NotLikeThis                  </cancel_msg>
+  <cancel_msg>@%s дуэль отменена NotLikeThis                  </cancel_msg>
   <exist1_msg>@%s imGlitch вы уже вызванны на дэль:%s         </exist1_msg>
   <exist2_msg>@%s imGlitch этот пользователь уже ожидает дуэль</exist2_msg>
   <max_msg>   @%s imGlitch слишком много запросов на дуэль    </max_msg>
