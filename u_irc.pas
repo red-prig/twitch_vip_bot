@@ -77,6 +77,8 @@ type
   Destructor  Destroy; override;
  end;
 
+ THttpClientClass=class of THttpClient;
+
  THttpClient=class
   //private
    bev:Pbufferevent;
@@ -106,7 +108,7 @@ type
   procedure terminate;
  end;
 
-function replyConnect(var ClientData:THttpClient;Const Path:RawByteString):Boolean;
+function  replyConnect(var ClientData:THttpClient;AClass:THttpClientClass;Const Path:RawByteString):Boolean;
 
 procedure reply_irc_Connect(const login,oAuth,chat:RawByteString);
 procedure reply_irc_Disconnect;
@@ -865,11 +867,23 @@ begin
  end;
 end;
 
+function Utf8FixCut(P:PByte;Len:SizeInt):SizeInt; inline;
+begin
+ Inc(P,Len-1);
+ While (Len>0) and (P^>127) do
+ begin
+  Dec(P);
+  Dec(Len);
+ end;
+ Result:=Len;
+end;
+
 Procedure _submit_tm(ev:Ptimer;arg:pointer);
 Const
  max_msg_size=500;
 var
  v:Piovec;
+ Len:SizeInt;
 
  PC:TPrivMsgCfg;
 begin
@@ -878,16 +892,17 @@ begin
  begin
   if iovec_getlen(v)>max_msg_size then
   begin
-   v:=GetMem(max_msg_size+SizeOf(Tiovec));
+   Len:=Utf8FixCut(iovec_getdata(v),max_msg_size);
+   v:=GetMem(Len+SizeOf(Tiovec));
    With v^ do
    begin
     base:=@PByte(v)[SizeOf(Tiovec)];
-    len:=max_msg_size;
+    len:=Len;
     pos:=0;
     buf_free:=nil;
     vec_free:=Freemem_ptr;
    end;
-   evbuffer_remove(msg_send_buf,v^.base,max_msg_size);
+   evbuffer_remove(msg_send_buf,v^.base,Len);
   end else
   begin
    v:=evbuffer_pop(msg_send_buf);
@@ -1097,6 +1112,8 @@ var
  param:RawByteString;
  i:SizeInt;
 begin
+ param:='';
+
  i:=Pos(#13#10,S);
  if i=0 then
  begin
@@ -1186,7 +1203,12 @@ begin
   //Writeln(n,'*',v,'*');
 
   Case n of
-   'msg-id'      :msg_id:=v;
+   'msg-id'        :begin
+                     msg_id:=v;
+                     case msg_id of
+                      'highlighted-message':PC.PS:=PC.PS+[pm_highlighted];
+                     end;
+                    end;
 
    'emote-only'    :if v<>'0' then RS:=RS+[Rs_emote_only];
    'followers-only':if v<>'0' then RS:=RS+[Rs_followers_only];
@@ -2578,13 +2600,14 @@ begin
  inherited;
 end;
 
- function replyConnect(var ClientData:THttpClient;Const Path:RawByteString):Boolean;
+ function replyConnect(var ClientData:THttpClient;AClass:THttpClientClass;Const Path:RawByteString):Boolean;
  Var
   URI:TURI;
   ctx:PSSL_CTX;
   port:Word;
 
  begin
+  Result:=False;
   Init_Callbacks;
 
   URI:=parse_uri(Path);
@@ -2603,7 +2626,7 @@ end;
             end;
    end;
    Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
-   ClientData:=THttpClient.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),port);
+   ClientData:=AClass.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),port);
    Result:=(ClientData.bev<>nil);
    if not Result then
    begin

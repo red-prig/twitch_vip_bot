@@ -56,7 +56,8 @@ type
    pm_broadcaster,
    pm_global_mod,
    pm_moderator,
-   pm_vip
+   pm_vip,
+   pm_highlighted
   );
   TPrivMsgStates=Set of TPrivMsgState;
   TPrivMsgCfg=record
@@ -1026,6 +1027,7 @@ type
    display_name:RawByteString;
    name_Color:DWORD;
    msg_Color:DWORD;
+   highlighted:Boolean;
   procedure ApplyDrawProperties; override;
   procedure Assign(Source: TKGridCell); override;
   procedure DrawCell(ACol,ARow:Integer;const ARect:TRect;State:TKGridDrawState); override;
@@ -1044,6 +1046,7 @@ begin
   display_name:=TMsgGridCell(Source).display_name;
   name_Color  :=TMsgGridCell(Source).name_Color;
   msg_Color   :=TMsgGridCell(Source).msg_Color;
+  highlighted :=TMsgGridCell(Source).highlighted;
  end;
 end;
 
@@ -1072,11 +1075,14 @@ end;
 Const
  ME_ACTION=#1'ACTION ';
 
+ highlighted_color=$FF4791;
+
 procedure TMsgGridCell.DrawCell(ACol,ARow:Integer;const ARect:TRect;State:TKGridDrawState);
 var
  Canvas:TKGridCellPainter;
  BaseRect,Bounds,Interior:TRect;
  Tmp:DWORD;
+ BackColor:DWORD;
  TBold:Boolean;
  T:RawByteString;
 begin
@@ -1093,12 +1099,24 @@ begin
  else
    Canvas.DrawNormalCellBackground(ARect);
 
+ BackColor:=ColorToRGB(Canvas.BackColor);
+
+ if highlighted then
+ begin
+  BackColor:=highlighted_color;
+  Tmp:=Canvas.Canvas.Brush.Color;
+  Canvas.Canvas.Brush.Color:=highlighted_color;
+  Canvas.Canvas.Brush.Style:=bsSolid;
+  Canvas.Canvas.FillRect(ARect);
+  Canvas.Canvas.Brush.Color:=Tmp;
+ end;
+
  Tmp:=Canvas.Canvas.Font.Color;
 
  Interior:=Default(TRect);
  if display_name<>'' then
  begin
-  if SimilarColor(name_Color,Canvas.BackColor) then
+  if SimilarColor(name_Color,BackColor) then
   begin
    name_Color:=NegColor(name_Color);
   end;
@@ -1126,6 +1144,10 @@ begin
    Canvas.Text:=' '+T;
   end else
   begin
+   if SimilarColor(msg_Color,BackColor) then
+   begin
+    msg_Color:=NegColor(msg_Color);
+   end;
    Canvas.Canvas.Font.Color:=msg_Color;
    Canvas.Text:=': '+T;
   end;
@@ -1392,7 +1414,6 @@ begin
   FrmVorRpg.add_to_chat_cmd(PC,user,cmd,param);
  {$ENDIF}
 
-
  //DoCalc(user,msg);
 
  //DoCalc('','!calc 1.0/0.0');
@@ -1438,8 +1459,9 @@ begin
   GridChat.Cells[aCol,aRow]:=msg;
   New:=TMsgGridCell(GridChat.Cell[aCol,aRow]);
   New.display_name:=display_name;
-  New.name_Color:=PC.Color;
-  New.msg_Color :=clBlack;
+  New.name_Color  :=PC.Color;
+  New.msg_Color   :=clBlack;
+  New.highlighted :=pm_highlighted in PC.PS;
   GridChat.CellClass:=TKGridTextCell;
  end;
 
@@ -2461,7 +2483,7 @@ begin
  HttpStream.FOnEndStream:=@OnEndStream;
  HttpStream.AddStdHdr;
  HttpStream.SetUrl(releases_url);
- if not replyConnect(ClientData,releases_url) then
+ if not replyConnect(ClientData,THttpClient,releases_url) then
  begin
   FreeAndNil(HttpStream);
   Exit;
@@ -2656,7 +2678,7 @@ begin
    HttpStream.FOnEndStream:=@Form.OnEndDownload1_node;
    HttpStream.AddStdHdr;
    HttpStream.SetUrl(download_url);
-   if not replyConnect(ClientData,download_url) then
+   if not replyConnect(ClientData,THttpClient,download_url) then
    begin
     ShowMessage('Ошибка: хост не найден!');
     FreeAndNil(HttpStream);
@@ -2755,7 +2777,7 @@ begin
   HttpStream.FOnEndStream:=@OnEndDownload2_node;
   HttpStream.AddStdHdr;
   HttpStream.SetUrl(StatusInfo.url);
-  if not replyConnect(ClientData,StatusInfo.url) then
+  if not replyConnect(ClientData,THttpClient,StatusInfo.url) then
   begin
    ShowMessage('Ошибка: хост не найден!');
    Release;
