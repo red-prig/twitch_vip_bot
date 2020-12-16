@@ -3329,6 +3329,18 @@ begin
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg2);
    end;
+  'help_msg3':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg3);
+   end;
+  'top_msg1':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.top_msg1);
+   end;
+  'top_msg2':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.top_msg2);
+   end;
   'on_debuf':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.on_debuf);
@@ -3750,6 +3762,10 @@ begin
     Node.Push(TLoadSQL_Func,@FDeleteVipsScript);
    end;
   {$IFDEF VOR_RPG}
+  'get_rpg_all':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRpgAll);
+   end;
   'get_rpg_user1':
    begin
     Node.Push(TLoadSQL_Func,@FGetRpgUser1);

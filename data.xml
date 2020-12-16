@@ -170,15 +170,18 @@
 
  <stat_msg>
   <lvl_msg>   @%s LVL:%s [%s/%s] </lvl_msg>
-  <pts_msg>   @%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s    </pts_msg>
-  <stat_msg>  @%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s            </stat_msg>
-  <add_msg>   @%s навык вкачен в %s                                 </add_msg>
-  <not_msg>   @%s нет свободных очков навыка                        </not_msg>
-  <max_msg>   @%s максимум очков навыка в %s                        </max_msg>
-  <help_msg1> @%s команды вора: !vor [dbf,lvl,pts,stat,add [парам.]]</help_msg1>
-  <help_msg2> @%s для прокачки: !vor add [luk,def,chr,agl,str]      </help_msg2>
-  <on_debuf>  @%s наложен дебаф: (%s)                               </on_debuf>
-  <debuf_pr>  @%s &lt; %s &gt;                                      </debuf_pr>
+  <pts_msg>   @%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s            </pts_msg>
+  <stat_msg>  @%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s                    </stat_msg>
+  <add_msg>   @%s навык вкачен в %s                                         </add_msg>
+  <not_msg>   @%s нет свободных очков навыка                                </not_msg>
+  <max_msg>   @%s максимум очков навыка в %s                                </max_msg>
+  <help_msg1> @%s команды вора: !vor [hlp,top,dbf,lvl,pts,stat,add [парам.]]</help_msg1>
+  <help_msg2> @%s для прокачки: !vor add [luk,def,chr,agl,str]              </help_msg2>
+  <on_debuf>  @%s наложен дебаф: (%s)                                       </on_debuf>
+  <debuf_pr>  @%s &lt; %s &gt;                                              </debuf_pr>
+  <help_msg3> @%s https://docs.google.com/spreadsheets/d/1FCLJ4cR-HaOpttgT43RbnT_bC12mbbRX9ozBwtS8zfY/edit </help_msg3>
+  <top_msg1>  %s)%s|LVL:%s|EXP:%s </top_msg1>
+  <top_msg2>  @%s %s              </top_msg2>
  </stat_msg>
 
  <calc>
@@ -515,6 +518,10 @@
  <delete_vips>
   DELETE FROM vips WHERE user=@user;
  </delete_vips>
+
+ <get_rpg_all>
+  SELECT * FROM rpg;
+ </get_rpg_all>
 
  <get_rpg_user1>
   SELECT * FROM rpg WHERE user=@user1;
