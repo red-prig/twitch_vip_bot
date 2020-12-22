@@ -229,7 +229,7 @@ type
   src,dst:TxchgNode;
   time:Int64;
   is_mod:Boolean;
-  is_zero:Boolean;
+  is_zero:Byte;
  end;
 
  TxchgNodeCompare=class
@@ -2543,28 +2543,37 @@ var
   end;
  end;
 
+ procedure push_zero_msg;
+ begin
+  if (vor_rpg.duel.zero_msg='') then
+  begin
+   vor_rpg.duel.zero_msg:='@%s you exp is zero, try theif vip!';
+  end;
+  push_irc_msg(Format(vor_rpg.duel.zero_msg,[user]));
+ end;
+
  function _check_zero:Boolean;
  begin
-  Result:=((not link^.is_zero) and cur_zero);
+  Result:=(link^.is_zero=0) and cur_zero;
   if Result then
   begin
-   if (vor_rpg.duel.zero_msg='') then
+   if (link^.is_zero=1) then
    begin
-    vor_rpg.duel.zero_msg:='@%s you exp is zero, try theif vip!';
+    push_zero_msg;
+    link^.is_zero:=2;
    end;
-   push_irc_msg(Format(vor_rpg.duel.zero_msg,[user]));
    OnUnlock(nil);
    Exit;
   end;
 
-  Result:=(link^.is_zero and (not cur_zero));
+  Result:=(link^.is_zero<>0) and (not cur_zero);
   if Result then
   begin
-   if (vor_rpg.duel.zero_msg='') then
+   if (link^.is_zero=1) then
    begin
-    vor_rpg.duel.zero_msg:='@%s you exp is zero, try theif vip!';
+    push_zero_msg;
+    link^.is_zero:=2;
    end;
-   push_irc_msg(Format(vor_rpg.duel.zero_msg,[link^.src.user]));
    OnUnlock(nil);
    Exit;
   end;
@@ -2650,7 +2659,10 @@ begin
 
  link:=AllocMem(SizeOf(TxchgVip));
  link^.is_mod:=is_mod;
- link^.is_zero:=cur_zero;
+ Case cur_zero of
+  True :link^.is_zero:=1;
+  False:link^.is_zero:=0;
+ end;
 
  link^.src.user:=user;
  link^.src.link:=link;
@@ -3106,8 +3118,8 @@ begin
      'help':begin
              push_irc_msg(Format(vor_rpg.stat_msg.help_msg3,[user]));
             end;
-            if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-      'top':begin
+      'top':if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+            begin
              GetDBRpgUserTop(user);
             end;
 
