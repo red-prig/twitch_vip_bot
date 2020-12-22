@@ -1326,6 +1326,12 @@ begin
      'PRIVMSG':begin
                 main.push_chat(msg_parse.PC,msg_parse.user,msg_parse.display_name,msg_parse.msg);
                end;
+
+     'WHISPER':begin
+                msg_parse.PC.PS:=msg_parse.PC.PS+[pm_whisper];
+                main.push_chat(msg_parse.PC,msg_parse.user,msg_parse.display_name,msg_parse.msg);
+               end;
+
     end;
 
     {Writeln(msg_parse.cmd,'*',
@@ -1346,7 +1352,9 @@ end;
 
 function Tws_irc.session_reply:integer;
 Const
- r1:RawByteString='CAP REQ :twitch.tv/tags twitch.tv/commands';
+ r1:RawByteString='CAP REQ :twitch.tv/commands';
+ r2:RawByteString='CAP REQ :twitch.tv/tags';
+
 var
  S:RawByteString;
 begin
@@ -1361,11 +1369,14 @@ begin
  fpWebsocket_handshake_del(ws_handshake);
  ws_handshake:=nil;
 
- fpWebsocket_session_submit_text(ws_session,PAnsiChar(r1),Length(r1));
  S:='PASS oauth:'+oAuth;
  fpWebsocket_session_submit_text(ws_session,PAnsiChar(S),Length(S));
  S:='NICK '+login;
  fpWebsocket_session_submit_text(ws_session,PAnsiChar(S),Length(S));
+
+ fpWebsocket_session_submit_text(ws_session,PAnsiChar(r1),Length(r1));
+ fpWebsocket_session_submit_text(ws_session,PAnsiChar(r2),Length(r2));
+
  S:='USER '+login+' 8 * :'+login;
  fpWebsocket_session_submit_text(ws_session,PAnsiChar(S),Length(S));
  S:='JOIN #'+chat;

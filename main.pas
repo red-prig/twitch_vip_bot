@@ -57,7 +57,8 @@ type
    pm_global_mod,
    pm_moderator,
    pm_vip,
-   pm_highlighted
+   pm_highlighted,
+   pm_whisper
   );
   TPrivMsgStates=Set of TPrivMsgState;
   TPrivMsgCfg=record
@@ -1027,7 +1028,7 @@ type
    display_name:RawByteString;
    name_Color:DWORD;
    msg_Color:DWORD;
-   highlighted:Boolean;
+   Back_Color:DWORD;
   procedure ApplyDrawProperties; override;
   procedure Assign(Source: TKGridCell); override;
   procedure DrawCell(ACol,ARow:Integer;const ARect:TRect;State:TKGridDrawState); override;
@@ -1046,7 +1047,7 @@ begin
   display_name:=TMsgGridCell(Source).display_name;
   name_Color  :=TMsgGridCell(Source).name_Color;
   msg_Color   :=TMsgGridCell(Source).msg_Color;
-  highlighted :=TMsgGridCell(Source).highlighted;
+  Back_Color  :=TMsgGridCell(Source).Back_Color;
  end;
 end;
 
@@ -1063,7 +1064,7 @@ begin
  d:=Sqrt(pow2i(PByte(@c1)[0]-PByte(@c2)[0])+
          pow2i(PByte(@c1)[1]-PByte(@c2)[1])+
          pow2i(PByte(@c1)[2]-PByte(@c2)[2]));
- Result:=(d<=15);
+ Result:=(d<=150);
 end;
 
 Function NegColor(c:DWORD):DWORD; inline;
@@ -1074,8 +1075,6 @@ end;
 
 Const
  ME_ACTION=#1'ACTION ';
-
- highlighted_color=$FF4791;
 
 procedure TMsgGridCell.DrawCell(ACol,ARow:Integer;const ARect:TRect;State:TKGridDrawState);
 var
@@ -1101,11 +1100,11 @@ begin
 
  BackColor:=ColorToRGB(Canvas.BackColor);
 
- if highlighted then
+ if Back_Color<>BackColor then
  begin
-  BackColor:=highlighted_color;
+  BackColor:=Back_Color;
   Tmp:=Canvas.Canvas.Brush.Color;
-  Canvas.Canvas.Brush.Color:=highlighted_color;
+  Canvas.Canvas.Brush.Color:=BackColor;
   Canvas.Canvas.Brush.Style:=bsSolid;
   Canvas.Canvas.FillRect(ARect);
   Canvas.Canvas.Brush.Color:=Tmp;
@@ -1434,6 +1433,10 @@ begin
  Result:=AddChar('0',IntToStr(Hr),2)+':'+AddChar('0',IntToStr(Mn),2);
 end;
 
+Const
+ highlighted_color=$FF4791;
+ whisper_color=$494646;
+
 procedure TFrmMain.add_to_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
  aRow,aCol:Integer;
@@ -1461,7 +1464,19 @@ begin
   New.display_name:=display_name;
   New.name_Color  :=PC.Color;
   New.msg_Color   :=clBlack;
-  New.highlighted :=pm_highlighted in PC.PS;
+
+  if (pm_whisper in PC.PS) then
+  begin
+   New.Back_Color:=whisper_color;
+  end else
+  if (pm_highlighted in PC.PS) then
+  begin
+   New.Back_Color:=highlighted_color;
+  end else
+  begin
+   New.Back_Color:=ColorToRGB(GridChat.CellPainter.BackColor);
+  end;
+
   GridChat.CellClass:=TKGridTextCell;
  end;
 
