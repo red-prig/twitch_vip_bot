@@ -25,6 +25,7 @@ type
     EdtDebufPerc: TLabeledEdit;
     EdtKickIn: TLabeledEdit;
     EdtDuelKd: TLabeledEdit;
+    EdtDuelMVipPerc: TLabeledEdit;
     EdtXchgMaxCount: TLabeledEdit;
     EdtKickOut: TLabeledEdit;
     EdtKickPerc: TLabeledEdit;
@@ -105,6 +106,7 @@ var
     stand_msg:TStringList;
     vip_msg:TStringList;
     win_msg:TStringList;
+    PERC_MINUS_VIP:Byte;
    end;
 
    jail_vip:TStringList;
@@ -2463,7 +2465,7 @@ begin
  i:=0;
  if (HP[odst]<=0) then
  begin
-  Val:=10+Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent;
+  Val:=vor_rpg.duel.PERC_MINUS_VIP+Points[osrc].GetLUKPercent+Points[osrc].GetSTRPercent;
   val:=MMP(val);
   rnd:=Random(RCT,100);
   if (rnd<val) then
@@ -2959,10 +2961,17 @@ begin
                            Config.WriteString('vor_rpg','duel_kd_time',IntToStr(vor_rpg.duel.kd_time));
                            push_irc_msg(Format('@%s time kd %s',[user,IntToStr(vor_rpg.duel.kd_time)]));
                           end;
+                  'pmvip':begin
+                           v:=FetchAny(F);
+                           vor_rpg.duel.PERC_MINUS_VIP:=StrToDWORDDef(v,vor_rpg.duel.PERC_MINUS_VIP);
+                           if vor_rpg.duel.PERC_MINUS_VIP>100 then vor_rpg.duel.PERC_MINUS_VIP:=100;
+                           Config.WriteString('vor_rpg','duel_PERC_MINUS_VIP',IntToStr(vor_rpg.duel.PERC_MINUS_VIP));
+                           push_irc_msg(Format('@%s duel pmvip %s',[user,IntToStr(vor_rpg.duel.PERC_MINUS_VIP)]));
+                          end;
 
 
                   else
-                   push_irc_msg(Format('@%s !vor mod duel on/off,count,time,kd',[user]));
+                   push_irc_msg(Format('@%s !vor mod duel on/off,count,time,kd,pmvip',[user]));
                  end;
                 except
                  on E:Exception do
@@ -3169,6 +3178,7 @@ begin
  vor_rpg.duel.max_count     :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_max_count',IntToStr(vor_rpg.duel.max_count     )),vor_rpg.duel.max_count     );
  vor_rpg.duel.max_time      :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_max_time' ,IntToStr(vor_rpg.duel.max_time      )),vor_rpg.duel.max_time      );
  vor_rpg.duel.kd_time       :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_kd_time'  ,IntToStr(vor_rpg.duel.kd_time      )) ,vor_rpg.duel.kd_time       );
+ vor_rpg.duel.PERC_MINUS_VIP:=StrToDWORDDef(Config.ReadString('vor_rpg','duel_PERC_MINUS_VIP',IntToStr(vor_rpg.duel.PERC_MINUS_VIP)),vor_rpg.duel.PERC_MINUS_VIP);
 
 end;
 
@@ -3196,6 +3206,7 @@ begin
  EdtduelMaxCount.Text   :=IntToStr(vor_rpg.duel.max_count);
  EdtduelMaxTime.Text    :=IntToStr(vor_rpg.duel.max_time);
  EdtDuelKd.Text         :=IntToStr(vor_rpg.duel.kd_time);
+ EdtDuelMVipPerc.Text   :=IntToStr(vor_rpg.duel.PERC_MINUS_VIP);
 
  if ShowModal=1 then
  begin
@@ -3223,6 +3234,7 @@ begin
   vor_rpg.duel.max_count     :=StrToDWORDDef(EdtduelMaxCount.Text,vor_rpg.duel.max_count);
   vor_rpg.duel.max_time      :=StrToDWORDDef(EdtduelMaxTime.Text ,vor_rpg.duel.max_time);
   vor_rpg.duel.kd_time       :=StrToDWORDDef(EdtDuelKd.Text      ,vor_rpg.duel.kd_time);
+  vor_rpg.duel.PERC_MINUS_VIP:=StrToDWORDDef(EdtDuelMVipPerc.Text,vor_rpg.duel.PERC_MINUS_VIP);
 
   try
 
@@ -3263,6 +3275,7 @@ begin
    Config.WriteString('vor_rpg','duel_max_count',IntToStr(vor_rpg.duel.max_count));
    Config.WriteString('vor_rpg','duel_max_time' ,IntToStr(vor_rpg.duel.max_time));
    Config.WriteString('vor_rpg','duel_kd_time'  ,IntToStr(vor_rpg.duel.kd_time));
+   Config.WriteString('vor_rpg','duel_PERC_MINUS_VIP',IntToStr(vor_rpg.duel.PERC_MINUS_VIP));
 
   except
    on E:Exception do

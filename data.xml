@@ -75,6 +75,8 @@
   <max_count>10</max_count>
   <max_time>2</max_time> 
   <kd_time>9000</kd_time> 
+  <PERC_MINUS_VIP>10</PERC_MINUS_VIP>
+
   <any_msg>Любой</any_msg>
   <cancel_msg>@%s дуэль отменена NotLikeThis                  </cancel_msg>
   <exist1_msg>@%s imGlitch вы уже вызванны на дуэль:%s         </exist1_msg>

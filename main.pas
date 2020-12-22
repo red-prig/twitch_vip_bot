@@ -3430,7 +3430,6 @@ begin
   begin
    Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_AGL);
   end;
-
   'PERC_MINUS_VIP':
   begin
    Node.Push(TLoadPerc_Func,@vor_rpg.calc.PERC_MINUS_VIP);
@@ -3584,6 +3583,10 @@ begin
   'kd_time':
    begin
     Node.Push(TLoadDWORD_Func,@vor_rpg.duel.kd_time);
+   end;
+  'PERC_MINUS_VIP':
+   begin
+    Node.Push(TLoadPerc_Func,@vor_rpg.duel.PERC_MINUS_VIP);
    end;
   'any_msg':
    begin
