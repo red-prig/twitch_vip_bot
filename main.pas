@@ -115,7 +115,6 @@ type
     procedure OnPopupClickVorRpgParam(Sender:TObject);
     procedure OnPopupClickVipParam(Sender:TObject);
     procedure OnPopupClickParam(Sender:TObject);
-    procedure OnPredClick(Sender:TObject);
     procedure OnExortClick(Sender:TObject);
     procedure OnTabClose(Sender:TObject;TabIndex:Integer;var CanClose:Boolean);
     procedure OnBtnEnterClick(Sender:TObject);
@@ -296,7 +295,6 @@ uses
  WinAudioSession,
  ufrmexportstory,
  ufrmvol,
- ufrmpred,
  UFrmAbout,
  UFrmParam,
  UFrmVipParam,
@@ -1951,13 +1949,6 @@ begin
  FrmParam.Open;
 end;
 
-procedure TFrmMain.OnPredClick(Sender:TObject);
-begin
- FrmPred.CR:=RCT;
- FrmPred.fetch_pred;
- FrmPred.Show;
-end;
-
 procedure TFrmMain.OnExortClick(Sender:TObject);
 begin
  FrmExportStory.Open;
@@ -2224,12 +2215,6 @@ begin
  //------
  Item:=TMenuItem.Create(PopupCfg);
  Item.Caption:='-';
- PopupCfg.Items.Add(Item);
-
-
- Item:=TMenuItem.Create(PopupCfg);
- Item.Caption:='Оракул';
- Item.OnClick:=@OnPredClick;
  PopupCfg.Items.Add(Item);
 
  //------
