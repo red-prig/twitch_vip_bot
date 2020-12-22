@@ -3106,6 +3106,7 @@ begin
      'help':begin
              push_irc_msg(Format(vor_rpg.stat_msg.help_msg3,[user]));
             end;
+            if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
       'top':begin
              GetDBRpgUserTop(user);
             end;
