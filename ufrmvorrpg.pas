@@ -15,6 +15,7 @@ type
   TFrmVorRpg = class(TForm)
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
+    CBduelCheckZero: TCheckBox;
     CBKickEnable: TCheckBox;
     CBXchgEnable: TCheckBox;
     CBVorRpgEnable: TCheckBox;
@@ -92,6 +93,8 @@ var
 
    duel:record
     Enable:Boolean;
+    check_zero:Boolean;
+    PERC_MINUS_VIP:Byte;
     max_count:DWORD;
     max_time:DWORD;
     kd_time:DWORD;
@@ -106,7 +109,6 @@ var
     stand_msg:TStringList;
     vip_msg:TStringList;
     win_msg:TStringList;
-    PERC_MINUS_VIP:Byte;
    end;
 
    jail_vip:TStringList;
@@ -2549,13 +2551,15 @@ var
  begin
   if (vor_rpg.duel.zero_msg='') then
   begin
-   vor_rpg.duel.zero_msg:='@%s you exp is zero, try theif vip!';
+   vor_rpg.duel.zero_msg:='@%s you exp is zero!';
   end;
   push_irc_msg(Format(vor_rpg.duel.zero_msg,[user]));
  end;
 
  function _check_zero:Boolean;
  begin
+  if not vor_rpg.duel.check_zero then Exit(False);
+
   Result:=(link^.is_zero=0) and cur_zero; //not zero and zero
   if Result then
   begin
@@ -2943,6 +2947,23 @@ begin
                            Config.WriteString('vor_rpg' ,'duel_enable','0');
                            push_irc_msg(Format('@%s duel off',[user]));
                           end;
+                   'chzr':begin
+                           v:=LowerCase(FetchAny(F));
+                           case v of
+                             'on':if not vor_rpg.duel.check_zero then
+                                  begin
+                                   vor_rpg.duel.check_zero:=True;
+                                   Config.WriteString('vor_rpg' ,'duel_check_zero','1');
+                                   push_irc_msg(Format('@%s duel check zero on',[user]));
+                                  end;
+                            'off':if vor_rpg.duel.check_zero then
+                                  begin
+                                   vor_rpg.duel.check_zero:=False;
+                                   Config.WriteString('vor_rpg' ,'duel_check_zero','0');
+                                   push_irc_msg(Format('@%s duel check zero off',[user]));
+                                  end;
+                           end;
+                          end;
                   'count':begin
                            v:=FetchAny(F);
                            vor_rpg.duel.max_count:=StrToDWORDDef(v,vor_rpg.duel.max_count);
@@ -2971,7 +2992,7 @@ begin
 
 
                   else
-                   push_irc_msg(Format('@%s !vor mod duel on/off,count,time,kd,pmvip',[user]));
+                   push_irc_msg(Format('@%s !vor mod duel on/off,chzr on/off,count,time,kd,pmvip',[user]));
                  end;
                 except
                  on E:Exception do
@@ -3175,6 +3196,7 @@ begin
  vor_rpg.xchg.max_time      :=StrToDWORDDef(Config.ReadString('vor_rpg','xchg_max_time' ,IntToStr(vor_rpg.xchg.max_time      )),vor_rpg.xchg.max_time      );
 
  vor_rpg.duel.Enable:=Trim(Config.ReadString('vor_rpg','duel_enable','0'))='1';
+ vor_rpg.duel.check_zero:=Trim(Config.ReadString('vor_rpg','duel_check_zero','0'))='1';
  vor_rpg.duel.max_count     :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_max_count',IntToStr(vor_rpg.duel.max_count     )),vor_rpg.duel.max_count     );
  vor_rpg.duel.max_time      :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_max_time' ,IntToStr(vor_rpg.duel.max_time      )),vor_rpg.duel.max_time      );
  vor_rpg.duel.kd_time       :=StrToDWORDDef(Config.ReadString('vor_rpg','duel_kd_time'  ,IntToStr(vor_rpg.duel.kd_time      )) ,vor_rpg.duel.kd_time       );
@@ -3203,6 +3225,7 @@ begin
  EdtXchgMaxTime.Text    :=IntToStr(vor_rpg.xchg.max_time);
 
  CBduelEnable.Checked   :=vor_rpg.duel.Enable;
+ CBduelCheckZero.Checked:=vor_rpg.duel.check_zero;
  EdtduelMaxCount.Text   :=IntToStr(vor_rpg.duel.max_count);
  EdtduelMaxTime.Text    :=IntToStr(vor_rpg.duel.max_time);
  EdtDuelKd.Text         :=IntToStr(vor_rpg.duel.kd_time);
@@ -3231,6 +3254,7 @@ begin
   vor_rpg.xchg.max_time      :=StrToDWORDDef(EdtXchgMaxTime.Text ,vor_rpg.xchg.max_time);
 
   vor_rpg.duel.Enable        :=CBduelEnable.Checked;
+  vor_rpg.duel.check_zero    :=CBduelCheckZero.Checked;
   vor_rpg.duel.max_count     :=StrToDWORDDef(EdtduelMaxCount.Text,vor_rpg.duel.max_count);
   vor_rpg.duel.max_time      :=StrToDWORDDef(EdtduelMaxTime.Text ,vor_rpg.duel.max_time);
   vor_rpg.duel.kd_time       :=StrToDWORDDef(EdtDuelKd.Text      ,vor_rpg.duel.kd_time);
@@ -3270,6 +3294,11 @@ begin
    case vor_rpg.duel.Enable of
     True :Config.WriteString('vor_rpg' ,'duel_enable','1');
     False:Config.WriteString('vor_rpg' ,'duel_enable','0');
+   end;
+
+   case vor_rpg.duel.check_zero of
+    True :Config.WriteString('vor_rpg' ,'duel_check_zero','1');
+    False:Config.WriteString('vor_rpg' ,'duel_check_zero','0');
    end;
 
    Config.WriteString('vor_rpg','duel_max_count',IntToStr(vor_rpg.duel.max_count));

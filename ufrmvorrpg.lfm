@@ -1,11 +1,11 @@
 object FrmVorRpg: TFrmVorRpg
   Left = 466
-  Height = 283
+  Height = 321
   Top = 141
   Width = 403
   BorderIcons = [biSystemMenu]
   Caption = 'Вор Рпг'
-  ClientHeight = 283
+  ClientHeight = 321
   ClientWidth = 403
   OnCreate = FormCreate
   Position = poMainFormCenter
@@ -13,7 +13,7 @@ object FrmVorRpg: TFrmVorRpg
   object BtnCancel: TBitBtn
     Left = 301
     Height = 30
-    Top = 249
+    Top = 287
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -89,7 +89,7 @@ object FrmVorRpg: TFrmVorRpg
   object BtnOk: TBitBtn
     Left = 7
     Height = 30
-    Top = 249
+    Top = 287
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -164,7 +164,7 @@ object FrmVorRpg: TFrmVorRpg
   end
   object PageCtrl: TPageControl
     Left = 1
-    Height = 237
+    Height = 275
     Top = 8
     Width = 402
     ActivePage = TabSheet5
@@ -456,7 +456,7 @@ object FrmVorRpg: TFrmVorRpg
     end
     object TabSheet5: TTabSheet
       Caption = 'Дуэль'
-      ClientHeight = 209
+      ClientHeight = 247
       ClientWidth = 394
       object CBduelEnable: TCheckBox
         Left = 312
@@ -537,13 +537,13 @@ object FrmVorRpg: TFrmVorRpg
       object EdtDuelMVipPerc: TLabeledEdit
         Left = 0
         Height = 25
-        Hint = 'Обозначаяет базовую вероятность потерять вип в результате проигрыша в дуэли'
-        Top = 176
+        Hint = 'Обозначаяет базовую вероятность потерять вип в результате проигрыша в дуэли'#13#10'(Проигравший вип, выигравший нет),'#13#10'либо базовую вероятность экстра +1 опыта.'
+        Top = 200
         Width = 387
         Anchors = [akTop, akLeft, akRight]
-        EditLabel.Height = 21
+        EditLabel.Height = 42
         EditLabel.Width = 387
-        EditLabel.Caption = 'Базовая вероятность потерять вип %0-%100:'
+        EditLabel.Caption = 'Базовая вероятность потерять вип, либо'#13#10'Базовая вероятность экстра опыта %0-%100:'
         EditLabel.ParentColor = False
         EditLabel.ParentFont = False
         EditLabel.Font.Height = -16
@@ -555,6 +555,17 @@ object FrmVorRpg: TFrmVorRpg
         OnExit = EdtPercMinusVipExit
         OnKeyDown = FormKeyDown
         OnKeyPress = EdtPercMinusVipKeyPress
+      end
+      object CBduelCheckZero: TCheckBox
+        Left = 209
+        Height = 19
+        Hint = 'Не позволять дуэлянтам с нулевым опытом драться с остальными'
+        Top = 106
+        Width = 180
+        Anchors = [akTop, akRight]
+        Caption = 'Отделить с нулевым опытом'
+        OnKeyDown = FormKeyDown
+        TabOrder = 5
       end
     end
   end
