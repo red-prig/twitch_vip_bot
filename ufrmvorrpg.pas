@@ -2543,7 +2543,7 @@ var
   end;
  end;
 
- procedure push_zero_msg;
+ procedure push_zero_msg(const user:RawByteString);
  begin
   if (vor_rpg.duel.zero_msg='') then
   begin
@@ -2554,24 +2554,24 @@ var
 
  function _check_zero:Boolean;
  begin
-  Result:=(link^.is_zero=0) and cur_zero;
+  Result:=(link^.is_zero=0) and cur_zero; //not zero and zero
   if Result then
   begin
    if (link^.is_zero=1) then
    begin
-    push_zero_msg;
+    push_zero_msg(user);
     link^.is_zero:=2;
    end;
    OnUnlock(nil);
    Exit;
   end;
 
-  Result:=(link^.is_zero<>0) and (not cur_zero);
+  Result:=(link^.is_zero<>0) and (not cur_zero); //zero and not zero
   if Result then
   begin
    if (link^.is_zero=1) then
    begin
-    push_zero_msg;
+    push_zero_msg(link^.src.user);
     link^.is_zero:=2;
    end;
    OnUnlock(nil);
@@ -2623,7 +2623,8 @@ begin
  P:=duelSet.NFind(@Node);
  if (P<>nil) then
  begin
-  if (nick<>'') then
+  link:=PxchgNode(P^.Data)^.link;
+  if (nick<>'') and (link^.dst.user<>'') then
   begin
    if (vor_rpg.duel.exist2_msg='') then
    begin
@@ -2632,13 +2633,9 @@ begin
    push_irc_msg(Format(vor_rpg.duel.exist2_msg,[user]));
   end else
   begin
-   link:=PxchgNode(P^.Data)^.link;
-   if (PxchgNode(P^.Data)=@link^.dst) then
-   begin
-    if _check_time then Exit;
-    if _check_zero then Exit;
-    _go2duel;
-   end;
+   if _check_time then Exit;
+   if _check_zero then Exit;
+   _go2duel;
   end;
   OnUnlock(nil);
   Exit;
