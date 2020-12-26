@@ -159,7 +159,8 @@ type
     function GetSessionIdentifier(out pRetVal:LPWSTR):HRESULT; stdcall;
     function GetSessionInstanceIdentifier(out pRetVal:LPWSTR):HRESULT; stdcall;
     function GetProcessId(out pRetVal:DWORD):HRESULT; stdcall;
-    function IsSystemSoundsSession:UInt; stdcall;
+    function IsSystemSoundsSession:HRESULT; stdcall;
+    function SetDuckingPreference(optOut:WINBOOL):HRESULT; stdcall;
   end;
 
   IAudioSessionEnumerator = interface(IUnknown)
@@ -287,11 +288,11 @@ function GetDefaultAudioEndpoint:IMMDevice;
 var
  deviceEnum:IMMDeviceEnumerator;
 begin
+ Result:=nil;
  deviceEnum:=nil;
  if CoCreateInstance(IID_MMDeviceEnumerator,nil,CLSCTX_INPROC_SERVER or CLSCTX_LOCAL_SERVER,IMMDeviceEnumerator,deviceEnum)<>S_OK then Exit;
  if deviceEnum=nil then Exit;
 
- Result:=nil;
  deviceEnum.GetDefaultAudioEndpoint(eRender,eMultimedia,Result);
 
  deviceEnum:=nil;
@@ -341,7 +342,7 @@ begin
 
  PWID:=nil;
  if Session.GetSessionInstanceIdentifier(PWID)<>S_OK then Exit;
- if PWID=nil then Exit;
+ if (PWID=nil) then Exit;
  WS:=WideString(PWID);
  CoTaskMemFree(PWID);
  WS:=Trim(WS);
@@ -370,7 +371,8 @@ var
  si,SesCount:UINT;
  SessionManager:IAudioSessionManager2;
  SessionEnum:IAudioSessionEnumerator;
- Session:IAudioSessionControl2;
+ Session1,Session2:IAudioSessionControl2;
+ SimpleAudioVolume:ISimpleAudioVolume;
 begin
  Result:=True;
  if cb=nil then Exit;
@@ -387,21 +389,36 @@ begin
  SesCount:=0;
  if SessionEnum.GetCount(SesCount)<>S_OK then Exit;
 
- Session:=nil;
  if SesCount<>0 then
   For si:=0 to SesCount-1 do
   begin
-   SessionEnum.GetSession(si,Session);
-   if (Session<>nil) and (Session.IsSystemSoundsSession<>0) or SystemSession then
-    if not cb(GetSessionAppName(Session),Session as ISimpleAudioVolume) then
+   Session1:=nil;
+   if (SessionEnum.GetSession(si,Session1)=S_OK) then
+   if (Session1<>nil) then
+   begin
+    Session2:=nil;
+    if (Session1.QueryInterface(IAudioSessionControl2,Session2)=S_OK) then
+    if (Session2<>nil) then
     begin
-     Result:=False;
-     Break;
+     if (Session2.IsSystemSoundsSession<>0) or SystemSession then
+     begin
+      SimpleAudioVolume:=nil;
+      if (Session2.QueryInterface(ISimpleAudioVolume,SimpleAudioVolume)=S_OK) then
+      if (SimpleAudioVolume<>nil) then
+      begin
+       if not cb(GetSessionAppName(Session2),SimpleAudioVolume) then
+       begin
+        Result:=False;
+        Break;
+       end;
+      end;
+     end;
     end;
-   Session:=nil;
+   end;
   end;
 
- Session:=nil;
+ Session1:=nil;
+ Session2:=nil;
  SessionEnum:=nil;
 end;
 
