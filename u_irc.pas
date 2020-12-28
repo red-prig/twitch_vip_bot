@@ -363,7 +363,7 @@ end;
 
 procedure TWebsocketData.Clear;
 begin
- time_kd:=1600000;
+ time_kd:=1800000;
  url:='';
  fpWebsocket_handshake_del(ws_handshake);
  fpWebsocket_session_del(ws_session);
@@ -1291,7 +1291,7 @@ begin
                   //room-id*54742538*
                   if (not ws_irc.not_slow) and (msg_parse.slow<>0) then
                   begin
-                   ws_irc.time_kd:=msg_parse.slow*1000000;
+                   ws_irc.time_kd:=(msg_parse.slow+1)*1000000;
                   end;
 
                   if ws_irc.room_id='' then

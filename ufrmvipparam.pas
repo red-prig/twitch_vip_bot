@@ -65,6 +65,7 @@ type
     procedure OnBtnInsertVipClick(Sender:TObject);
     procedure DeleteAndUnVip(aRow:Integer);
     procedure DeleteAndUnVip(Const FUser:RawByteString);
+    procedure UnVip(Const FUser:RawByteString);
     procedure OnBtnUnVipClick(Sender:TObject);
     procedure OnBtnUpdateVipClick(Sender:TObject);
     Procedure OnListVips(Sender:TBaseTask);
@@ -625,9 +626,13 @@ begin
  end;
 
  if Length(L)<>0 then
- For i:=0 to Length(L)-1 do
  begin
-  DeleteAndUnVip(L[i]);
+  For i:=0 to Length(L)-1 do
+  begin
+   UnVip(L[i]);
+  end;
+  push_irc_msg(vip_rnd.vip_list_cmd);
+  Frmmain.wait_vip_update:=True;
  end;
 
 end;
@@ -660,6 +665,11 @@ begin
  aRow:=FindVipUser(FUser);
  push_irc_msg(Format(vip_rnd.unvip_cmd,[FUser]));
  DeleteVip(aRow);
+end;
+
+procedure TFrmVipParam.UnVip(Const FUser:RawByteString);
+begin
+ push_irc_msg(Format(vip_rnd.unvip_cmd,[FUser]));
 end;
 
 procedure TFrmVipParam.OnBtnUnVipClick(Sender:TObject);
