@@ -10,3 +10,6 @@
 [submodule "FastMM4-AVX"]
 	path = FastMM4-AVX
 	url = https://github.com/red-prig/FastMM4-AVX
+[submodule "audio_libs"]
+	path = audio_libs
+	url = https://github.com/red-prig/audio_libs
