@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -2304,7 +2304,7 @@ begin
                   L := ZSysUtils.FloatToSqlRaw(Value.VDouble, P);
                 end;
     vtCurrency: begin
-                  ZFastCode.CurrToRaw(Value.VDouble, @Buff[0], @P);
+                  ZFastCode.CurrToRaw(Value.VCurrency, '.', @Buff[0], @P);
                   L := P - PAnsiChar(@Buff[0]);
                   P := @Buff[0];
                 end;
@@ -2378,7 +2378,7 @@ begin
                   L := ZSysUtils.FloatToSqlUnicode(Value.VDouble, P);
                 end;
     vtCurrency: begin
-                  ZFastCode.CurrToUnicode(Value.VDouble, @Buff[0], @P);
+                  ZFastCode.CurrToUnicode(Value.VCurrency, '.', @Buff[0], @P);
                   L := P - PWideChar(@Buff[0]);
                   P := @Buff[0];
                 end;

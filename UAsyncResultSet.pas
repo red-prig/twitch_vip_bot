@@ -290,7 +290,7 @@ begin
   for I := 0 to FColumnsInfo.Count-1 do
     if TZColumnInfo(FColumnsInfo[I]).ColumnName = ColumnName then
     begin
-      Result := I+1;
+      Result := I+FirstDbcIndex;
       Exit;
     end;
 
@@ -299,7 +299,7 @@ begin
   for I := 0 to FColumnsInfo.Count-1 do
     if AnsiUpperCase(TZColumnInfo(FColumnsInfo[I]).ColumnName) = ColumnNameUpper then
     begin
-      Result := I+1;
+      Result := I+FirstDbcIndex;
       Exit;
     end;
 
@@ -318,37 +318,37 @@ end;
 
 function    TZAsyncResultSetMetadata.IsAutoIncrement(ColumnIndex: Integer): Boolean;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).AutoIncrement;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).AutoIncrement;
 end;
 
 function    TZAsyncResultSetMetadata.IsCaseSensitive(ColumnIndex: Integer): Boolean;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).CaseSensitive;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).CaseSensitive;
 end;
 
 function    TZAsyncResultSetMetadata.IsSearchable(ColumnIndex: Integer): Boolean;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Searchable;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).Searchable;
 end;
 
 function    TZAsyncResultSetMetadata.IsCurrency(ColumnIndex: Integer): Boolean;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Currency;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).Currency;
 end;
 
 function    TZAsyncResultSetMetadata.IsNullable(ColumnIndex: Integer): TZColumnNullableType;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Nullable;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).Nullable;
 end;
 
 function    TZAsyncResultSetMetadata.IsSigned(ColumnIndex: Integer): Boolean;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Signed;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).Signed;
 end;
 
 function    TZAsyncResultSetMetadata.GetColumnLabel(ColumnIndex: Integer): string;
 begin
- Result:=TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnLabel;
+ Result:=TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).ColumnLabel;
 end;
 
 function    TZAsyncResultSetMetadata.GetOrgColumnLabel(ColumnIndex: Integer): string;
@@ -358,72 +358,72 @@ end;
 
 function    TZAsyncResultSetMetadata.GetColumnName(ColumnIndex: Integer): string;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnName;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).ColumnName;
 end;
 
 function    TZAsyncResultSetMetadata.GetColumnCodePage(ColumnIndex: Integer): Word;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnCodePage;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).ColumnCodePage;
 end;
 
 function    TZAsyncResultSetMetadata.GetSchemaName(ColumnIndex: Integer): string;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).SchemaName;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).SchemaName;
 end;
 
 function    TZAsyncResultSetMetadata.GetPrecision(ColumnIndex: Integer): Integer;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Precision;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).Precision;
 end;
 
 function    TZAsyncResultSetMetadata.GetScale(ColumnIndex: Integer): Integer;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Scale;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).Scale;
 end;
 
 function    TZAsyncResultSetMetadata.GetTableName(ColumnIndex: Integer): string;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).TableName;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).TableName;
 end;
 
 function    TZAsyncResultSetMetadata.GetCatalogName(ColumnIndex: Integer): string;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).CatalogName;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).CatalogName;
 end;
 
 function    TZAsyncResultSetMetadata.GetColumnType(ColumnIndex: Integer): TZSQLType;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnType;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).ColumnType;
 end;
 
 function    TZAsyncResultSetMetadata.GetColumnTypeName(ColumnIndex: Integer): string;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).GetColumnTypeName;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).GetColumnTypeName;
 end;
 
 function    TZAsyncResultSetMetadata.IsReadOnly(ColumnIndex: Integer): Boolean;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ReadOnly;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).ReadOnly;
 end;
 
 function    TZAsyncResultSetMetadata.IsWritable(ColumnIndex: Integer): Boolean;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Writable;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).Writable;
 end;
 
 function    TZAsyncResultSetMetadata.IsDefinitelyWritable(ColumnIndex: Integer): Boolean;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).DefinitelyWritable;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).DefinitelyWritable;
 end;
 
 function    TZAsyncResultSetMetadata.GetDefaultValue(ColumnIndex: Integer): string;
 begin
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).DefaultValue;
+  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).DefaultValue;
 end;
 
 function    TZAsyncResultSetMetadata.HasDefaultValue(ColumnIndex: Integer): Boolean;
 begin
-  Result := not(TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).DefaultValue = '');
+  Result := not(TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex+InvalidDbcIndex]).DefaultValue = '');
 end;
 
 procedure TZCustomAsyncResultSet.CheckBlobColumn(ColumnIndex: Integer);
@@ -431,11 +431,11 @@ var
   InitialType: TZSQLType;
 begin
   if (FColumnsInfo = nil) or (ColumnIndex < FirstDbcIndex) or
-     (ColumnIndex > FColumnsInfo.Count{$IFDEF GENERIC_INDEX}-1{$ENDIF}) then
+     (ColumnIndex > FColumnsInfo.Count+InvalidDbcIndex) then
     raise EZSQLException.Create(
       Format(SColumnIsNotAccessable, [ColumnIndex]));
 
-  InitialType := TZColumnInfo(FColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnType;
+  InitialType := TZColumnInfo(FColumnsInfo[ColumnIndex+InvalidDbcIndex]).ColumnType;
   if not (InitialType in [stAsciiStream, stBinaryStream, stUnicodeStream]) then
     raise EZSQLException.Create(Format(SCanNotAccessBlobRecord,
       [ColumnIndex, DefineColumnTypeName(InitialType)]));
@@ -574,7 +574,7 @@ begin
       if Clob = nil then
         Result := (Blob).GetStream
       else begin
-        CP := TZColumnInfo(ColumnsInfo[ColumnIndex{$IFNDEF _GENERIC_INDEX}-1{$ENDIF}]).ColumnCodePage;
+        CP := TZColumnInfo(ColumnsInfo[ColumnIndex+InvalidDbcIndex]).ColumnCodePage;
         if CP = zCP_UTF16 then
           CP := GetW2A2WConversionCodePage(FConSettings);
         Result := Clob.GetStream(CP)
@@ -1801,7 +1801,7 @@ begin
  Result:=TZIndexPairList.Create;
  Result.Clear;
  Result.Capacity:=Count;
- for I := FirstDbcIndex to Count{$IFDEF GENERIC_INDEX}-1{$ENDIF} do
+ for I := FirstDbcIndex to Count+InvalidDbcIndex do
    Result.Add(I,I);
 end;
 
@@ -1813,7 +1813,7 @@ var
 begin
  FColumnsInfo.Clear;
  TmpMetaData := FResultSet.GetMetadata;
- for I:=FirstDbcIndex to TmpMetadata.GetColumnCount{$IFDEF GENERIC_INDEX}-1{$ENDIF} do
+ for I:=FirstDbcIndex to TmpMetadata.GetColumnCount+InvalidDbcIndex do
  begin
    ColumnInfo:=TZColumnInfo.Create;
    with ColumnInfo do

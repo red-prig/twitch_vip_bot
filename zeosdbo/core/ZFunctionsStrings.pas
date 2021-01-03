@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -275,16 +275,13 @@ begin
 
 //  only loop over the items that are different
   for i := 1 to Len1 do
-  begin
-    for j := 1 to Len2 do
-    begin
+    for j := 1 to Len2 do begin
       Cost := ABS(ORD(s[i+start] <> t[j+start]));
-      d[i, j] := Min(
-                     Min(d[i-1,j]+1,          // deletion
+      d[i, j] := Math.Min(
+                     Math.Min(d[i-1,j]+1,          // deletion
                          d[i,j-1]+1),         // insertion
                          d[i-1,j-1]+Cost);    // substitution
     end;
-  end;
   Result := d[Len1, Len2];
 end;
 

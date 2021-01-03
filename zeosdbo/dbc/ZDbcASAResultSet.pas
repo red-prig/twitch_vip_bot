@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -194,6 +194,17 @@ type
   protected
     function CreateLobStream(CodePage: Word; LobStreamMode: TZLobStreamMode): TStream; override;
   public //IImmediatelyReleasable
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost);
     function GetConSettings: PZConSettings;
@@ -1299,14 +1310,16 @@ begin
         if ColumnType = stUnicodeString then begin//ASA calcutates the n column different
           CharOctedLength := GetFieldLength(I);
           Precision := CharOctedLength shr 2; //default UTF8 has 3 bytes only whereas n-cols have 4 bytes
-          Signed := FSQLDA.sqlvar[I].sqlType and $FFFE = DT_NFIXCHAR;
+          if FSQLDA.sqlvar[I].sqlType and $FFFE = DT_NFIXCHAR then
+            Scale := Precision;
         end;
       end else if FieldSqlType in [stString, stAsciiStream] then begin
         ColumnCodePage := ConSettings^.ClientCodePage^.CP;
         if ColumnType = stString then begin
           CharOctedLength := GetFieldLength(I);
           Precision := CharOctedLength div ConSettings^.ClientCodePage^.CharWidth;
-          Signed := FSQLDA.sqlvar[I].sqlType and $FFFE = DT_FIXCHAR;
+          if FSQLDA.sqlvar[I].sqlType and $FFFE = DT_FIXCHAR then
+            Scale := Precision;
         end;
       end else if FieldSqlType = stBytes then begin
         Precision := GetFieldLength(I);

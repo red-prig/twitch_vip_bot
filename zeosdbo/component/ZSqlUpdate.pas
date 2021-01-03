@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -64,6 +64,7 @@ interface
 
 uses
   SysUtils, Classes, {$IFDEF MSEgui}mclasses, mdb{$ELSE}DB{$ENDIF},
+  {$IFNDEF DISABLE_ZPARAM}ZDatasetParam,{$ENDIF}
   ZDbcIntfs, ZDbcCachedResultSet, ZDbcCache, ZSqlStrings, ZClasses;
 
 type
@@ -93,7 +94,7 @@ type
     FRefreshStmt: IZPreparedStatement;
 
     FParamCheck: Boolean;
-    FParams: TParams;
+    FParams: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF};
     FMultiStatements: Boolean;
     FBeforeDeleteSQL: TNotifyEvent;
     FBeforeInsertSQL: TNotifyEvent;
@@ -114,7 +115,7 @@ type
     function GetSQL(UpdateKind: TUpdateKind): TStrings;
     procedure SetSQL(UpdateKind: TUpdateKind; Value: TStrings);
     function GetParamsCount: Word;
-    procedure SetParamsList(Value: TParams);
+    procedure SetParamsList(Value: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF});
     procedure SetParamCheck(Value: Boolean);
     procedure SetMultiStatements(Value: Boolean);
 
@@ -139,6 +140,7 @@ type
     procedure DefineProperties(Filer: TFiler); override;
 
     procedure SetTransaction(const Value: IZTransaction);
+    function HasAutoCommitTransaction: Boolean;
     procedure CalculateDefaults(const Sender: IZCachedResultSet;
       const RowAccessor: TZRowAccessor);
     procedure PostUpdates(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
@@ -190,7 +192,7 @@ type
     property UseSequenceFieldForRefreshSQL:Boolean read FUseSequenceFieldForRefreshSQL write SetUseSequenceFieldForRefreshSQL;
 
 
-    property Params: TParams read FParams write SetParamsList stored False;
+    property Params: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF} read FParams write SetParamsList stored False;
     property ParamCheck: Boolean read FParamCheck write SetParamCheck default True;
     property MultiStatements: Boolean read FMultiStatements write SetMultiStatements default True;
 
@@ -250,7 +252,7 @@ begin
   FRefreshSQL := TZSQLStrings.Create;
   FRefreshSQL.OnChange:= UpdateParams;
 
-  FParams := TParams.Create(Self);
+  FParams := {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}.Create(Self);
   FParamCheck := True;
   FMultiStatements := True;
   for RowUpdateType := utModified to utDeleted do
@@ -298,6 +300,13 @@ begin
   else
     Result := FDeleteSQL;
   end;
+end;
+
+function TZUpdateSQL.HasAutoCommitTransaction: Boolean;
+begin
+  if (FTransaction <> nil)
+  then Result := FTransaction.GetAutoCommit
+  else Result := TZAbstractRODataset(Dataset).Connection.AutoCommit;
 end;
 
 {**
@@ -362,7 +371,7 @@ end;
   Set a new list of SQL parameters.
   @param Value a new list of SQL parameters.
 }
-procedure TZUpdateSQL.SetParamsList(Value: TParams);
+procedure TZUpdateSQL.SetParamsList(Value: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF});
 begin
   FParams.AssignValues(Value);
 end;
@@ -525,9 +534,9 @@ end;
 }
 procedure TZUpdateSQL.RebuildAll;
 var
-  OldParams: TParams;
+  OldParams: {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF};
 begin
-  OldParams := TParams.Create;
+  OldParams := {$IFNDEF DISABLE_ZPARAM}TZParams{$ELSE}TParams{$ENDIF}.Create;
   OldParams.Assign(FParams);
   FParams.Clear;
   try
@@ -572,7 +581,7 @@ procedure TZUpdateSQL.FillStatement(const ResultSet: IZCachedResultSet;
   OldRowAccessor, NewRowAccessor: TZRowAccessor);
 var
   I, ColumnIndex: Integer;
-  ParamValue: TParam;
+  ParamValue: {$IFNDEF DISABLE_ZPARAM}TZParam{$ELSE}TParam{$ENDIF};
   ParamName: string;
   OldParam: Boolean;
   WasNull: Boolean;
@@ -870,9 +879,12 @@ begin
     {$IFDEF WITH_CASE_WARNING}else;{$ENDIF}// do nothing
   end;
 
-  if Dataset is TZAbstractRODataset then
+  if (Dataset is TZAbstractRODataset) then
     (Dataset as TZAbstractRODataset).Connection.ShowSqlHourGlass;
-  CalcDefaultValues := ZSysUtils.StrToBoolEx(DefineStatementParameter(Sender.GetStatement, DSProps_Defaults, 'true'));
+  if (Dataset is TZAbstractDataset) then
+    CalcDefaultValues := doCalcDefaults in (Dataset as TZAbstractDataset).Options
+  else CalcDefaultValues := False;
+    //(Dataset as TZAbstractRODataset). ZSysUtils.StrToBoolEx(DefineStatementParameter(Sender.GetStatement, DSProps_Defaults, 'true'));
   try
     for I := 0 to Config.StatementCount - 1 do begin
       if (FStmts[UpdateType].Count <= i) or not (FStmts[UpdateType][i].QueryInterface(IZPreparedStatement, Statement) = S_OK) or

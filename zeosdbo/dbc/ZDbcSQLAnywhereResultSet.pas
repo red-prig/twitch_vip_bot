@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -201,6 +201,17 @@ type
   protected
     function CreateLobStream(CodePage: Word; LobStreamMode: TZLobStreamMode): TStream; override;
   public //IImmediatelyReleasable
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
     function GetConSettings: PZConSettings;
   public
@@ -1369,13 +1380,15 @@ begin
         sqlany_column_info.max_size := (sqlany_column_info.max_size + 2) * Byte(ConSettings.ClientCodePage^.CharWidth);
         ColumnInfo.CharOctedLength := sqlany_column_info.max_size;
         ColumnInfo.ColumnCodePage := FClientCP;
-        ColumnInfo.Signed := ColumnInfo.NativeType = DT_FIXCHAR;
+        if ColumnInfo.NativeType = DT_FIXCHAR then
+          ColumnInfo.Scale := ColumnInfo.Precision;
       end else if ColumnInfo.ColumnType = stUnicodeString then begin
         ColumnInfo.Precision := sqlany_column_info.max_size;
         sqlany_column_info.max_size := sqlany_column_info.max_size shl 2;
         ColumnInfo.CharOctedLength := sqlany_column_info.max_size;
         ColumnInfo.ColumnCodePage := zCP_UTF8;
-        ColumnInfo.Signed := ColumnInfo.NativeType = DT_NFIXCHAR;
+        if ColumnInfo.NativeType = DT_NFIXCHAR then
+          ColumnInfo.Scale := ColumnInfo.Precision;
       end else if ColumnInfo.ColumnType = stBytes then begin
         ColumnInfo.Precision := sqlany_column_info.max_size;
         ColumnInfo.CharOctedLength := sqlany_column_info.max_size;

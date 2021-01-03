@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -206,7 +206,7 @@ type
     constructor Create(aOwner: TFBEventThread; const aName: RawByteString);
     procedure addRef;  override;
     function release: Integer; override;
-    procedure eventCallbackFunction(length: Cardinal; events: BytePtr); override;
+    procedure eventCallbackFunction(length: Cardinal; events: PByte); override;
     procedure WaitForEvent;
     procedure CancelEvent;
  end;
@@ -450,7 +450,7 @@ begin
       if EventsReceived then begin
         ProcessEvents;
         QueueEvents;
-      end;
+      end else Sleep(1); //idle the CPU for a MSec
     until Terminated;
     ReturnValue := 0;
   except
@@ -624,7 +624,7 @@ begin
   if FEvents <> nil then
     FEvents.Release;
   FEvents := fParent.FAttachment.queEvents(fParent.FStatus, FEventCallback,
-    EventBufferLen, BytePtr(EventBuffer));
+    EventBufferLen, PByte(EventBuffer));
 end;
 
 procedure TFBEventThread.UnRegisterEvents;
@@ -666,7 +666,7 @@ begin
 end;
 
 procedure TFBEventCallback.eventCallbackFunction(length: Cardinal;
-  events: BytePtr);
+  events: PByte);
 begin
   FOwner.UpdateResultBuffer(Length, events);
   FOwner.SignalEvent;

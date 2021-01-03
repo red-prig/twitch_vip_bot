@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -98,14 +98,12 @@ type
 
   {** Implements a default tokenizer object. }
   TZPostgreSQLTokenizer = class (TZTokenizer)
-  private
-    FNormalizedParams: TStrings;
   protected
     procedure CreateTokenStates; override;
   public
-    function NormalizeParamToken(const Token: TZToken; out ParamName: String): String; override;
-    procedure AfterConstruction; override;
-    procedure BeforeDestruction; override;
+    function NormalizeParamToken(const Token: TZToken; out ParamName: String;
+      LookUpList: TStrings; out ParamIndex: Integer;
+      out IngoreParam: Boolean): String; override;
   end;
 
 {$ENDIF ZEOS_DISABLE_POSTGRESQL}
@@ -219,7 +217,7 @@ function TZPostgreSQLSymbolState.NextToken(var SPos: PChar; const NTerm: PChar;
   Tokenizer: TZTokenizer): TZToken;
 var
   DollarCount, BodyTagLen: Integer;
-  TempTag: PChar;
+  TempTag, ParamTag: PChar;
 begin
   Result := inherited NextToken(SPos, NTerm, Tokenizer);
   //detecting Postgre Parameters as one ttWordState:
@@ -233,6 +231,21 @@ begin
       Inc(SPos);
       if SPos^ = '$' then begin
         Inc(DollarCount);
+        if (SPos < NTerm) and (Ord((SPos+1)^) >= Ord('0')) and (Ord((SPos+1)^) <= Ord('9')) then begin //assum we've a syntax like $1 which represents a param
+          ParamTag := SPos;
+          Inc(SPos);
+          while (SPos < NTerm) and (Ord(SPos^) >= Ord('0')) and (Ord(SPos^) <= Ord('9')) do
+            Inc(SPos);
+          if (SPos < NTerm) then
+            if (Ord(SPos^) <= Ord(' ')) then begin
+              //White whitesace found not a body tag!
+              if DollarCount = 1 then begin
+                SPos := ParamTag;
+                Break;
+              end;
+            end else if SPos^ = '$' then
+              Inc(DollarCount);
+        end;
         if DollarCount = 2 then
           BodyTagLen := SPos-Result.P
         else if DollarCount = 3 then
@@ -271,18 +284,6 @@ end;
 {**
   Constructs a default state table (as described in the class comment).
 }
-procedure TZPostgreSQLTokenizer.AfterConstruction;
-begin
-  inherited;
-  FNormalizedParams := TStringList.Create
-end;
-
-procedure TZPostgreSQLTokenizer.BeforeDestruction;
-begin
-  inherited;
-  FNormalizedParams.Free;
-end;
-
 procedure TZPostgreSQLTokenizer.CreateTokenStates;
 begin
   WhitespaceState := TZWhitespaceState.Create;
@@ -314,13 +315,12 @@ begin
 end;
 
 function TZPostgreSQLTokenizer.NormalizeParamToken(const Token: TZToken;
-  out ParamName: String): String;
+  out ParamName: String; LookUpList: TStrings; out ParamIndex: Integer;
+  out IngoreParam: Boolean): String;
 var
   P: PChar;
-  I: Integer;
   C: Cardinal;
   B: Byte;
-label fill;
 begin
   {postgres just understands numerical tokens only at least unti V12}
   if Token.TokenType = ttInteger then begin
@@ -329,23 +329,21 @@ begin
     P := Pointer(Result);
     P^ := '$';
     Move(Token.P^, (P+1)^, Token.L*SizeOf(Char));
-  end else begin
-    if (Token.L >= 2) and (Ord(Token.P^) in [Ord(#39), Ord('`'), Ord('"'), Ord('[')])
+  end else if (Token.L >= 2) and (Ord(Token.P^) in [Ord(#39), Ord('`'), Ord('"'), Ord('[')])
     then ParamName := GetQuoteState.DecodeToken(Token, Token.P^)
     else System.SetString(ParamName, Token.P, Token.L);
-    I := FNormalizedParams.IndexOf(ParamName);
-    if I = -1 then begin
-      C := FNormalizedParams.Count+1;
-      FNormalizedParams.Add(ParamName);
-      goto fill;
-    end else begin
-      C := I+1;
-fill: B := GetOrdinalDigits(C);
-      SetLength(Result, B+1);
-      P := Pointer(Result);
-      P^ := '$';
-      {$IFDEF UNICODE}IntToUnicode{$ELSE}IntToRaw{$ENDIF}(C, P+1, B);
-    end;
+  ParamIndex := LookUpList.IndexOf(ParamName);
+  if ParamIndex = -1 then begin
+    ParamIndex := LookUpList.Add(ParamName);
+    IngoreParam := False;
+  end else IngoreParam := True;
+  if Token.TokenType <> ttInteger then begin
+    C := Cardinal(ParamIndex )+1;
+    B := GetOrdinalDigits(C);
+    SetLength(Result, B+1);
+    P := Pointer(Result);
+    P^ := '$';
+    {$IFDEF UNICODE}IntToUnicode{$ELSE}IntToRaw{$ENDIF}(C, P+1, B);
   end;
 end;
 

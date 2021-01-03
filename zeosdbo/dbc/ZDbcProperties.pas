@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -67,12 +67,11 @@ interface
   { Parameters common for all DBC's }
 const
   /// <type>String</type>
-  /// <alias>ConnProps_Username</alias>
+  /// <Alias>username</Alias>
+  /// <Associates>ConnProps_Username,ConnProps_TrustedConnection</Associates>
   /// <usage>Connection</usage>
   /// <syntax>Properties.Values[ConnProps_UID]=userid</syntax>
-  /// <summary>
-  ///  Specifies the user ID used to log in to the database.
-  /// </summary>
+  /// <summary>Specifies the user ID used to log in to the database.</summary>
   /// <remarks>
   ///  You must always supply a user ID when connecting to a database, unless
   ///  you are using an integrated/trusted or Kerberos login.
@@ -80,11 +79,10 @@ const
   ConnProps_UID = 'UID';
   /// <type>String</type>
   /// <alias>ConnProps_UID</alias>
+  /// <Associates>ConnProps_UID,ConnProps_TrustedConnection</Associates>
   /// <usage>Connection</usage>
   /// <syntax>Properties.Values[ConnProps_Username]=username</syntax>
-  /// <summary>
-  ///  Specifies the user name used to log in to the database.
-  /// </summary>
+  /// <summary>Specifies the user name used to log in to the database.</summary>
   /// <remarks>
   ///  You must always supply a user name when connecting to a database, unless
   ///  you are using an integrated/trusted or Kerberos login.
@@ -123,25 +121,73 @@ const
   /// <type>String</type>
   /// <usage>Connection</usage>
   /// <syntax>Properties.Values[ConnProps_LibLocation]=filename</syntax>
-  /// <summary>
-  ///  Provides a filename for a client library.
-  /// </summary>
-  /// <remarks>
-  ///  If provided then we'll try to load the library otherwise the default
-  ///  lib-names will be used for.
+  /// <summary>Provides a filename for a client library.</summary>
+  /// <remarks>If provided then we'll try to load the library otherwise the
+  ///  default lib-names will be used for.
   /// </remarks>
   ConnProps_LibLocation = 'LibLocation';
-  // Type: STR, like CP_UTF8
-  // Codepage to interact with driver
+  /// <Type>String</Type>
+  /// <usage>Connection</usage>
+  /// <Associates>ConnProps_Charset_NONE_Alias</Associates>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[ConnProps_CodePage]={value}</syntax>
+  /// <summary>Specifies the character set to interact with driver.</summary>
+  /// <remarks>If you're accessing a CharacterSet "NONE" Firebird/Interbase
+  ///  database you should always use the CharacterSet "NONE" as connection
+  ///  characterset. In addition it's recommented to specify which characterset
+  ///  the "NONE" represents by adding:
+  ///  <c>Properties.Values['Charset_NONE_Alias'] := 'WIN1251'</c> f.e.
+  ///  For odbc_a and ole_db(raw longvarchar only) it's implemented as:
+  ///  set a custom characterset to notify zeos about conversion routines.
+  ///  <c>Note for ODBC_A</c>: This CodePage must be equal for all fields(ODBC).
+  ///  Otherwise use the ODBC_W driver. It's defined as:
+  ///  First place in a name as an charset alias, second add ':'+(codepage),
+  ///  third add '/'+(maximum amount of bytes per character). The definition
+  ///  must equal to database defined charset.
+  ///  Example: CharacterSet=latin1:1252/1 or CharacterSet=utf8:65001/4
+  /// </remarks>
+  ConnProps_Characterset = 'CharacterSet';
+  /// <PropertyType>String</PropertyType>
+  /// <Alias>CharacterSet</Alias>
+  /// <Associates>ConnProps_Charset_NONE_Alias</Associates>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[ConnProps_CodePage]={value}</syntax>
+  /// <summary>Deprecated use ConnProps_Characterset instead. Specifies the
+  ///  character set to interact with driver.</summary>
+  /// <remarks>If you're accessing a CharacterSet "NONE" Firebird/Interbase
+  ///  database you should always use the CharacterSet "NONE" as connection
+  ///  characterset. In addition it's recommented to specify which characterset
+  ///  the "NONE" represents by adding:
+  ///  <c>Properties.Values['Charset_NONE_Alias'] := 'WIN1251'</c> f.e.
+  ///  For odbc_a and ole_db(raw longvarchar only) it's implemented as:
+  ///  set a custom characterset to notify zeos about conversion routines.
+  ///  <c>Note for ODBC_A</c>: This CodePage must be equal for all fields(ODBC).
+  ///  Otherwise use the ODBC_W driver. It's defined as:
+  ///  First place in a name as an charset alias, second add ':'+(codepage),
+  ///  third add '/'+(maximum amount of bytes per character). The definition
+  ///  must equal to database defined charset.
+  ///  Example: codepage=latin1:1252/1 or codepage=utf8:65001/4
+  /// </remarks>
   ConnProps_CodePage = 'codepage';
-  // Type: BOOLEAN
-  // Same as TZConnection.AutoEncodeStrings property
-  ConnProps_AutoEncodeStrings = 'AutoEncodeStrings';
-  ConnProps_Transliterate = 'Transliterate';
-  // Type: CP_UTF16 | CP_UTF8 | GET_ACP
-  // Same as ControlsCodePage property
-  ConnProps_ControlsCP = 'controls_cp'; //dreprecaded use ConnProps_RawStringEncoding  instead
-  // Type: DB_CP | CP_UTF8 | DefaultSystemCodePage
+  /// <PropertyType>Enumerator</PropertyType>
+  /// <Values>DB_CP|CP_UTF8|DefaultSystemCodePage</Values>
+  /// <Alias>RawStringEncoding</Alias>
+  /// <Associates>ConnProps_RawStringEncoding</Associates>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[ConnProps_ControlsCP]={value}</syntax>
+  /// <summary>dreprecaded use ConnProps_RawStringEncoding  instead;
+  ///  See ConnProps_RawStringEncoding</summary>
+  ConnProps_ControlsCP = 'controls_cp';
+  /// <PropertyType>Enumerator</PropertyType>
+  /// <Values>DB_CP|CP_UTF8|DefaultSystemCodePage</Values>
+  /// <Alias>RawStringEncoding</Alias>
+  /// <Associates>ConnProps_RawStringEncoding</Associates>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[ConnProps_ControlsCP]={value}</syntax>
+  /// <summary>Defines how Zeos treads the SQL and the
+  ///  <c>Get/SetString(Ansi-Compilers)</c> and <c>Get/SetRawByteString</c> for
+  ///  UTF16 columns/parameters/connections on zdbc. These enum-names are mapped
+  ///  the the W2A2WEncodingSource of the connection settings records.</summary>
   ConnProps_RawStringEncoding = 'RawStringEncoding';
   // Type: INT
   // The login timeout to use in seconds.
@@ -202,15 +248,6 @@ const
     from Connection properties retrieved. If it is empty too, the default value
     is returned (usually empty string for options of type STR) }
 
-  // Type: all | changed
-  // Same as Dataset.UpdateMode property
-  DSProps_Update = 'update';
-  // Type: all | keyonly
-  // Same as Dataset.WhereMode property
-  DSProps_Where = 'where';
-  // Type: BOOLEAN
-  // Same as TZDatasetOptions.doCalcDefaults in Dataset.Options property
-  DSProps_Defaults = 'defaults';
   // Type: BOOLEAN
   // Same as TZDatasetOptions.doPreferPrepared in Dataset.Options property
   DSProps_PreferPrepared = 'PreferPrepared';
@@ -271,8 +308,9 @@ const
 {$IFEND}
 
 {$IF DEFINED(ENABLE_ADO) OR DEFINED(ENABLE_OLEDB)}
-  // Type: STR
-  // the ole provider
+  /// <summary>Defines the driver Provider as a String. This property is used
+  ///  for the OleDB connection only. Example:
+  ///  Properties.Values[ConnProps_Provider]=SQLNCLI11.1</summary>
   ConnProps_Provider = 'Provider';
 {$IFEND}
 
@@ -288,7 +326,7 @@ const
   DSProps_DeferPrepare = 'DeferPrepare';
 {$IFEND}
 
-{$IF DEFINED(ENABLE_ODBC) OR DEFINED(ENABLE_OLEDB) OR DEFINED(ENABLE_FIREBIRD) or DEFINED(ZEOS_DISABLE_INTERBASE)}
+{$IF DEFINED(ENABLE_ODBC) OR DEFINED(ENABLE_OLEDB) OR DEFINED(ENABLE_FIREBIRD) or DEFINED(ENABLE_INTERBASE)}
   // Type: INT
   // Execution timeout in seconds/milliseconds for FireBird
   DSProps_StatementTimeOut = 'StatementTimeOut'; //since FB4 also
@@ -423,6 +461,32 @@ const
   ConnProps_MYSQL_OPT_TLS_CIPHERSUITES            = 'MYSQL_OPT_TLS_CIPHERSUITES';
   ConnProps_MYSQL_OPT_COMPRESSION_ALGORITHMS      = 'MYSQL_OPT_COMPRESSION_ALGORITHMS';
   ConnProps_MYSQL_OPT_ZSTD_COMPRESSION_LEVEL      = 'MYSQL_OPT_ZSTD_COMPRESSION_LEVEL';
+  {MariaDB Connector specific }
+  ConnProps_MYSQL_DATABASE_DRIVER                 = 'MYSQL_DATABASE_DRIVER';
+  ConnProps_MARIADB_OPT_SSL_FP                    = 'MARIADB_OPT_SSL_FP';
+  ConnProps_MARIADB_OPT_SSL_FP_LIST               = 'MARIADB_OPT_SSL_FP_LIST';
+  ConnProps_MARIADB_OPT_TLS_PASSPHRASE            = 'MARIADB_OPT_TLS_PASSPHRASE';
+  ConnProps_MARIADB_OPT_TLS_CIPHER_STRENGTH       = 'MARIADB_OPT_TLS_CIPHER_STRENGTH';
+  ConnProps_MARIADB_OPT_TLS_VERSION               = 'MARIADB_OPT_TLS_VERSION';
+  ConnProps_MARIADB_OPT_TLS_PEER_FP               = 'MARIADB_OPT_TLS_PEER_FP';
+  ConnProps_MARIADB_OPT_TLS_PEER_FP_LIST          = 'MARIADB_OPT_TLS_PEER_FP_LIST';
+  ConnProps_MARIADB_OPT_CONNECTION_READ_ONLY      = 'MARIADB_OPT_CONNECTION_READ_ONLY';
+  ConnProps_MYSQL_OPT_CONNECT_ATTRS               = 'MYSQL_OPT_CONNECT_ATTRS';
+  ConnProps_MARIADB_OPT_USERDATA                  = 'MARIADB_OPT_USERDATA';
+  ConnProps_MARIADB_OPT_CONNECTION_HANDLER        = 'MARIADB_OPT_CONNECTION_HANDLER';
+  ConnProps_MARIADB_OPT_PORT                      = 'MARIADB_OPT_PORT';
+  ConnProps_MARIADB_OPT_UNIXSOCKET                = 'MARIADB_OPT_UNIXSOCKET';
+  ConnProps_MARIADB_OPT_PASSWORD                  = 'MARIADB_OPT_PASSWORD';
+  ConnProps_MARIADB_OPT_HOST                      = 'MARIADB_OPT_HOST';
+  ConnProps_MARIADB_OPT_USER                      = 'MARIADB_OPT_USER';
+  ConnProps_MARIADB_OPT_SCHEMA                    = 'MARIADB_OPT_SCHEMA';
+  ConnProps_MARIADB_OPT_DEBUG                     = 'MARIADB_OPT_DEBUG';
+  ConnProps_MARIADB_OPT_FOUND_ROWS                = 'MARIADB_OPT_FOUND_ROWS';
+  ConnProps_MARIADB_OPT_MULTI_RESULTS             = 'MARIADB_OPT_MULTI_RESULTS';
+  ConnProps_MARIADB_OPT_MULTI_STATEMENTS          = 'MARIADB_OPT_MULTI_STATEMENTS';
+  ConnProps_MARIADB_OPT_INTERACTIVE               = 'MARIADB_OPT_INTERACTIVE';
+  ConnProps_MARIADB_OPT_PROXY_HEADER              = 'MARIADB_OPT_PROXY_HEADER';
+  ConnProps_MARIADB_OPT_IO_WAIT                   = 'MARIADB_OPT_IO_WAIT';
 
   { Parameters that are for datasets and statements but could be set for connections
     (see comment above) }
@@ -434,6 +498,8 @@ const
   // So you can't use it within using metainformations or multiple active
   // resultsets!
   DSProps_UseResult = 'UseResult';
+  // Type: BOOLEAN
+  DSProps_MySQLUseDefaults = 'UseDefaults';
   // Type: INT
   // Sets STMT_ATTR_PREFETCH_ROWS option, refer to MySql manual for details
   DSProps_PrefetchRows = 'prefetch_rows';
@@ -525,8 +591,16 @@ const
   // see firebird 3.0 release notes
   ConnProps_FBProtocol = 'fb_protocol';
 
-  // Type: STR
-  // identify the charset "NONE" codepage
+  /// <PropertyType>String</PropertyType>
+  /// <Associates>ConnProps_Characterset</Associates>
+  /// <protocols>firebird,interbase</protocols>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[ConnProps_Charset_NONE_Alias]={value}</syntax>
+  /// <summary>Specifies the character set "NONE" codepage to interact with
+  ///  driver.</summary>
+  /// <remarks>If you're accessing a CharacterSet "NONE" Firebird/Interbase
+  ///  database you should always use the CharacterSet "NONE" as connection
+  ///  characterset.</remarks>
   ConnProps_Charset_NONE_Alias = 'Charset_NONE_Alias';
 
   { Parameters that are for datasets and statements but could be set for connections
@@ -722,10 +796,26 @@ const
   // if Value is 'EXCLUSIVE' we're assuming you want emulate a ReadCommitted transaction
   // which blocks read transactions while the transaction is underway
   TxnProps_TransactionBehaviour = 'TransactionBehaviour';
-  // Type: BOOLEAN
-  // Treat "INT" fields in any kind as Int64, means ignore all subtypes like
-  // smallint
+  /// <type>Enum</type>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[DSProps_SQLiteIntAffinity]={False|True}</syntax>
+  /// <values>true|False</values>
+  /// <summary>
+  ///  Treat "INT" fields in any kind as Int64, means ignore all subtypes like
+  ///  [smallint, int32, MEDIUMINT]</summary>
+  /// <default>False</default>
   DSProps_SQLiteIntAffinity = 'SQLiteIntAffinity';
+  /// <type>Integer</type>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[ConnProps_SQLiteOpenFlags]=value</syntax>
+  /// <values>are defined in ZPlainSqLiteDriver.pas</values>
+  /// <summary>see: https://www.sqlite.org/c3ref/open.html</summary>
+  ConnProps_SQLiteOpen_Flags = 'SQLiteOpen_Flags';
+  /// <type>String</type>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[ConnProps_SQLiteOpen_zVfs]=value</syntax>
+  /// <summary>see: https://www.sqlite.org/c3ref/open.html</summary>
+  ConnProps_SQLiteOpen_zVfs = 'SQLiteOpen_zVfs';
 {$ENDIF}
 
 {$IFDEF ENABLE_ORACLE}
@@ -763,6 +853,17 @@ const
   ///  OCI_PRELIM_AUTH - this mode may only be used with OCI_SYSDBA or OCI_SYSOPER to authenticate for certain administration tasks.
   /// </remarks>
   ConnProps_OCIAuthenticateMode = 'OCIAuthenticateMode';
+
+  /// <type>Boolean</type>
+  /// <usage>Connection</usage>
+  /// <syntax>Properties.Values[ConnProps_OCIMultiThreaded]=True/False</syntax>
+  /// <summary>
+  ///  If set to true, OCI_THREADED will also be used for initializing the connection environment
+  /// </summary>
+  /// <remarks>
+  ///  If set to true, OCI_THREADED will also be used for initializing the connection environment
+  /// </remarks>
+  ConnProps_OCIMultiThreaded = 'OCIMultiThreaded';
 {$ENDIF}
 
 {$IFDEF ENABLE_ASA}
@@ -775,9 +876,7 @@ const
   ConnProps_ASTART = 'ASTART';
   ConnProps_AutoStop = 'AutoStop';
   ConnProps_ASTOP = 'ASTOP';
-  {$IFNDEF ENABLE_ODBC}
   ConnProps_CharSet = 'CharSet';
-  {$ENDIF}
   ConnProps_CS = 'CS';
   ConnProps_CommBufferSize = 'CommBufferSize';
   ConnProps_CBSIZE = 'CBSIZE';
@@ -849,7 +948,6 @@ const
   ConnProps_RetryConnectionTimeout = 'RetryConnectionTimeout';
   ConnProps_RetryConnTO = 'RetryConnTO';
   ConnProps_ServerName = 'ServerName';
-  ConnProps_Server = 'Server';
   ConnProps_StartLine = 'StartLine';
   ConnProps_START = 'START';
   ConnProps_Unconditional = 'Unconditional';
@@ -874,15 +972,20 @@ const
 {$ENDIF}
 
 {$IFDEF ENABLE_ODBC}
-  // Type: STR, like CP_UTF8
-  // Codepage to use (same as ConnProps_CodePage)
-  ConnProps_Charset = 'characterset';
   // Type: SQL_DRIVER_COMPLETE | SQL_DRIVER_PROMPT | SQL_DRIVER_COMPLETE_REQUIRED
   // Refer to ODBC manual for details
   ConnProps_DriverCompletion = 'DriverCompletion';
   // Type: BOOLEAN
   // If set, more info about columns will be retrieved
   DSProps_EnhancedColumnInfo = 'enhanced_column_info';
+  /// <summary>Defines the driver as a String. This property is used
+  ///  for the ODBC connection only. Example:
+  ///  Properties.Values[ConnProps_DRIVER]={SQL Server Native Client 11.0}</summary>
+  ConnProps_DRIVER = 'DRIVER';
+  /// <summary>Defines the server as a String. This property is used
+  ///  for the ODBC connection only. Example:
+  ///  Properties.Values[ConnProps_Server]=(localdb)\ZeosLib</summary>
+  ConnProps_Server = 'Server';
 {$ENDIF}
 
 {$IFDEF ENABLE_POOLED}

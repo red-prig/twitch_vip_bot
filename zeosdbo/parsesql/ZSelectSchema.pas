@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -62,18 +62,31 @@ uses ZClasses
 
 type
 
-  {** Implements an enum for and identifier case Sensitive/Unsensitive value }
+  /// <summary>defines an enum for and identifier case Sensitive/Unsensitive
+  ///  value.</summary>
   TZIdentifierCase = (icNone, icLower, icUpper, icMixed, icSpecial);
 
-  {** Case Sensitive/Unsensitive identificator processor. }
-  IZIdentifierConvertor = interface (IZInterface)
+  /// <author>EgonHugeist</author>
+  /// <summary>defines an enumerator for the quoting rules of qualifiers.</summary>
+  TZIdentifierQualifier = (iqUnspecified, iqCatalog, iqSchema, iqTable, iqEvent,
+    iqTrigger, iqStoredProcedure, iqStoredFunction, iqSequence, iqColumn,
+    iqParameter, iqIndex, iqForeignKey);
+
+  /// <summary>Case Sensitive/Unsensitive identificator processor.</summary>
+  IZIdentifierConverter = interface (IZInterface)
     ['{2EB07B9B-1E96-4A42-8084-6F98D9140B27}']
     function IsCaseSensitive(const Value: string): Boolean;
     function IsQuoted(const Value: string): Boolean;
     function GetIdentifierCase(const Value: String; TestKeyWords: Boolean): TZIdentifierCase;
-    function Quote(const Value: string): string;
+    /// <summary>Quotes the identifier string.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <param>"Qualifier" an identifier qualifier. Default is <c>iqUnspecified</c>.</param>
+    /// <returns>a quoted string.</returns>
+    function Quote(const Value: string; Qualifier: TZIdentifierQualifier = iqUnspecified): string;
     function ExtractQuote(const Value: string): string;
   end;
+
+  IZIdentifierConvertor = IZIdentifierConverter; //EH: keep that alias for compatibility
 
   {** Implements a table reference assembly. }
   TZTableRef = class (TObject)
@@ -127,14 +140,14 @@ type
 
     procedure AddTable({$IFDEF AUTOREFCOUNT}const{$ENDIF}TableRef: TZTableRef);
 
-    procedure LinkReferences(const Convertor: IZIdentifierConvertor);
+    procedure LinkReferences(const Converter: IZIdentifierConverter);
 
     function FindTableByFullName(const Catalog, Schema, Table: string): TZTableRef;
     function FindTableByShortName(const Table: string): TZTableRef;
     function FindFieldByShortName(const Field: string): TZFieldRef;
 
     function LinkFieldByIndexAndShortName(ColumnIndex: Integer; const Field: string;
-      const Convertor: IZIdentifierConvertor): TZFieldRef;
+      const Converter: IZIdentifierConverter): TZFieldRef;
 
     function GetFieldCount: Integer;
     function GetTableCount: Integer;
@@ -153,7 +166,7 @@ type
     FFields: TObjectList;
     FTables: TObjectList;
 
-    procedure ConvertIdentifiers(const Convertor: IZIdentifierConvertor);
+    procedure ConvertIdentifiers(const Converter: IZIdentifierConverter);
   public
     constructor Create;
     destructor Destroy; override;
@@ -164,14 +177,20 @@ type
 
     procedure AddTable({$IFDEF AUTOREFCOUNT}const{$ENDIF}TableRef: TZTableRef);
 
-    procedure LinkReferences(const Convertor: IZIdentifierConvertor);
+    procedure LinkReferences(const Converter: IZIdentifierConverter);
 
     function FindTableByFullName(const Catalog, Schema, Table: string): TZTableRef;
     function FindTableByShortName(const Table: string): TZTableRef;
     function FindFieldByShortName(const Field: string): TZFieldRef;
 
+    /// <summary>Links a field reference by index and/or field name or field
+    ///  alias.</summary>
+    /// <param>"ColumnIndex" an index of the column.</param>
+    /// <param>"Field" a table field name or alias.</param>
+    /// <param>"Converter" a Identifier converter interface for the quote rules.</param>
+    /// <returns>a found field reference object or <c>null</c> otherwise.</returns>
     function LinkFieldByIndexAndShortName(ColumnIndex: Integer; const Field: string;
-      const Convertor: IZIdentifierConvertor): TZFieldRef;
+      const Converter: IZIdentifierConverter): TZFieldRef;
 
     function GetFieldCount: Integer;
     function GetTableCount: Integer;
@@ -243,8 +262,8 @@ begin
   FField := Field;
   FAlias := Alias;
   FTableRef := TableRef;
-  //http://zeoslib.sourceforge.net/viewtopic.php?f=40&t=71516&sid=97f200f6e575ecf37f4e6364c3102ea5&start=15
-  FLinked := TableRef <> nil; //set linked if a table ref already could be given
+  //EH: Dev-Note the Linked attribute is a tag if a column was found infieldlist!
+  //FLinked := False;
 end;
 
 { TZSelectSchema }
@@ -386,14 +405,8 @@ begin
   end;
 end;
 
-{**
-  Links a field reference by index and/or field name or field alias.
-  @param ColumnIndex an index of the column.
-  @param Field a table field name or alias.
-  @return a found field reference object or <code>null</code> otherwise.
-}
 function TZSelectSchema.LinkFieldByIndexAndShortName(ColumnIndex: Integer;
-  const Field: string; const Convertor: IZIdentifierConvertor): TZFieldRef;
+  const Field: string; const Converter: IZIdentifierConverter): TZFieldRef;
 var
   I: Integer;
   Current: TZFieldRef;
@@ -403,22 +416,17 @@ begin
   if Field = '' then
     Exit;
 
-  FieldQuoted := Convertor.Quote(Field);
-  FieldUnquoted := Convertor.ExtractQuote(Field);
+  FieldQuoted := Converter.Quote(Field);
+  FieldUnquoted := Converter.ExtractQuote(Field);
 
   {$IFNDEF GENERIC_INDEX}
   ColumnIndex := ColumnIndex -1;
   {$ENDIF}
 
   { Looks by field index. }
-  if (ColumnIndex >= 0) and (ColumnIndex <= FFields.Count - 1) then
-  begin
+  if (ColumnIndex >= 0) and (ColumnIndex <= FFields.Count - 1) then begin
     Current := TZFieldRef(FFields[ColumnIndex]);
-    if Current.Linked then begin //a linket column has a table ref!
-      Result := Current; //http://zeoslib.sourceforge.net/viewtopic.php?f=40&t=71516&sid=97f200f6e575ecf37f4e6364c3102ea5&start=15
-      exit;
-    end  //note http://sourceforge.net/p/zeoslib/tickets/101/
-    else if ((Current.Alias = Field) or (Current.Field = Field) or (Current.Field = FieldQuoted) or (Current.Alias = FieldUnquoted)) then begin
+    if ((Current.Alias = Field) or (Current.Field = Field) or (Current.Field = FieldQuoted) or (Current.Alias = FieldUnquoted)) then begin
       Result := Current;
       Result.Linked := True;
       Exit;
@@ -426,12 +434,10 @@ begin
   end;
 
   { Looks a field by it's alias. }
-  for I := 0 to FFields.Count - 1 do
-  begin
+  for I := 0 to FFields.Count - 1 do begin
     Current := TZFieldRef(FFields[I]);
     if not Current.Linked and (Current.Alias <> '') and
-       ((Current.Alias = Field) or (Current.Alias = FieldQuoted) or (Current.Alias = FieldUnquoted)) then
-    begin
+       ((Current.Alias = Field) or (Current.Alias = FieldQuoted) or (Current.Alias = FieldUnquoted)) then begin
       Result := Current;
       Result.Linked := True;
       Exit;
@@ -439,13 +445,11 @@ begin
   end;
 
   { Looks a field by field and table aliases. }
-  for I := 0 to FFields.Count - 1 do
-  begin
+  for I := 0 to FFields.Count - 1 do begin
     Current := TZFieldRef(FFields[I]);
-    if not Current.Linked and Assigned(Current.TableRef)
-      and (((Current.TableRef.Alias + '.' + Current.Field) = Field)
-      or (((Current.TableRef.Table + '.' + Current.Field) = Field))) then
-    begin
+    if not Current.Linked and Assigned(Current.TableRef) and
+       (((Current.TableRef.Alias + '.' + Current.Field) = Field) or
+        (((Current.TableRef.Table + '.' + Current.Field) = Field))) then begin
       Result := Current;
       Result.Linked := True;
       Exit;
@@ -453,12 +457,10 @@ begin
   end;
 
   { Looks a field by it's name. }
-  for I := 0 to FFields.Count - 1 do
-  begin
+  for I := 0 to FFields.Count - 1 do begin
     Current := TZFieldRef(FFields[I]);
     if not Current.Linked and (Current.Field <> '') and
-       ((Current.Field = Field) or (Current.Field = FieldQuoted) or (Current.Field = FieldUnquoted)) then
-    begin
+       ((Current.Field = Field) or (Current.Field = FieldQuoted) or (Current.Field = FieldUnquoted)) then begin
       Result := Current;
       Result.Linked := True;
       Exit;
@@ -468,9 +470,9 @@ end;
 
 {**
   Convert all table and field identifiers..
-  @param Convertor an identifier convertor.
+  @param Converter an identifier Converter.
 }
-procedure TZSelectSchema.ConvertIdentifiers(const Convertor: IZIdentifierConvertor);
+procedure TZSelectSchema.ConvertIdentifiers(const Converter: IZIdentifierConverter);
 var
   I: Integer;
   function ExtractNeedlessQuote(const Value : String) : String;
@@ -480,12 +482,12 @@ var
       Result := '';
       Exit;
     end;
-    Result := Convertor.ExtractQuote(Value);
-    if Convertor.GetIdentifierCase(Result, True) in [icMixed, icSpecial] then
+    Result := Converter.ExtractQuote(Value);
+    if Converter.GetIdentifierCase(Result, True) in [icMixed, icSpecial] then
       Result := Value;
   end;
 begin
-  if Convertor = nil then Exit;
+  if Converter = nil then Exit;
 
   for I := 0 to FFields.Count - 1 do
   begin
@@ -513,16 +515,16 @@ end;
 
 {**
   Links references between fields and tables.
-  @param Convertor an identifier convertor.
+  @param Converter an identifier Converter.
 }
-procedure TZSelectSchema.LinkReferences(const Convertor: IZIdentifierConvertor);
+procedure TZSelectSchema.LinkReferences(const Converter: IZIdentifierConverter);
 var
   I, J: Integer;
   FieldRef: TZFieldRef;
   TableRef: TZTableRef;
   TempFields: TObjectList;
 begin
-  ConvertIdentifiers(Convertor);
+  ConvertIdentifiers(Converter);
   TempFields := FFields;
   FFields := TObjectList.Create;
 

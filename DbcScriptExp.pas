@@ -293,7 +293,7 @@ begin
  Result:=Default(TZVariant);
  if Assigned(R) and (R.Next) then
  begin
-  Result:=R.GetValue(1);
+  Result:=R.GetValue(FirstDbcIndex);
  end;
 end;
 

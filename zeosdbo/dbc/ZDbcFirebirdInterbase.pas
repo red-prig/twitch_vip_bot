@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -138,7 +138,18 @@ type
     procedure AfterConstruction; override;
     destructor Destroy; override;
   public { IZTransactionManager }
+    /// <summary>Remove the given transaction interface from the manager list.
+    ///  This method will be called from the Transaction interface when the
+    ///  Transaction gets closed. If the interface is unknown an SQLException
+    ///  will be raised.</summary>
+    /// <param>"Value" the Transaction interface which should be removed.</param>
     procedure ReleaseTransaction(const Value: IZTransaction);
+    /// <summary>Test if the interface is known in the Transaction manager.
+    ///  This is usefull if the txn interface was managed, the connection was
+    ///  lost and the txn interface is in destruction.</summary>
+    /// <param>"Value" the Transaction interface which should be checked.</param>
+    /// <returns><c>True</c> if the transaction is known; <c>False</c>
+    ///  otherwise.</returns>
     function IsTransactionValid(const Value: IZTransaction): Boolean;
     procedure ClearTransactions;
   public { implement IZInterbaseFirebirdTransaction }
@@ -153,16 +164,77 @@ type
     procedure HandleErrorOrWarning(LogCategory: TZLoggingCategory;
       StatusVector: PARRAY_ISC_STATUS; const LogMessage: SQLString;
       const Sender: IImmediatelyReleasable);
-    function InterpretInterbaseStatus(StatusVector: PARRAY_ISC_STATUS): TZIBStatusVector;
+    function InterpretInterbaseStatus(var StatusVector: PARRAY_ISC_STATUS): TZIBStatusVector;
     procedure SetActiveTransaction(const Value: IZTransaction);
     function GenerateTPB(AutoCommit, ReadOnly: Boolean; TransactIsolationLevel: TZTransactIsolationLevel;
       Info: TStrings): RawByteString;
   public
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  released. Otherwise makes all changes made since the previous commit/
+    ///  rollback permanent and releases any database locks currently held by
+    ///  the Connection. This method should be used only when auto-commit mode
+    ///  has been disabled. If Option "Hard_Commit" is set to true or
+    ///  TestCachedResultsAndForceFetchAll returns <c>True</c> the transaction
+    ///  is committed. Otherwise if "Hard_Commit" isn't set to true a
+    ///  retained_commit is performed, and the txn get's removed from the
+    ///  transaction manger. Later if all streams are closed a final
+    ///  commit is called to release the garbage.</summary>
     procedure Commit;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  rolled back. Otherwise drops all changes made since the previous
+    ///  commit/rollback and releases any database locks currently held
+    ///  by this Connection. This method should be used only when auto-
+    ///  commit has been disabled. If Option "Hard_Commit" is set to true
+    ///  or TestCachedResultsAndForceFetchAll returns <c>True</c> the
+    ///  transaction is rolled back. Otherwise if "Hard_Commit" isn't set
+    ///  to true a retained_rollback is performed, and the txn get's removed
+    ///  from the transaction manger. Later if all streams are closed a final
+    ///  rollback is called to release the garbage.</summary>
     procedure Rollback;
+    /// <summary>Attempts to change the transaction isolation level to the one
+    ///  given. The constants defined in the interface <c>Connection</c> are the
+    ///  possible transaction isolation levels. Note: This method cannot be
+    ///  called while in the middle of a transaction.
+    /// <param>"value" one of the TRANSACTION_* isolation values with the
+    ///  exception of TRANSACTION_NONE; some databases may not support other
+    ///  values. See DatabaseInfo.SupportsTransactionIsolationLevel</param>
     procedure SetTransactionIsolation(Level: TZTransactIsolationLevel); override;
+    /// <summary>Puts this connection in read-only mode as a hint to enable
+    ///  database optimizations. Note: This method cannot be called while in the
+    ///  middle of a transaction.</summary>
+    /// <param>"value" true enables read-only mode; false disables read-only
+    ///  mode.</param>
     procedure SetReadOnly(Value: Boolean); override;
+    /// <summary>Sets this connection's auto-commit mode. If a connection is in
+    ///  auto-commit mode, then all its SQL statements will be executed and
+    ///  committed as individual transactions. Otherwise, its SQL statements are
+    ///  grouped into transactions that are terminated by a call to either the
+    ///  method <c>commit</c> or the method <c>rollback</c>. By default, new
+    ///  connections are in auto-commit mode. The commit occurs when the
+    ///  statement completes or the next execute occurs, whichever comes first.
+    ///  In the case of statements returning a ResultSet, the statement
+    ///  completes when the last row of the ResultSet has been retrieved or the
+    ///  ResultSet has been closed. In advanced cases, a single statement may
+    ///  return multiple results as well as output parameter values. In these
+    ///  cases the commit occurs when all results and output parameter values
+    ///  have been retrieved. It is not recommented setting autoCommit to false
+    ///  because a call to either the method <c>commit</c> or the method
+    ///  <c>rollback</c> will restart the transaction. It's use full only if
+    ///  repeately many opertions are done and no startTransaction is intended
+    ///  to use. If you change mode to true the current Transaction and it's
+    ///  nested SavePoints are committed then.</summary>
+    /// <param>"Value" true enables auto-commit; false disables auto-commit.</param>
     procedure SetAutoCommit(Value: Boolean); override;
+    /// <summary>Starts transaction support or saves the current transaction.
+    ///  If the connection is closed, the connection will be opened.
+    ///  If a transaction is underway a nested transaction or a savepoint will
+    ///  be spawned. While the tranaction(s) is/are underway the AutoCommit
+    ///  property is set to False. Ending up the transaction with a
+    ///  commit/rollback the autocommit property will be restored if changing
+    ///  the autocommit mode was triggered by a starttransaction call.</summary>
+    /// <returns>Returns the current txn-level. 1 means a expicit transaction
+    ///  was started. 2 means the transaction was saved. 3 means the previous
+    ///  savepoint got saved too and so on.</returns>
     function StartTransaction: Integer;
     function GetConnectionTransaction: IZTransaction;
   public
@@ -178,7 +250,8 @@ type
   End;
 
   {** EH: implements a IB/FB transaction }
-  TZInterbaseFirebirdTransaction = class(TZImmediatelyReleasableObject, IImmediatelyReleasable)
+  TZInterbaseFirebirdTransaction = class(TZImmediatelyReleasableObject,
+    IImmediatelyReleasable)
   protected
     FWeakIZTransactionPtr: Pointer;
     fSavepoints: TStrings;
@@ -193,18 +266,72 @@ type
     function TxnIsStarted: Boolean; virtual; abstract;
     function TestCachedResultsAndForceFetchAll: Boolean; virtual; abstract;
   public { IZInterbaseFirebirdTransaction }
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost); virtual;
     procedure RegisterOpencursor(const CursorRS: IZResultSet);
     procedure RegisterOpenUnCachedLob(const Lob: IZlob);
     procedure DeRegisterOpenCursor(const CursorRS: IZResultSet);
     procedure DeRegisterOpenUnCachedLob(const Lob: IZlob);
-    function GetTransactionLevel: Integer;
-    procedure SetTransactionIsolation(Value: TZTransactIsolationLevel);
     function GetOpenCursorCount: Integer;
     function GetTPB: RawByteString;
+  public // implement IZTransaction
+    /// <summary>Get the nested transaction level. -1 means no active
+    ///  transaction, 0 means the txn is in AutoCommit-Mode, 1 means a expicit
+    ///  transaction was started. 2 means the transaction was saved. 3 means the
+    ///  previous savepoint got saved too and so on.</summary>
+    /// <returns>Returns the current txn-level. </returns>
+    function GetTransactionLevel: Integer;
+    /// <summary>Attempts to change the transaction isolation level to the one
+    ///  given. The constants defined in the interface <c>Connection</c> are the
+    ///  possible transaction isolation levels. Note: This method cannot be
+    ///  called while in the middle of a transaction.
+    /// <param>"value" one of the TRANSACTION_* isolation values with the
+    ///  exception of TRANSACTION_NONE; some databases may not support other
+    ///  values. See DatabaseInfo.SupportsTransactionIsolationLevel</param>
+    procedure SetTransactionIsolation(Value: TZTransactIsolationLevel);
+    /// <summary>Check if the current transaction is readonly. See setReadonly.
+    ///  </summary>
+    /// <returns><c>True</c> if the transaction is readonly; <c>False</c>
+    ///  otherwise.</returns>
     function IsReadOnly: Boolean;
+    /// <summary>Puts this transaction in read-only mode as a hint to enable
+    ///  database optimizations. Note: This method cannot be called while in the
+    ///  middle of a transaction.</summary>
+    /// <param>"value" true enables read-only mode; false disables read-only
+    ///  mode.</param>
     procedure SetReadOnly(Value: Boolean);
+    /// <summary>Gets the current auto-commit state. See setAutoCommit.</summary>
+    /// <returns>the current state of auto-commit mode.</returns>
     function GetAutoCommit: Boolean;
+    /// <summary>Sets this connection's auto-commit mode. If a connection is in
+    ///  auto-commit mode, then all its SQL statements will be executed and
+    ///  committed as individual transactions. Otherwise, its SQL statements are
+    ///  grouped into transactions that are terminated by a call to either the
+    ///  method <c>commit</c> or the method <c>rollback</c>. By default, new
+    ///  connections are in auto-commit mode. The commit occurs when the
+    ///  statement completes or the next execute occurs, whichever comes first.
+    ///  In the case of statements returning a ResultSet, the statement
+    ///  completes when the last row of the ResultSet has been retrieved or the
+    ///  ResultSet has been closed. In advanced cases, a single statement may
+    ///  return multiple results as well as output parameter values. In these
+    ///  cases the commit occurs when all results and output parameter values
+    ///  have been retrieved. It is not recommented setting autoCommit to false
+    ///  because a call to either the method <c>commit</c> or the method
+    ///  <c>rollback</c> will restart the transaction. It's use full only if
+    ///  repeately many opertions are done and no startTransaction is intended
+    ///  to use. If you change mode to true the current Transaction and it's
+    ///  nested SavePoints are committed then.</summary>
+    /// <param>"Value" true enables auto-commit; false disables auto-commit.</param>
     procedure SetAutoCommit(Value: Boolean);
   public
     constructor Create(const Owner: TZInterbaseFirebirdConnection; AutoCommit, ReadOnly: Boolean;
@@ -356,6 +483,15 @@ type
     Obj: TZAbstractFirebirdInterbasePreparedStatement;
     PreparedRowsOfArray: Integer;
   end;
+  /// <summary>Implements a List for IB and FB containing original sqltype,
+  ///  sqlscale and nullable infos</summary>
+  TZIBFBOrgSqlTypeAndScaleList = class(TZCustomElementList)
+  public
+    function Add(sqltype: Cardinal; scale: Integer; Nullable: Boolean): NativeInt;
+  public
+    constructor Create;
+  end;
+
 
   {** Implements IZPreparedStatement for Firebird and Interbase. }
   TZAbstractFirebirdInterbasePreparedStatement = class(TZAbstractPreparedStatement)
@@ -376,7 +512,8 @@ type
     FInData, FOutData: Pointer;
     FCodePageArray: TWordDynArray;
     FByteBuffer: PByteBuffer;
-    procedure ExceuteBatch;
+    FOrgTypeList: TZIBFBOrgSqlTypeAndScaleList;
+    procedure ExecuteBatchDml; virtual;
     function SplittQuery(const SQL: SQLString): RawByteString;
 
     procedure WriteLobBuffer(Index: Cardinal; P: PAnsiChar; Len: NativeUInt); virtual; abstract;
@@ -391,7 +528,19 @@ type
   public
     Constructor Create(const Connection: IZInterbaseFirebirdConnection;
       const SQL: String; Info: TStrings);
+    Destructor Destroy; override;
   public
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
   public //setters
@@ -400,6 +549,14 @@ type
       Scale: LengthInt = 0); override;
     //a performance thing: direct dispatched methods for the interfaces :
     //https://stackoverflow.com/questions/36137977/are-interface-methods-always-virtual
+
+    /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
+    ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(Index: Integer; SQLType: TZSQLType);
     procedure SetBoolean(Index: Integer; Value: Boolean);
     procedure SetByte(Index: Integer; Value: Byte);
@@ -493,6 +650,16 @@ type
     constructor Create(const Statement: IZStatement); overload;
     function ColumnIsGUID(SQLType: TZSQLType; DataSize: Integer; const ColumnName: string): Boolean;
   end;
+
+  PZIBFBOrgSqlTypeAndScale = ^TZIBFBOrgSqlTypeAndScale;
+  TZIBFBOrgSqlTypeAndScale = record
+    sqltype: cardinal;
+    scale: Integer;
+    Nullable: Boolean;
+  end;
+
+procedure BindSQLDAInParameters(BindList: TZBindList;
+  Stmt: TZAbstractFirebirdInterbasePreparedStatement; ArrayOffSet, ArrayItersCount: Integer);
 
 const
   sCS_NONE = 'NONE';
@@ -674,13 +841,6 @@ begin
   FreeAndNil(FLastWarning);
 end;
 
-{**
-  Makes all changes made since the previous
-  commit/rollback permanent and releases any database locks
-  currently held by the Connection. This method should be
-  used only when auto-commit mode has been disabled.
-  @see #setAutoCommit
-}
 procedure TZInterbaseFirebirdConnection.Commit;
 begin
   if Closed then
@@ -1103,34 +1263,42 @@ procedure TZInterbaseFirebirdConnection.HandleErrorOrWarning(
 var
   FormatStr, ErrorString: string;
   ErrorCode: Integer;
+  StatusArg, WarningArg: ISC_STATUS;
   i: Integer;
   InterbaseStatusVector: TZIBStatusVector;
   Error: EZSQLThrowable;
   ExeptionClass: EZSQLThrowableClass;
+  OrgStatusVector: PARRAY_ISC_STATUS; //remainder for initialization
 begin
   { usually first isc_status is gds_arg_gds .. }
-  if (StatusVector[1] = 0) and (StatusVector[2] = isc_arg_end) then
+  StatusArg := StatusVector[1];
+  WarningArg := StatusVector[2];
+  if (StatusArg = isc_arg_end) and (WarningArg = isc_arg_end) then begin
     Exit; //neither Warning nor an Error
+  end;
+  OrgStatusVector := StatusVector;
   InterbaseStatusVector := InterpretInterbaseStatus(StatusVector);
   ErrorCode := InterbaseStatusVector[0].SQLCode;
   ErrorString := '';
-  for i := Low(InterbaseStatusVector) to High(InterbaseStatusVector) do
+  for i := Low(InterbaseStatusVector) to High(InterbaseStatusVector) do begin
     AppendSepString(ErrorString, InterbaseStatusVector[i].IBMessage, '; ');
+    if AddLogMsgToExceptionOrWarningMsg and (InterbaseStatusVector[i].IBMessage = '') then
+      AppendSepString(ErrorString, InterbaseStatusVector[i].SQLMessage, '; ');
+  end;
 
   if DriverManager.HasLoggingListener then
     LogError(LogCategory, ErrorCode, Sender, LogMessage, ErrorString);
   { in case second isc_status is zero(no error) and third is tagged as a warning it's a /are multiple warning(s)
     otoh it's an error with a possible warning(s)}
-  if (StatusVector[1] = 0)
+  if (WarningArg = isc_arg_warning)
   then ExeptionClass := EZSQLWarning
   else if (ErrorCode = {isc_network_error..isc_net_write_err,} isc_lost_db_connection) or
       (ErrorCode = isc_att_shut_db_down) or (ErrorCode = isc_att_shut_idle) or
       (ErrorCode = isc_att_shut_db_down) or (ErrorCode = isc_att_shut_engine)
     then ExeptionClass := EZSQLConnectionLost
     else ExeptionClass := EZIBSQLException;
-
-  PInt64(StatusVector)^ := 0; //init for fb3up
-  PInt64(PAnsiChar(StatusVector)+8)^ := 0; //init for fb3up
+  //used for clearing the current status vector, OTH, we permanently need a new IStatus, or IStatus.Init.
+  FillChar(Pointer(OrgStatusVector)^, (PAnsiChar(StatusVector) - PAnsiChar(OrgStatusVector))+SizeOf(ISC_STATUS), #0);//init the vector again for FB3+
   if AddLogMsgToExceptionOrWarningMsg and (LogMessage <> '') then
     if LogCategory in [lcExecute, lcPrepStmt, lcExecPrepStmt]
     then FormatStr := SSQLError3
@@ -1165,10 +1333,17 @@ begin
 end;
 
 procedure TZInterbaseFirebirdConnection.InternalClose;
+var I: Integer;
+  Txn: IZTransaction;
 begin
   AutoCommit := not FRestartTransaction;
-  fTransactions.Clear;
-  fActiveTransaction := nil;
+  if fTransactions <> nil then begin
+    for I := fTransactions.Count -1 downto 0 do
+      if (fTransactions[i] <> nil) and (fTransactions[i].QueryInterface(IZTransaction, Txn) = S_OK) then
+        Txn.Close;
+    fTransactions.Clear;
+    fActiveTransaction := nil;
+  end;
 end;
 
 {**
@@ -1178,22 +1353,39 @@ end;
 }
 {$IFDEF FPC} {$PUSH} {$WARN 4055 off : Conversion between ordinals and pointers is not portable} {$ENDIF}
 function TZInterbaseFirebirdConnection.InterpretInterbaseStatus(
-  StatusVector: PARRAY_ISC_STATUS): TZIBStatusVector;
-var StatusIdx: Integer;
+  var StatusVector: PARRAY_ISC_STATUS): TZIBStatusVector;
+var //StatusIdx: Integer; EH: that leads to ugly rangecheck issues, since FP_Interpret is incrementing the ptr -> dead memory
     pCurrStatus: PZIBStatus;
+    {$IF defined(Unicode) or defined(WITH_RAWBYTESTRING)}
+    CP: Word;
+    {$IFEND}
+    NextStatusVector{EH: that should mimic Fr0st's vector array, but does not overrun the memory}: PARRAY_ISC_STATUS;
 begin
   Result := nil;
-  StatusIdx := 0;
+  //StatusIdx := 0;
+  {$IF defined(Unicode) or defined(WITH_RAWBYTESTRING)}
+  if ConSettings.ClientCodePage = nil
+  then CP := DefaultSystemCodePage
+  else CP := ConSettings.ClientCodePage.CP;
+  {$IFEND}
   repeat
     SetLength(Result, Length(Result) + 1);
     pCurrStatus := @Result[High(Result)]; // save pointer to avoid multiple High() calls
     // SQL code and status
     pCurrStatus.SQLCode := FInterbaseFirebirdPlainDriver.isc_sqlcode(PISC_STATUS(StatusVector));
     FInterbaseFirebirdPlainDriver.isc_sql_interprete(pCurrStatus.SQLCode, @FByteBuffer[0], SizeOf(TByteBuffer)-1);
-    pCurrStatus.SQLMessage := ConvertConnRawToString({$IFDEF UNICODE}ConSettings,{$ENDIF}@FByteBuffer[0]);
+    if FByteBuffer[0] <> 0 then
+      {$IFDEF UNICODE}
+      pCurrStatus.SQLMessage := PRawToUnicode(PAnsiChar(@FByteBuffer[0]), ZFastCode.StrLen(@FByteBuffer[0]), CP);
+      {$ELSE}
+      ZSetString(PAnsiChar(@FByteBuffer[0]), ZFastCode.StrLen(@FByteBuffer[0]), RawByteString(pCurrStatus.SQLMessage){$IFDEF WITH_RAWBYTESTRING}, CP{$ENDIF});
+      {$ENDIF}
+    //older compile would gangle about possibly unassigned, newers gangle about assigned but never used
+    //so let's use the variable in next cast line and all are happy
+    NextStatusVector := StatusVector;
     // IB data
-    pCurrStatus.IBDataType := StatusVector[StatusIdx];
-    case StatusVector[StatusIdx] of
+    pCurrStatus.IBDataType := PISC_STATUS(NextStatusVector)^;//StatusVector[StatusIdx];
+    case PISC_STATUS(StatusVector)^ {StatusVector[StatusIdx]} of
       isc_arg_end:  // end of argument list
         Break;
       isc_arg_gds,  // Long int code
@@ -1208,22 +1400,25 @@ begin
       isc_arg_netware,
       isc_arg_win32:
         begin
-          pCurrStatus.IBDataInt := StatusVector[StatusIdx + 1];
-          Inc(StatusIdx, 2);
+          pCurrStatus.IBDataInt := StatusVector[{StatusIdx + }1];
+          NextStatusVector := @StatusVector[2];
+          //Inc(StatusIdx, 2);
         end;
       isc_arg_string,  // pointer to string
       isc_arg_interpreted,
       isc_arg_sql_state:
         begin
           pCurrStatus.IBDataStr := ConvertConnRawToString({$IFDEF UNICODE}
-            ConSettings,{$ENDIF}Pointer(StatusVector[StatusIdx + 1]));
-          Inc(StatusIdx, 2);
+            ConSettings,{$ENDIF}Pointer(StatusVector[{StatusIdx + }1]));
+          NextStatusVector := @StatusVector[2];
+          //Inc(StatusIdx, 2);
         end;
       isc_arg_cstring: // length and pointer to string
         begin
           pCurrStatus.IBDataStr := ConvertConnRawToString({$IFDEF UNICODE}
-            ConSettings,{$ENDIF}Pointer(StatusVector[StatusIdx + 2]), StatusVector[StatusIdx + 1]);
-          Inc(StatusIdx, 3);
+            ConSettings,{$ENDIF}Pointer(StatusVector[{StatusIdx + }2]), StatusVector[{StatusIdx + }1]);
+          NextStatusVector := @StatusVector[3];
+          //Inc(StatusIdx, 3);
         end;
       isc_arg_warning: begin// must not happen for error vector
         Break; //how to handle a warning? I just need an example
@@ -1231,12 +1426,15 @@ begin
       else
         Break;
     end; // case
-
-    // isc_interprete is deprecated so use fb_interpret instead if available
     if Assigned(FInterbaseFirebirdPlainDriver.fb_interpret) then begin
       if FInterbaseFirebirdPlainDriver.fb_interpret(@FByteBuffer[0], SizeOf(TByteBuffer)-1, @StatusVector) = 0 then
         Break;
     end else if FInterbaseFirebirdPlainDriver.isc_interprete(@FByteBuffer[0], @StatusVector) = 0 then
+      Break;
+    if PAnsiChar(StatusVector) < PAnsiChar(NextStatusVector) then
+      StatusVector := NextStatusVector;
+    if PISC_Status(StatusVector)^ = isc_arg_end then //EH: otoh in some
+      //cirumstances we add a empty status see test TestDbcTransaction
       Break;
     pCurrStatus.IBMessage := ConvertConnRawToString({$IFDEF UNICODE}
             ConSettings,{$ENDIF}@FByteBuffer[0]);
@@ -1276,13 +1474,6 @@ begin
   raise EZSQLException.Create('release an invalid Transaction');
 end;
 
-{**
-  Drops all changes made since the previous
-  commit/rollback and releases any database locks currently held
-  by this Connection. This method should be used only when auto-
-  commit has been disabled.
-  @see #setAutoCommit
-}
 procedure TZInterbaseFirebirdConnection.Rollback;
 begin
   if Closed then
@@ -1311,26 +1502,6 @@ begin
   fActiveTransaction := Transaction;
 end;
 
-{**
-  Sets this connection's auto-commit mode.
-  If a connection is in auto-commit mode, then all its SQL
-  statements will be executed and committed as individual
-  transactions.  Otherwise, its SQL statements are grouped into
-  transactions that are terminated by a call to either
-  the method <code>commit</code> or the method <code>rollback</code>.
-  By default, new connections are in auto-commit mode.
-
-  The commit occurs when the statement completes or the next
-  execute occurs, whichever comes first. In the case of
-  statements returning a ResultSet, the statement completes when
-  the last row of the ResultSet has been retrieved or the
-  ResultSet has been closed. In advanced cases, a single
-  statement may return multiple results as well as output
-  parameter values. In these cases the commit occurs when all results and
-  output parameter values have been retrieved.
-
-  @param autoCommit true enables auto-commit; false disables auto-commit.
-}
 procedure TZInterbaseFirebirdConnection.SetAutoCommit(Value: Boolean);
 begin
   FRestartTransaction := not Value;
@@ -1341,16 +1512,6 @@ begin
   end;
 end;
 
-{**
-  Puts this connection in read-only mode as a hint to enable
-  database optimizations.
-
-  <P><B>Note:</B> This method cannot be called while in the
-  middle of a transaction.
-
-  @param readOnly true enables read-only mode; false disables
-    read-only mode.
-}
 procedure TZInterbaseFirebirdConnection.SetReadOnly(Value: Boolean);
 begin
   if (ReadOnly <> Value) then begin
@@ -1360,18 +1521,6 @@ begin
   end;
 end;
 
-{**
-  Attempts to change the transaction isolation level to the one given.
-  The constants defined in the interface <code>Connection</code>
-  are the possible transaction isolation levels.
-
-  <P><B>Note:</B> This method cannot be called while
-  in the middle of a transaction.
-
-  @param level one of the TRANSACTION_* isolation values with the
-    exception of TRANSACTION_NONE; some databases may not support other values
-  @see DatabaseMetaData#supportsTransactionIsolationLevel
-}
 procedure TZInterbaseFirebirdConnection.SetTransactionIsolation(
   Level: TZTransactIsolationLevel);
 begin
@@ -1382,18 +1531,6 @@ begin
   end;
 end;
 
-{**
-  Starts transaction support or saves the current transaction.
-  If the connection is closed, the connection will be opened.
-  If a transaction is underway a nested transaction or a savepoint will be
-  spawned. While the tranaction(s) is/are underway the AutoCommit property is
-  set to False. Ending up the transaction with a commit/rollback the autocommit
-  property will be restored if changing the autocommit mode was triggered by a
-  starttransaction call.
-  @return the current txn-level. 1 means a transaction was started.
-  2 means the transaction was saved. 3 means the previous savepoint got saved
-  too and so on
-}
 function TZInterbaseFirebirdConnection.StartTransaction: Integer;
 begin
   if Closed then
@@ -1456,7 +1593,7 @@ begin
   QueryInterface(IZTransaction, Trans);
   FWeakIZTransactionPtr := Pointer(Trans);
   Trans := nil;
-  inherited;
+  inherited AfterConstruction;
 end;
 
 procedure TZInterbaseFirebirdTransaction.BeforeDestruction;
@@ -1701,7 +1838,7 @@ end;
 function TZInterbaseFirebirdResultSetMetadata.IsAutoIncrement(
   ColumnIndex: Integer): Boolean;
 begin
-  Result := False; //not supported by FB/IB
+  Result := False; //not supported by FB<3/IB
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
@@ -1715,7 +1852,7 @@ var
   TableColumns: IZResultSet;
   Connection: IZConnection;
   Driver: IZDriver;
-  IdentifierConvertor: IZIdentifierConvertor;
+  IdentifierConverter: IZIdentifierConverter;
   Analyser: IZStatementAnalyser;
   Tokenizer: IZTokenizer;
 begin
@@ -1723,7 +1860,7 @@ begin
   Driver := Connection.GetDriver;
   Analyser := Driver.GetStatementAnalyser;
   Tokenizer := Driver.GetTokenizer;
-  IdentifierConvertor := Metadata.GetIdentifierConvertor;
+  IdentifierConverter := Metadata.GetIdentifierConverter;
   try
     if Analyser.DefineSelectSchemaFromQuery(Tokenizer, SQL) <> nil then
       for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
@@ -1731,7 +1868,7 @@ begin
         ClearColumn(Current);
         if Current.TableName = '' then
           continue;
-        TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConvertor.Quote(Current.TableName)),'');
+        TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConverter.Quote(Current.TableName, iqTable)),'');
         if TableColumns <> nil then begin
           TableColumns.BeforeFirst;
           while TableColumns.Next do
@@ -1746,7 +1883,7 @@ begin
     Connection := nil;
     Analyser := nil;
     Tokenizer := nil;
-    IdentifierConvertor := nil;
+    IdentifierConverter := nil;
   end;
   Loaded := True;
 end;
@@ -1858,7 +1995,7 @@ begin
     for I := 0 to FInsertColumns.Count-1 do begin
       ColumnIndex := PZIndexPair(FInsertColumns[i])^.ColumnIndex;
       Tmp := Metadata.GetColumnName(ColumnIndex);
-      Tmp := IdentifierConvertor.Quote(Tmp);
+      Tmp := IdentifierConverter.Quote(Tmp, iqColumn);
       SQLWriter.AddText(Tmp, Result);
       SQLWriter.AddChar(',', Result);
     end;
@@ -1889,7 +2026,7 @@ begin
             Fields.Delete(ColumnIndex); { avoid duplicates }
         end;
         {$IFEND}
-        Tmp := IdentifierConvertor.Quote(Tmp);
+        Tmp := IdentifierConverter.Quote(Tmp, iqColumn);
         SQLWriter.AddText(Tmp, Result);
         SQLWriter.AddChar(',', Result);
       end;
@@ -1903,7 +2040,7 @@ begin
         if ColumnIndex = InvalidDbcIndex then
           raise CreateColumnWasNotFoundException(Tmp);
         FReturningPairs.Add(ColumnIndex, FReturningPairs.Count{$IFNDEF GENERIC_INDEX}+1{$ENDIF});
-        Tmp := IdentifierConvertor.Quote(Tmp);
+        Tmp := IdentifierConverter.Quote(Tmp, iqColumn);
         SQLWriter.AddText(Tmp, Result);
         SQLWriter.AddChar(',', Result);
       end;
@@ -1969,7 +2106,7 @@ begin
     if I > 0 then
       SQLWriter.AddText(' AND ', Result);
     S := MetaData.GetColumnName(idx);
-    Tmp := IdentifierConvertor.Quote(S);
+    Tmp := IdentifierConverter.Quote(S, iqColumn);
     SQLWriter.AddText(Tmp, Result);
     if (Metadata.IsNullable(Idx) = ntNullable)
     then SQLWriter.AddText(' IS NOT DISTINCT FROM ?', Result)
@@ -2380,6 +2517,10 @@ begin
       SQL_TIMESTAMP,
       SQL_TYPE_DATE,
       SQL_TYPE_TIME : Double2BCD(GetDouble(ColumnIndex), Result);
+      (*SQL_DEC_FIXED, SQL_INT128: begin
+          P := GetPCharFromTextVar(Len);
+          LastWasNull := not TryRawToBCD(P, Len, Result, '.');
+        end;*)
       else raise CreateConversionError(ColumnIndex, ColumnType, stBigDecimal);
     end;
   end;
@@ -2992,7 +3133,7 @@ end;
 
 {**
   Gets the value of the designated column in the current row
-  of this <code>ResultSet</code> object as
+  of this <code>ResultSet</code> object as          8
   a <code>TZAnsiRec</code> in the Delphi programming language.
 
   @param columnIndex the first column is 1, the second is 2, ...
@@ -3096,7 +3237,7 @@ set_Results:            Len := Result - PAnsiChar(FByteBuffer);
                           TempDate.Second, TempDate.Fractions * 10000,
                           Result, ConSettings.ReadFormatSettings.TimeFormat, False, False);
                       end;
-      else ZDbcUtils.CreateConversionError(ColumnIndex, ColumnType, stString);
+      else Raise CreateConversionError(ColumnIndex, ColumnType, stString);
     end;
   end;
 end;
@@ -3226,7 +3367,7 @@ set_Results:            Len := Result - PWideChar(FByteBuffer);
                           TempDate.Second, TempDate.Fractions * 100000,
                           Result, ConSettings.ReadFormatSettings.TimeFormat, False, False);
                       end;
-      else ZDbcUtils.CreateConversionError(ColumnIndex, ColumnType, stUnicodeString);
+      else raise CreateConversionError(ColumnIndex, ColumnType, stUnicodeString);
     end;
   end;
 end;
@@ -3496,6 +3637,16 @@ begin
   FDialect := Connection.GetDialect;
   FCodePageArray := Connection.GetInterbaseFirebirdPlainDriver.GetCodePageArray;
   FCodePageArray[FDB_CP_ID] := ConSettings^.ClientCodePage^.CP; //reset the cp if user wants to wite another encoding e.g. 'NONE' or DOS852 vc WIN1250
+  FOrgTypeList := TZIBFBOrgSqlTypeAndScaleList.Create;
+end;
+
+destructor TZAbstractFirebirdInterbasePreparedStatement.Destroy;
+begin
+  inherited;
+  if FOrgTypeList <> nil then begin
+    FOrgTypeList.Clear;
+    FreeAndNil(FOrgTypeList);
+  end;
 end;
 
 procedure BindSQLDAInParameters(BindList: TZBindList;
@@ -3565,7 +3716,7 @@ begin
     end;
 end;
 
-procedure TZAbstractFirebirdInterbasePreparedStatement.ExceuteBatch;
+procedure TZAbstractFirebirdInterbasePreparedStatement.ExecuteBatchDml;
 var ArrayOffSet: Integer;
   Succeeded: Boolean;
 begin
@@ -3993,7 +4144,7 @@ begin
                         PISC_INT64(sqldata)^ := I64 * IBScaleDivisor[4+sqlscale]; //inc sqlscale digits
       SQL_TEXT,
       SQL_VARYING   : begin
-                        CurrToRaw(Value, PAnsiChar(FByteBuffer), @P);
+                        CurrToRaw(Value, '.', PAnsiChar(FByteBuffer), @P);
                         L := P - PAnsiChar(FByteBuffer);
                         if LengthInt(sqllen) < L then
                           L := LengthInt(sqllen);
@@ -4275,13 +4426,6 @@ begin
   end;
 end;
 
-{**
-  Sets the designated parameter to SQL <code>NULL</code>.
-  <P><B>Note:</B> You must specify the parameter's SQL type.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param sqlType the SQL type code defined in <code>ZDbcIntfs.pas.TZSQLType</code>
-}
 {$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "SQLType" not used} {$ENDIF}
 procedure TZAbstractFirebirdInterbasePreparedStatement.SetNull(Index: Integer;
   SQLType: TZSQLType);
@@ -4363,6 +4507,7 @@ procedure TZAbstractFirebirdInterbasePreparedStatement.SetPWideChar(Index: Cardi
 var TS: TZTimeStamp;
     D: TZDate absolute TS;
     T: TZTime absolute TS;
+    P: Pointer;
 Label Fail;
 begin
   {$R-}
@@ -4401,10 +4546,10 @@ begin
                         then FRawTemp := PUnicodeToRaw(Value, Len, codepage)
                         else FRawTemp := UnicodeStringToAscii7(Value, Len);
                         if FRawTemp <> ''
-                        then sqldata := Pointer(FRawTemp)
-                        else sqldata := PEmptyAnsiString;
+                        then P := Pointer(FRawTemp)
+                        else P := PEmptyAnsiString;
                         Len := Length(FRawTemp);
-                        WriteLobBuffer(Index, sqldata, Len)
+                        WriteLobBuffer(Index, P, Len)
                       end;
       SQL_TYPE_DATE : if TryPCharToDate(Value, Len, ConSettings^.WriteFormatSettings, D)
                       then isc_encode_date(PISC_DATE(sqldata)^, D.Year, D.Month, D.Day)
@@ -5019,7 +5164,7 @@ end;
 function TZAbstractInterbaseFirebirdCallableStatement.CreateExecutionStatement(
   const StoredProcName: String): TZAbstractPreparedStatement;
 var
-  I: Integer;
+  I, C: Integer;
   SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND};
   SQLWriter: TZSQLStringWriter;
   Conn: IZInterbaseFirebirdConnection;
@@ -5035,16 +5180,40 @@ begin
   SQLWriter.AddText(StoredProcName, SQL);
   if BindList.Capacity >0 then
     SQLWriter.AddChar('(', SQL);
+  C := 0;
   for I := 0 to BindList.Capacity -1 do
-    if not (BindList.ParamTypes[I] in [pctOut,pctReturn]) then
+    if not (BindList.ParamTypes[I] in [pctOut,pctReturn]) then begin
       SQLWriter.AddText('?,', SQL);
+      Inc(C);
+    end;
   if BindList.Capacity > 0 then begin
-    SQLWriter.CancelLastComma(SQL);
-    SQLWriter.AddChar(')', SQL);
+    if C > 0 then begin
+      SQLWriter.CancelLastComma(SQL);
+      SQLWriter.AddChar(')', SQL);
+    end
+    else
+      SQLWriter.CancelLastCharIfExists('(', SQL);
   end;
   SQLWriter.Finalize(SQL);
   FreeAndNil(SQLWriter);
   Result := InternalCreateExecutionStatement(Conn, SQL, Info);
+end;
+
+{ TZIBFBOrgSqlTypeAndScaleList }
+
+function TZIBFBOrgSqlTypeAndScaleList.Add(sqltype: Cardinal; scale: Integer;
+  Nullable: Boolean): NativeInt;
+var P: PZIBFBOrgSqlTypeAndScale;
+begin
+  P := inherited Add(Result);
+  P.sqltype := sqltype;
+  P.scale := scale;
+  p.Nullable := Nullable;
+end;
+
+constructor TZIBFBOrgSqlTypeAndScaleList.Create;
+begin
+  inherited Create(SizeOf(TZIBFBOrgSqlTypeAndScale), False);
 end;
 
 initialization

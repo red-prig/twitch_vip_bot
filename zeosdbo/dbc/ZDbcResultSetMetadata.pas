@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -70,7 +70,7 @@ type
   public
     AutoIncrement: Boolean;
     CaseSensitive: Boolean;
-    Searchable: Boolean;
+    Searchable, SearchableDisabled: Boolean;
     Currency: Boolean; //note we'll map all fixed numbers to stCurrency(ftBCD)
                         //if Scale&Precision allows it. But if a field is a true
                         //currency field like MS/PG-Money should be indicated here
@@ -100,10 +100,12 @@ type
   private
     FLoaded: Boolean;
     FMetadata: IZDatabaseMetadata;
-    FColumnsLabels: TStrings;
+    FColumnsLabelsCS, //a case sensitive list of unique column labels
+    FColumnsLabelsCI: TStrings;  //a lower case list of unique column labels if still duplicate values exist
+
     FSQL: string;
     FTableColumns: TZHashMap;
-    FIdentifierConvertor: IZIdentifierConvertor;
+    FIdentifierConverter: IZIdentifierConverter;
     FResultSet: TZAbstractResultSet;
     procedure SetMetadata(const Value: IZDatabaseMetadata);
   protected
@@ -146,43 +148,304 @@ type
     procedure ReplaceStarColumns(const SelectSchema: IZSelectSchema);
 
     property MetaData: IZDatabaseMetadata read FMetadata write SetMetadata;
-    property ColumnsLabels: TStrings read FColumnsLabels write FColumnsLabels;
+    property ColumnsLabels: TStrings read FColumnsLabelsCS write FColumnsLabelsCS;
     property SQL: string read FSQL write FSQL;
-    property IdentifierConvertor: IZIdentifierConvertor
-      read FIdentifierConvertor write FIdentifierConvertor;
+    property IdentifierConverter: IZIdentifierConverter
+      read FIdentifierConverter write FIdentifierConverter;
     property Loaded: Boolean read FLoaded write FLoaded;
     property ResultSet: TZAbstractResultSet read FResultSet write FResultSet;
   public
     constructor Create(const Metadata: IZDatabaseMetadata; const SQL: string;
       ParentResultSet: TZAbstractResultSet);
     destructor Destroy; override;
-
+    /// <summary>Maps the given <c>Metadata</c> column name to its
+    ///  <c>Metadata</c> column index. First searches with case-sensivity then,
+    ///  if nothing matches, a case.insensitive search is performed.
+    /// <param>"ColumnName" the name of the column</param>
+    /// <returns>the column index of the given column name or an
+    ///  InvalidDbcIndex if nothing was found</returns>
     function FindColumn(const ColumnName: string): Integer;
-
-    function GetColumnCount: Integer; virtual;
+    /// <summary>get the number of columns in this <c>ResultSet</c> interface.</summary>
+    /// <returns>the number of columns</returns>
+    function GetColumnCount: Integer;
+    /// <summary>Indicates whether the designated column is automatically
+    ///  numbered, thus read-only.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function IsAutoIncrement(ColumnIndex: Integer): Boolean; virtual;
+    /// <summary>Indicates whether a column's case matters.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function IsCaseSensitive(ColumnIndex: Integer): Boolean; virtual;
+    /// <summary>Indicates whether the designated column can be used in a where
+    ///  clause.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function IsSearchable(ColumnIndex: Integer): Boolean; virtual;
+    /// <summary>Set if the column can be used in a where
+    ///  clause.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <param>"Value" <c>true</c> if the column is searchable;
+    ///  <c>False</c> otherwise.</param>
+    procedure SetSearchable(ColumnIndex: Integer; Value: Boolean);
+    /// <summary>Indicates whether the designated column is a cash value.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function IsCurrency(ColumnIndex: Integer): Boolean; virtual;
+    /// <summary>Indicates the nullability of values in the designated column.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>the nullability status of the given column; one of
+    ///  <c>ntNoNulls</c>, <c>ntNullable</c> or <c>ntNullableUnknown</c></returns>
     function IsNullable(ColumnIndex: Integer): TZColumnNullableType; virtual;
-
+    /// <summary>Indicates whether values in the designated column are signed
+    ///  numbers.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function IsSigned(ColumnIndex: Integer): Boolean; virtual;
+    /// <summary>Gets the designated column's suggested title for use in
+    ///  printouts and displays.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>a case sensitive unique column title.</returns>
     function GetColumnLabel(ColumnIndex: Integer): string; virtual;
+    /// <summary>Gets the designated column's original title for use in
+    ///  printouts and displays returned by the server.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>the server given column title.</returns>
     function GetOrgColumnLabel(ColumnIndex: Integer): string; virtual;
+    /// <summary>Get the designated column's name.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>the column name.</returns>
     function GetColumnName(ColumnIndex: Integer): string; virtual;
+    /// <summary>Get the designated column's codepage.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>the column codepage.</returns>
+    /// <remarks>If the column is a [var,long,fixed]binary the returned value is
+    ///  zero. If the column is a text/character column the returned value is
+    ///  depends to the connection characterset or if the Charset is vairable
+    ///  like IB/FB characterset "NONE" it's the column-characterset. Otherwise
+    ///  the value is High(Word) and indicates a zCP_NONE codepage. See
+    ///  ZEncoding.pas.</remarks>
     function GetColumnCodePage(ColumnIndex: Integer): Word;
+    /// <summary>Get the designated column's table's schema.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>schema name or "" if not applicable</returns>
     function GetSchemaName(ColumnIndex: Integer): string; virtual;
+    /// <summary>Get the designated column's number of decimal digits for
+    ///  numeric or decimal types or or the number of bytes for binary columns
+    ///  or the number of display characters any other column type</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>precision/bytes/visible characters</returns>
     function GetPrecision(ColumnIndex: Integer): Integer; virtual;
+    /// <summary>Gets the designated column's table's character octed length.
+    ///  This is count of bytes for a buffer to store the data. This may depend
+    ///  to DB's character set or true UFT16 vs Raw encoded strings</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>char octed length or 0 if not applicable.</returns>
     function GetCharOctedLength(ColumnIndex: Integer): Integer; virtual;
+    /// <summary>Gets the designated column's number of digits to right of the
+    ///  decimal point for Numeric or Decimal types or the second fractions for
+    ///  time/timestamp types or the minimum chars/bytes for fixed
+    ///  binary/char/nchar columns, zero otherwise.
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>scale</returns>
     function GetScale(ColumnIndex: Integer): Integer; virtual;
+    /// <summary>Gets the designated column's table name.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>table name or "" if not applicable.</returns>
     function GetTableName(ColumnIndex: Integer): string; virtual;
+    /// <summary>Gets the designated column's catalog name.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>catalog name or "" if not applicable.</returns>
     function GetCatalogName(ColumnIndex: Integer): string; virtual;
+    /// <summary>Retrieves the designated column's SQL type.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>the ZDBC SQL type</returns>
     function GetColumnType(ColumnIndex: Integer): TZSQLType; virtual;
+    /// <summary>Retrieves the designated column's database-specific type name.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>type name used by the database or "" if not applicable. If the
+    ///  column type is a user-defined type, then a fully-qualified type name is
+    ///  returned.</returns>
     function GetColumnTypeName(ColumnIndex: Integer): string; virtual;
+    /// <summary>Indicates whether the designated column is definitely not
+    ///  writable.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function IsReadOnly(ColumnIndex: Integer): Boolean; virtual;
+    /// <summary>Set the readonly state of a field. The value will be ignored
+    ///  if the field is not writable.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <param>"Value" if <c>true</c> then the field will be ignored on
+    ///  generating the dml's.</param>
+    procedure SetReadOnly(ColumnIndex: Integer; Value: Boolean); virtual;
+    /// <summary>Indicates whether it is possible for a write on the designated
+    ///  column to succeed.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function IsWritable(ColumnIndex: Integer): Boolean; virtual;
+    /// <summary>Indicates whether a write on the designated column will
+    ///  definitely succeed.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function IsDefinitelyWritable(ColumnIndex: Integer): Boolean; virtual;
+    /// <summary>Gets a default value for this field.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns>a default value for this field.</returns>
     function GetDefaultValue(ColumnIndex: Integer): string; virtual;
+    /// <summary>Finds whether this field has a default value.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex. <c>Note</c> the cursor must
+    ///  be on a valid position and the Index must be valid. Otherwise the
+    ///  results may be unexpected. See traversal/positioning method's like
+    ///  <c>IsBeforeFirst</c>,<c>Next()</c>,<c>IsAfterLast</c>...</param>
+    /// <returns><c>true</c> if this field has a default value; <c>false</c>
+    ///  otherwise.</returns>
     function HasDefaultValue(ColumnIndex: Integer): Boolean; virtual;
   end;
 
@@ -240,10 +503,11 @@ end;
 }
 destructor TZAbstractResultSetMetadata.Destroy;
 begin
-  FIdentifierConvertor := nil;
+  FIdentifierConverter := nil;
   FMetadata := nil;
   FreeAndNil(FTableColumns);
-  FreeAndNil(FColumnsLabels);
+  FreeAndNil(FColumnsLabelsCS);
+  FreeAndNil(FColumnsLabelsCI);
   inherited Destroy;
 end;
 
@@ -289,32 +553,27 @@ begin
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
-
-{**
-  Maps the given <code>Metadata</code> column name to its
-  <code>Metadata</code> column index.
-  First searches with case-sensivity then without
-
-  @param columnName the name of the column
-  @return the column index of the given column name
-}
 function TZAbstractResultSetMetadata.FindColumn(const ColumnName: string): Integer;
 var
   I: Integer;
-  ColumnNameUpper: string;
+  ColumnNameLower: string;
 begin
   { Search for case sensitive columns. }
   for I := FirstDbcIndex to GetColumnCount{$IFDEF GENERIC_INDEX}-1{$ENDIF} do
-    if GetColumnLabel(I) = ColumnName then
-    begin
+    if GetColumnLabel(I) = ColumnName then begin
       Result := I;
       Exit;
     end;
-
   { Search for case insensitive columns. }
-  ColumnNameUpper := AnsiUpperCase(ColumnName);
-  for I := FirstDbcIndex to GetColumnCount{$IFDEF GENERIC_INDEX}-1{$ENDIF} do
-    if AnsiUpperCase(GetColumnLabel(I)) = ColumnNameUpper then
+  ColumnNameLower := AnsiLowerCase(ColumnName);
+  if FColumnsLabelsCI <> nil then begin//alive only if caseinsensitive duplicates exist (to find fields of DataSetLogic)
+    Result := FColumnsLabelsCI.IndexOf(ColumnNameLower);
+    if Result > -1 then begin
+      {$IFNDEF GENERIC_INDEX}Inc(Result);{$ENDIF}
+      Exit;
+    end;
+  end else for I := FirstDbcIndex to GetColumnCount{$IFDEF GENERIC_INDEX}-1{$ENDIF} do
+    if AnsiLowerCase(GetColumnLabel(I)) = ColumnNameLower then
     begin
       Result := I;
       Exit;
@@ -332,11 +591,6 @@ begin
   Result := FResultSet.ColumnsInfo.Count;
 end;
 
-{**
-  Indicates whether the designated column is automatically numbered, thus read-only.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractResultSetMetadata.IsAutoIncrement(ColumnIndex: Integer): Boolean;
 begin
   if not Loaded then
@@ -344,11 +598,6 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).AutoIncrement;
 end;
 
-{**
-  Indicates whether a column's case matters.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractResultSetMetadata.IsCaseSensitive(ColumnIndex: Integer): Boolean;
 begin
   if not Loaded then
@@ -356,34 +605,23 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).CaseSensitive;
 end;
 
-{**
-  Indicates whether the designated column can be used in a where clause.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractResultSetMetadata.IsSearchable(ColumnIndex: Integer): Boolean;
 begin
-  if not Loaded then
-     LoadColumns;
-  Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Searchable;
+  with TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]) do
+    if SearchableDisabled then
+      Result := False
+    else begin
+      if not Loaded then
+        LoadColumns;
+      Result := Searchable;
+    end;
 end;
 
-{**
-  Indicates whether the designated column is a cash value.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractResultSetMetadata.IsCurrency(ColumnIndex: Integer): Boolean;
 begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Currency;
 end;
 
-{**
-  Indicates the nullability of values in the designated column.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return the nullability status of the given column; one of <code>columnNoNulls</code>,
-    <code>columnNullable</code> or <code>columnNullableUnknown</code>
-}
 function TZAbstractResultSetMetadata.IsNullable(
   ColumnIndex: Integer): TZColumnNullableType;
 begin
@@ -392,33 +630,24 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Nullable;
 end;
 
-{**
-  Indicates whether values in the designated column are signed numbers.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractResultSetMetadata.IsSigned(ColumnIndex: Integer): Boolean;
 begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Signed;
 end;
 
-{**
-  Gets the designated column's suggested title for use in printouts and
-  displays.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return the suggested column title
-}
 function TZAbstractResultSetMetadata.GetColumnLabel(ColumnIndex: Integer): string;
-var
-  I, J, N: Integer;
-  ColumnName, OrgLabel: string;
-  ColumnsInfo: TObjectList;
-  B: Boolean;
-begin
-  { Prepare unique column labels. }
-  if FColumnsLabels = nil then begin
+  procedure FillListAndMakeUnique;
+  var
+    I, J, N: Integer;
+    ColumnName, OrgLabel: string;
+    ColumnsInfo: TObjectList;
+    B, HasLowerLabelDuplicates: Boolean;
+  begin
     ColumnsInfo := FResultSet.ColumnsInfo;
-    FColumnsLabels := TStringList.Create;
+    FColumnsLabelsCS := TStringList.Create;
+    FColumnsLabelsCI := TStringList.Create;
+    HasLowerLabelDuplicates := False;
+    { fills a case sensitive unique list }
     for I := 0 to ColumnsInfo.Count - 1 do begin
       N := 0;
       ColumnName := TZColumnInfo(ColumnsInfo[I]).ColumnLabel;
@@ -438,17 +667,30 @@ begin
         if N > 0 then
           ColumnName := OrgLabel + '_' + ZFastCode.IntToStr(N);
       Until Not b;
-      FColumnsLabels.Add(ColumnName);
+      FColumnsLabelsCS.Add(ColumnName);
     end;
+    { fills a case insensitive unique list }
+    for I := 0 to FColumnsLabelsCS.Count - 1 do begin
+      N := 0;
+      OrgLabel := FColumnsLabelsCS[I];
+      ColumnName := AnsiLowerCase(OrgLabel);
+      while FColumnsLabelsCI.IndexOf(ColumnName) > -1 do begin
+        Inc(N);
+        ColumnName := OrgLabel + '_' + ZFastCode.IntToStr(N);
+        HasLowerLabelDuplicates := True;
+      end;
+      FColumnsLabelsCI.Add(ColumnName);
+    end;
+    if not HasLowerLabelDuplicates then
+      FreeAndNil(FColumnsLabelsCI);
   end;
+begin
+  { Prepare unique column labels. }
+  if FColumnsLabelsCS = nil then
+    FillListAndMakeUnique;
   Result := ColumnsLabels[ColumnIndex{$IFNDEF GENERIC_INDEX} - 1{$ENDIF}];
 end;
 
-{**
-  Get the designated column's name.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return column name
-}
 function TZAbstractResultSetMetadata.GetColumnName(
   ColumnIndex: Integer): string;
 begin
@@ -457,21 +699,11 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnName;
 end;
 
-{**
-  Get the designated column's codepage.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return schema name or "" if not applicable
-}
 function TZAbstractResultSetMetadata.GetColumnCodePage(ColumnIndex: Integer): Word;
 begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnCodePage;
 end;
 
-{**
-  Get the designated column's table's schema.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return schema name or "" if not applicable
-}
 function TZAbstractResultSetMetadata.GetSchemaName(
   ColumnIndex: Integer): string;
 begin
@@ -480,31 +712,16 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).SchemaName;
 end;
 
-{**
-  Get the designated column's number of decimal digits.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return precision
-}
 function TZAbstractResultSetMetadata.GetPrecision(ColumnIndex: Integer): Integer;
 begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Precision;
 end;
 
-{**
-  Gets the designated column's number of digits to right of the decimal point.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return scale
-}
 function TZAbstractResultSetMetadata.GetScale(ColumnIndex: Integer): Integer;
 begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Scale;
 end;
 
-{**
-  Gets the designated column's table name.
-  @param ColumnIndex the first ColumnIndex is 1, the second is 2, ...
-  @return table name or "" if not applicable
-}
 function TZAbstractResultSetMetadata.GetTableName(ColumnIndex: Integer): string;
 begin
   if not Loaded then
@@ -512,11 +729,6 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).TableName;
 end;
 
-{**
-  Gets the designated column's table's catalog name.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return column name or "" if not applicable
-}
 function TZAbstractResultSetMetadata.GetCatalogName(ColumnIndex: Integer): string;
 begin
   if not Loaded then
@@ -524,45 +736,21 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).CatalogName;
 end;
 
-{**
-  Gets the designated column's table's character octed length. This is
-  count of bytes for a buffer to store the data. This may depend to DB's
-  character set or true UFT16 vs Raw encoded strings
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return char octed length name or "" if not applicable
-}
 function TZAbstractResultSetMetadata.GetCharOctedLength(ColumnIndex: Integer): Integer;
 begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).CharOctedLength;
 end;
 
-{**
-  Retrieves the designated column's SQL type.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return SQL type from java.sql.Types
-}
 function TZAbstractResultSetMetadata.GetColumnType(ColumnIndex: Integer): TZSQLType;
 begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnType;
 end;
 
-{**
-  Retrieves the designated column's database-specific type name.
-
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return type name used by the database. If the column type is
-    a user-defined type, then a fully-qualified type name is returned.
-}
 function TZAbstractResultSetMetadata.GetColumnTypeName(ColumnIndex: Integer): string;
 begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).GetColumnTypeName;
 end;
 
-{**
-  Indicates whether the designated column is definitely not writable.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractResultSetMetadata.IsReadOnly(ColumnIndex: Integer): Boolean;
 begin
   if not Loaded then
@@ -570,11 +758,6 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ReadOnly;
 end;
 
-{**
-  Indicates whether it is possible for a write on the designated column to succeed.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractResultSetMetadata.IsWritable(ColumnIndex: Integer): Boolean;
 begin
   if not Loaded then
@@ -582,11 +765,6 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).Writable;
 end;
 
-{**
-  Indicates whether a write on the designated column will definitely succeed.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractResultSetMetadata.IsDefinitelyWritable(
   ColumnIndex: Integer): Boolean;
 begin
@@ -595,11 +773,6 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).DefinitelyWritable;
 end;
 
-{**
-  Gets a default value for this field.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return a default value for this field.
-}
 function TZAbstractResultSetMetadata.GetDefaultValue(
   ColumnIndex: Integer): string;
 begin
@@ -614,11 +787,6 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).ColumnLabel;
 end;
 
-{**
-  Finds whether this field has a default value.
-  @param ColumnIndex the first column is 1, the second is 2, ...
-  @return true if this field has a default value.
-}
 function TZAbstractResultSetMetadata.HasDefaultValue(
   ColumnIndex: Integer): Boolean;
 begin
@@ -759,7 +927,7 @@ var
 begin
   { Initializes single columns with specified table. }
   FieldRef := SelectSchema.LinkFieldByIndexAndShortName(ColumnIndex,
-    ColumnInfo.ColumnLabel, IdentifierConvertor);
+    ColumnInfo.ColumnLabel, IdentifierConverter);
   if ReadColumnByRef(FieldRef, ColumnInfo) then //else double processing down below
     Exit;
  //EH commented: http://zeoslib.sourceforge.net/viewtopic.php?f=40&t=71516&start=15
@@ -773,8 +941,8 @@ begin
   while {(ColumnInfo.ColumnName = '') and }(I < SelectSchema.TableCount) and not Found do begin
     TableRef := SelectSchema.Tables[I];
     if Assigned(FieldRef)
-    then AName := IdentifierConvertor.ExtractQuote(FieldRef.Field)
-    else AName := IdentifierConvertor.ExtractQuote(ColumnInfo.ColumnLabel);
+    then AName := IdentifierConverter.ExtractQuote(FieldRef.Field)
+    else AName := IdentifierConverter.ExtractQuote(ColumnInfo.ColumnLabel);
     Found := ReadColumnByName(AName, TableRef, ColumnInfo);
     Inc(I);
   end;
@@ -934,9 +1102,26 @@ procedure TZAbstractResultSetMetadata.SetMetadata(
 begin
   FMetadata := Value;
   if Value<>nil then
-    FIdentifierConvertor := Value.GetIdentifierConvertor
+    FIdentifierConverter := Value.GetIdentifierConverter
   else
-    FIdentifierConvertor := TZDefaultIdentifierConvertor.Create(FMetadata);
+    FIdentifierConverter := TZDefaultIdentifierConverter.Create(FMetadata);
+end;
+
+procedure TZAbstractResultSetMetadata.SetSearchable(ColumnIndex: Integer;
+  Value: Boolean);
+begin
+  with TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]) do
+    SearchableDisabled := not Value;
+end;
+
+procedure TZAbstractResultSetMetadata.SetReadOnly(ColumnIndex: Integer;
+  Value: Boolean);
+begin
+  with TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]) do
+    if Value <> ReadOnly then
+      if Value
+      then ReadOnly := True
+      else ReadOnly := IsWritable(ColumnIndex);
 end;
 
 procedure TZAbstractResultSetMetadata.SetReadOnlyFromGetColumnsRS(
@@ -983,7 +1168,7 @@ begin
   StatementAnalyser := Driver.GetStatementAnalyser;
   SelectSchema := StatementAnalyser.DefineSelectSchemaFromQuery(Tokenizer, SQL);
   if Assigned(SelectSchema) then begin
-    SelectSchema.LinkReferences(IdentifierConvertor);
+    SelectSchema.LinkReferences(IdentifierConverter);
     ReplaceStarColumns(SelectSchema);
     FillByIndices := SelectSchema.FieldCount = FResultSet.ColumnsInfo.Count;
     J := -1;

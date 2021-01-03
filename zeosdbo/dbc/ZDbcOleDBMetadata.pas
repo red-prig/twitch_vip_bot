@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -77,6 +77,7 @@ type
     function SupportsMultipleStorageObjects: Boolean;
     function SupportsByRefAccessors: Boolean;
     function GetOutParameterAvailability: TOleEnum;
+    function SupportsMaxVarTypes: Boolean;
   end;
   {** Implements OleDB Database Information. }
   TZOleDBDatabaseInfo = class(TZAbstractDatabaseInfo, IZOleDBDatabaseInfo)
@@ -89,6 +90,7 @@ type
     fSupportedTransactIsolationLevels: TZSupportedTransactIsolationLevels;
     fSupportsMultipleResultSets: Boolean;
     fSupportsMultipleStorageObjects: Boolean;
+    FSupportsMaxVarTypes: Boolean;
     fDBPROP_CATALOGUSAGE: Integer;
     fDBPROP_SCHEMAUSAGE: Integer;
     fDBPROP_IDENTIFIERCASE: Integer;
@@ -112,8 +114,12 @@ type
   public
     constructor Create(const Metadata: TZAbstractDatabaseMetadata);
     // database/driver/server info:
+    /// <summary>What's the name of this database product?</summary>
+    /// <returns>database product name</returns>
     function GetDatabaseProductName: string; override;
     function GetDatabaseProductVersion: string; override;
+    /// <summary>What's the name of this ZDBC driver?
+    /// <returns>ZDBC driver name</returns>
     function GetDriverName: string; override;
     function GetDriverVersion: string; override;
     function GetDriverMajorVersion: Integer; override;
@@ -253,6 +259,7 @@ type
     //Ole related
     procedure InitilizePropertiesFromDBInfo(const DBInitialize: IDBInitialize; const Malloc: IMalloc);
     function GetOutParameterAvailability: TOleEnum;
+    function SupportsMaxVarTypes: Boolean;
   end;
 
 {$IFNDEF ZEOS_DISABLE_OLEDB} //if set we have an empty unit
@@ -267,6 +274,7 @@ type
     fProcedureMap: TProcedureMap;
     fProcedureColumnsColMap: TProcedureColumnsColMap;
     fIndexInfoMap: TIndexInfoMap;
+    FByteBuffer: PByteBuffer;
     function OleDBOpenSchema(Schema: TGUID; const Args: array of String): IZResultSet;
     procedure InitializeSchemas;
     function FindSchema(SchemaId: TGUID): Integer;
@@ -341,10 +349,6 @@ end;
 //----------------------------------------------------------------------
 // First, a variety of minor information about the target database.
 
-{**
-  What's the name of this database product?
-  @return database product name
-}
 function TZOleDBDatabaseInfo.GetDatabaseProductName: string;
 begin
   Result := fDBPROP_DBMSNAME;
@@ -359,10 +363,6 @@ begin
   Result := fDBPROP_DBMSVER;
 end;
 
-{**
-  What's the name of this JDBC driver?
-  @return JDBC driver name
-}
 function TZOleDBDatabaseInfo.GetDriverName: string;
 begin
   Result := fDBPROP_PROVIDERFRIENDLYNAME;
@@ -402,6 +402,11 @@ end;
 function TZOleDBDatabaseInfo.UsesLocalFilePerTable: Boolean;
 begin
   Result := False;
+end;
+
+function TZOleDBDatabaseInfo.SupportsMaxVarTypes: Boolean;
+begin
+  Result := FSupportsMaxVarTypes
 end;
 
 {**
@@ -689,6 +694,8 @@ begin
   finally
     DBProperties := nil;
   end;
+  with Metadata.GetConnection do
+    FSupportsMaxVarTypes :=(GetServerProvider = spMSSQL) and (GetHostVersion >= 14000000);
 end;
 
 {**
@@ -1730,7 +1737,7 @@ begin
         SQLType := ConvertOleDBTypeToSQLType(GetSmall(fProcedureColumnsColMap.ColIndices[ProcColDataTypeIndex]), RS);
         Result.UpdateSmall(ProcColDataTypeIndex, Ord(SQLType));
         Result.UpdatePWideChar(ProcColTypeNameIndex, GetPWideChar(fProcedureColumnsColMap.ColIndices[ProcColTypeNameIndex], Len), Len);
-        if SQLType in [stString, stUnicodeString]
+        if SQLType in [stString, stUnicodeString, stBytes]
         then Result.UpdateInt(ProcColPrecisionIndex, GetInt(fProcedureColumnsColMap.ColIndices[ProcColLengthIndex]))
         else Result.UpdateInt(ProcColPrecisionIndex, GetInt(fProcedureColumnsColMap.ColIndices[ProcColPrecisionIndex]));
         Result.UpdateInt(ProcColLengthIndex, GetInt(fProcedureColumnsColMap.ColIndices[ProcColLengthIndex]));
@@ -1973,58 +1980,136 @@ function TOleDBDatabaseMetadata.UncachedGetColumns(const Catalog: string;
 const FlagColumn = TableColColumnIsNullableIndex+1;
 var
   RS: IZResultSet;
-  Flags: Integer;
+  Flags, CurrentOleType, TypesOleType, Precision, Scale, ColumnSize: Integer;
+  IsLong, TypeIsLong, ISFIXEDLENGTH, SupportsMaxVarTypes: Boolean;
   SQLType: TZSQLType;
   Len: NativeUInt;
+  TypeNames: IZResultSet;
+  NameBuf, NamePos: PWideChar;
+  LastORDINAL_POSITION, CurrentORDINAL_POSITION: Integer;
+  DoSort: Boolean;
+  procedure InitTableColColumnMap(const RS: IZResultSet);
+  begin
+    fTableColColumnMap.ColIndices[CatalogNameIndex] := CatalogNameIndex;
+    fTableColColumnMap.ColIndices[SchemaNameIndex] := SchemaNameIndex;
+    fTableColColumnMap.ColIndices[TableNameIndex] := TableNameIndex;
+    fTableColColumnMap.ColIndices[ColumnNameIndex] := ColumnNameIndex;
+    fTableColColumnMap.ColIndices[TableColColumnTypeIndex] := RS.FindColumn('DATA_TYPE');
+    fTableColColumnMap.ColIndices[TableColColumnTypeNameIndex] := InvalidDbcIndex;
+    fTableColColumnMap.ColIndices[TableColColumnSizeIndex] := RS.FindColumn('CHARACTER_MAXIMUM_LENGTH');
+    fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex] := RS.FindColumn('NUMERIC_SCALE');
+    fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex] := RS.FindColumn('NUMERIC_PRECISION');;
+    fTableColColumnMap.ColIndices[TableColColumnNullableIndex] := RS.FindColumn('IS_NULLABLE');
+    fTableColColumnMap.ColIndices[TableColColumnRemarksIndex] := RS.FindColumn('DESCRIPTION');
+    fTableColColumnMap.ColIndices[TableColColumnColDefIndex] := RS.FindColumn('COLUMN_DEFAULT');
+    fTableColColumnMap.ColIndices[TableColColumnSQLDataTypeIndex] := fTableColColumnMap.ColIndices[TableColColumnTypeIndex];
+    fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex] := RS.FindColumn('DATETIME_PRECISION');
+    fTableColColumnMap.ColIndices[TableColColumnCharOctetLengthIndex] := RS.FindColumn('CHARACTER_OCTET_LENGTH');
+    fTableColColumnMap.ColIndices[TableColColumnOrdPosIndex] := RS.FindColumn('ORDINAL_POSITION');
+    fTableColColumnMap.ColIndices[TableColColumnIsNullableIndex] := RS.FindColumn('IS_NULLABLE');
+    fTableColColumnMap.ColIndices[FlagColumn] := RS.FindColumn('COLUMN_FLAGS');
+    fTableColColumnMap.Initilized := True;
+  end;
+  function SupportsMaxVariableTypes: Boolean;
+  begin
+    Result := (GetDatabaseInfo as IZOleDBDatabaseInfo).SupportsMaxVarTypes;
+  end;
+  procedure SortOrdinalPositions;
+  var VR: IZVirtualResultSet;
+      ColumnIndices: TIntegerDynArray;
+  begin
+    ColumnIndices := nil;
+    if Result.QueryInterface(IZVirtualResultSet, VR) = S_OK then begin
+      SetLength(ColumnIndices, 4);
+      ColumnIndices[0]:= CatalogNameIndex;
+      ColumnIndices[1]:= SchemaNameIndex;
+      ColumnIndices[2]:= TableNameIndex;
+      ColumnIndices[3]:= TableColColumnOrdPosIndex;
+      Vr.BeforeFirst;
+      VR.SortRows(ColumnIndices, False);
+    end;
+  end;
 begin
-  Result:=inherited UncachedGetColumns(Catalog, SchemaPattern,
+  Result := inherited UncachedGetColumns(Catalog, SchemaPattern,
       TableNamePattern, ColumnNamePattern);
-
+  DoSort := False;
+  LastORDINAL_POSITION := 0;
+  TypeNames := GetTypeInfo; //improve missing TypeNames: https://sourceforge.net/p/zeoslib/tickets/397/
   RS := OleDBOpenSchema(DBSCHEMA_COLUMNS,
     [DecomposeObjectString(Catalog), DecomposeObjectString(SchemaPattern),
     DecomposeObjectString(TableNamePattern), DecomposeObjectString(ColumnNamePattern)]);
+  NameBuf := Pointer(FByteBuffer);
   if Assigned(RS) then begin
+    SupportsMaxVarTypes := SupportsMaxVariableTypes;
     with RS do begin
-      if not fTableColColumnMap.Initilized then begin
-        fTableColColumnMap.ColIndices[CatalogNameIndex] := CatalogNameIndex;
-        fTableColColumnMap.ColIndices[SchemaNameIndex] := SchemaNameIndex;
-        fTableColColumnMap.ColIndices[TableNameIndex] := TableNameIndex;
-        fTableColColumnMap.ColIndices[ColumnNameIndex] := ColumnNameIndex;
-        fTableColColumnMap.ColIndices[TableColColumnTypeIndex] := FindColumn('DATA_TYPE');
-        fTableColColumnMap.ColIndices[TableColColumnTypeNameIndex] := fTableColColumnMap.ColIndices[TableColColumnTypeIndex];
-        fTableColColumnMap.ColIndices[TableColColumnSizeIndex] := FindColumn('CHARACTER_MAXIMUM_LENGTH');
-        fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex] := FindColumn('NUMERIC_SCALE');
-        fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex] := FindColumn('NUMERIC_PRECISION');;
-        fTableColColumnMap.ColIndices[TableColColumnNullableIndex] := FindColumn('IS_NULLABLE');
-        fTableColColumnMap.ColIndices[TableColColumnRemarksIndex] := FindColumn('DESCRIPTION');
-        fTableColColumnMap.ColIndices[TableColColumnColDefIndex] := FindColumn('COLUMN_DEFAULT');
-        fTableColColumnMap.ColIndices[TableColColumnSQLDataTypeIndex] := fTableColColumnMap.ColIndices[TableColColumnTypeIndex];
-        fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex] := FindColumn('DATETIME_PRECISION');
-        fTableColColumnMap.ColIndices[TableColColumnCharOctetLengthIndex] := FindColumn('CHARACTER_OCTET_LENGTH');
-        fTableColColumnMap.ColIndices[TableColColumnOrdPosIndex] := FindColumn('ORDINAL_POSITION');
-        fTableColColumnMap.ColIndices[TableColColumnIsNullableIndex] := FindColumn('IS_NULLABLE');
-        fTableColColumnMap.ColIndices[FlagColumn] := FindColumn('COLUMN_FLAGS');
-        fTableColColumnMap.Initilized := True;
-      end;
+      if not fTableColColumnMap.Initilized then
+        InitTableColColumnMap(RS);
       while Next do begin
         Result.MoveToInsertRow;
-        Result.UpdatePWideChar(CatalogNameIndex, GetPWideChar(CatalogNameIndex, Len), Len);
-        Result.UpdatePWideChar(SchemaNameIndex, GetPWideChar(SchemaNameIndex, Len), Len);
-        Result.UpdatePWideChar(TableNameIndex, GetPWideChar(TableNameIndex, Len), Len);
+        if not IsNull(CatalogNameIndex) then
+          Result.UpdatePWideChar(CatalogNameIndex, GetPWideChar(CatalogNameIndex, Len), Len);
+        if not IsNull(SchemaNameIndex) then
+          Result.UpdatePWideChar(SchemaNameIndex, GetPWideChar(SchemaNameIndex, Len), Len);
+        if not IsNull(TableNameIndex) then
+          Result.UpdatePWideChar(TableNameIndex, GetPWideChar(TableNameIndex, Len), Len);
         Result.UpdatePWideChar(ColumnNameIndex, GetPWideChar(ColumnNameIndex, Len), Len);
         Flags := GetInt(fTableColColumnMap.ColIndices[FlagColumn]);
-        SQLType := ConvertOleDBTypeToSQLType(GetSmall(fTableColColumnMap.ColIndices[TableColColumnTypeIndex]),
-          ((FLAGS and DBCOLUMNFLAGS_ISLONG) <> 0),
-          GetInt(fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex]),
-          GetInt(fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex]));
+        CurrentOleType := GetSmall(fTableColColumnMap.ColIndices[TableColColumnTypeIndex]);
+        IsLong := ((FLAGS and DBCOLUMNFLAGS_ISLONG) <> 0);
+        ISFIXEDLENGTH := ((FLAGS and DBCOLUMNFLAGS_ISFIXEDLENGTH) <> 0);
+        Scale := GetInt(fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex]);
+        Precision := GetInt(fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex]);
+        ColumnSize := GetInt(fTableColColumnMap.ColIndices[TableColColumnSizeIndex]);
+        SQLType := ConvertOleDBTypeToSQLType(CurrentOleType, IsLong, Scale, Precision);
+        if (SQLType in [stTime, stTimeStamp]) and not IsNull(fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex]) then
+          Scale := GetInt(fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex]);
+
+        TypeNames.BeforeFirst;
+        while TypeNames.Next do begin
+          TypeIsLong := TypeNames.GetBooleanByName('IS_LONG');
+          TypesOleType := TypeNames.GetInt(TypeInfoSQLDataTypeIndex);
+          if (TypesOleType = CurrentOleType) and
+             (not IsLong or (TypeIsLong <> SupportsMaxVarTypes)) and
+             (TypeNames.GetInt(TypeInfoMinimumScaleIndex) <= Scale) and (TypeNames.GetInt(TypeInfoMaximumScaleIndex) >= Scale) and
+             (TypeNames.GetBooleanByName('IS_FIXEDLENGTH') = ISFIXEDLENGTH) then begin
+            NamePos := TypeNames.GetPWideChar(TypeInfoTypeNameIndex, Len);
+            Move(NamePos^, NameBuf^, Len shl 1);
+            NamePos := NameBuf+Len;
+            if (CurrentOleType <> DBTYPE_CY) and (SQLType in [stCurrency, stBigDecimal, stBytes, stString, stUnicodeString, stAsciiStream, stUnicodeStream, stBinaryStream]) or
+               ((SQLType in [stTime, stTimeStamp]) and (Scale>0)) then begin
+              PWord(NamePos)^ := Word('(');
+              inc(NamePos);
+              if SQLType in [stBytes, stString, stUnicodeString, stAsciiStream, stUnicodeStream, stBinaryStream] then begin
+                if (IsLong and SupportsMaxVarTypes) then begin
+                  PWord(NamePos    )^ := Word('m');
+                  PWord(NamePos + 1)^ := Word('a');
+                  PWord(NamePos + 2)^ := Word('x');
+                  Inc(NamePos, 3);
+                end else IntToUnicode(Cardinal(ColumnSize), NamePos, @NamePos)
+              end else begin
+                if SQLType in [stCurrency, stBigDecimal] then begin
+                  IntToUnicode(Cardinal(Precision), NamePos, @NamePos);
+                  PWord(NamePos)^ := Word(',');
+                  Inc(NamePos);
+                end;
+                IntToUnicode(Cardinal(Scale), NamePos, @NamePos);
+              end;
+              PWord(NamePos)^ := Word(')');
+              Inc(NamePos);
+            end;
+            Len := NamePos - NameBuf;
+            Result.UpdatePWideChar(TableColColumnTypeNameIndex, NameBuf, Len);
+            Break;
+          end;
+        end;
         Result.UpdateSmall(TableColColumnTypeIndex, Ord(SQLType));
         if SQLType in [stCurrency, stBigDecimal] then begin
-          Result.UpdateInt(TableColColumnSizeIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex]));
+          Result.UpdateInt(TableColColumnSizeIndex, Precision);
           Result.UpdateInt(TableColColumnDecimalDigitsIndex, GetSmall(fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex]));
         end else begin
           if SQLType in [stTime, stTimeStamp] then
-            Result.UpdateInt(TableColColumnDecimalDigitsIndex, GetSmall(fTableColColumnMap.ColIndices[TableColColumnSQLDateTimeSubIndex]));
-          Result.UpdateInt(TableColColumnSizeIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnSizeIndex]));
+            Result.UpdateInt(TableColColumnDecimalDigitsIndex, Scale);
+          Result.UpdateInt(TableColColumnSizeIndex, ColumnSize);
         end;
         Result.UpdateInt(TableColColumnBufLengthIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnBufLengthIndex]));
         Result.UpdateInt(TableColColumnDecimalDigitsIndex, GetSmall(fTableColColumnMap.ColIndices[TableColColumnDecimalDigitsIndex]));
@@ -2034,7 +2119,10 @@ begin
         Result.UpdatePWideChar(TableColColumnColDefIndex, GetPWideChar(fTableColColumnMap.ColIndices[TableColColumnColDefIndex], Len), Len);
         Result.UpdateSmall(TableColColumnSQLDataTypeIndex, GetSmall(fTableColColumnMap.ColIndices[TableColColumnSQLDataTypeIndex]));
         Result.UpdateInt(TableColColumnCharOctetLengthIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnCharOctetLengthIndex]));
-        Result.UpdateInt(TableColColumnOrdPosIndex, GetInt(fTableColColumnMap.ColIndices[TableColColumnOrdPosIndex]));
+        CurrentORDINAL_POSITION := GetInt(fTableColColumnMap.ColIndices[TableColColumnOrdPosIndex]);
+        Result.UpdateInt(TableColColumnOrdPosIndex, CurrentORDINAL_POSITION);
+        DoSort := DoSort or (CurrentORDINAL_POSITION < LastORDINAL_POSITION);
+        LastORDINAL_POSITION := CurrentORDINAL_POSITION;
         Result.UpdateUnicodeString(TableColColumnIsNullableIndex, bYesNo[GetBoolean(fTableColColumnMap.ColIndices[TableColColumnIsNullableIndex])]);
         Result.UpdateBoolean(TableColColumnAutoIncIndex, Flags and DBCOLUMNFLAGS_ISROWID = DBCOLUMNFLAGS_ISROWID);
         Result.UpdateBoolean(TableColColumnSearchableIndex, (Flags and (DBCOLUMNFLAGS_ISLONG) = 0));
@@ -2046,6 +2134,9 @@ begin
       Close;
     end;
   end;
+  if DoSort then
+    SortOrdinalPositions;
+
 end;
 
 {**
@@ -2644,13 +2735,41 @@ end;
 
   @return <code>ResultSet</code> - each row is an SQL type description
 }
+{$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "GUID" does not seem to be initialized} {$ENDIF}
 function TOleDBDatabaseMetadata.UncachedGetTypeInfo: IZResultSet;
 const iIS_LONG = TypeInfoNumPrecRadix;
 var
   RS: IZResultSet;
   Len: NativeUInt;
+  TypeInfoColumns: TZMetadataColumnDefs;
+  I: Integer;
+  GUID: TGUID;
+  GUID_Index, TYPE_LIB_Index, VERISON_Index, IS_LONG_Index, BEST_MATCH_Index, IS_FIXEDLENGTH_Index: Integer;
+  procedure Fill(var Index: Integer; const Name: String; SQLType: TZSQLType; L: Integer; out DbcIndex: Integer);
+  begin
+    TypeInfoColumns[Index].Name := Name;
+    TypeInfoColumns[Index].SQLType := SQLType;
+    TypeInfoColumns[Index].Length := L;
+    DbcIndex := Index+FirstDbcIndex;
+    Inc(I);
+  end;
 begin
-  Result:=inherited UncachedGetTypeInfo;
+  TypeInfoColumns := nil;
+  SetLength(TypeInfoColumns, Length(TypeInfoColumnsDynArray)+6);
+  for i := 0 to high(TypeInfoColumnsDynArray) do begin
+    TypeInfoColumns[i].Name := TypeInfoColumnsDynArray[i].Name;
+    TypeInfoColumns[i].SQLType := TypeInfoColumnsDynArray[i].SQLType;
+    TypeInfoColumns[i].Length := TypeInfoColumnsDynArray[i].Length;
+  end;
+  I := high(TypeInfoColumnsDynArray);
+  Fill(I, 'GUID', stGUID, SizeOf(TGUID), GUID_Index);
+  Fill(I, 'TYPELIB', stUnicodeString, 255, TYPE_LIB_Index);
+  Fill(I, 'VERSION', stUnicodeString, 255, VERISON_Index);
+  Fill(I, 'IS_LONG', stBoolean, SizeOf(WordBool), IS_LONG_Index);
+  Fill(I, 'BEST_MATCH', stBoolean, SizeOf(WordBool), BEST_MATCH_Index);
+  Fill(I, 'IS_FIXEDLENGTH', stBoolean, SizeOf(WordBool), IS_FIXEDLENGTH_Index);
+
+  Result := ConstructVirtualResultSet(TypeInfoColumns);
 
   RS := OleDBOpenSchema(DBSCHEMA_PROVIDER_TYPES, []);
   if RS <> nil then
@@ -2673,20 +2792,36 @@ begin
         Result.UpdatePWideChar(TypeInfoLocaleTypeNameIndex, GetPWideChar(TypeInfoLocaleTypeNameIndex, Len), Len);
         Result.UpdateSmall(TypeInfoMinimumScaleIndex, GetSmall(TypeInfoMinimumScaleIndex));
         Result.UpdateSmall(TypeInfoMaximumScaleIndex, GetSmall(TypeInfoMaximumScaleIndex));
-        //GUID
-        //TYPE_LIB
-        //IS_LONG
-        //BEST_MATCH
-        //IS_FIXEDLENGTH
+        Result.UpdateSmall(TypeInfoSQLDataTypeIndex, GetSmall(TypeInfoDataTypeIndex));
         { NA }
-        //Result.UpdateSmall(TypeInfoSQLDataTypeIndex, GetSmallByName('SQL_DATA_TYPE'));
         //Result.UpdateSmall(TypeInfoSQLDateTimeSubIndex, GetSmallByName('SQL_DATETIME_SUB'));
         //Result.UpdateSmall(TypeInfoNumPrecRadix, GetSmallByName('NUM_PREC_RADIX'));
+        I := FindColumn('GUID');
+        if (i <> InvalidDbcIndex) and not IsNull(i) then begin
+          GetGUID(I, GUID);
+          Result.UpdateGUID(GUID_Index, GUID);
+        end;
+        I := FindColumn('TYPELIB');
+        if i <> InvalidDbcIndex then
+          Result.UpdatePWideChar(VERISON_Index, GetPWideChar(I, Len), Len);
+        I := FindColumn('VERSION');
+        if i <> InvalidDbcIndex then
+          Result.UpdatePWideChar(VERISON_Index, GetPWideChar(I, Len), Len);
+        I := FindColumn('IS_LONG');
+        if i <> InvalidDbcIndex then
+          Result.UpdateBoolean(IS_LONG_Index, GetBoolean(I));
+        I := FindColumn('BEST_MATCH');
+        if i <> InvalidDbcIndex then
+          Result.UpdateBoolean(BEST_MATCH_Index, GetBoolean(I));
+        I := FindColumn('IS_FIXEDLENGTH');
+        if i <> InvalidDbcIndex then
+          Result.UpdateBoolean(IS_FIXEDLENGTH_Index, GetBoolean(I));
         Result.InsertRow;
       end;
       Close;
     end;
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 {**
   Gets a description of a table's indices and statistics. They are
@@ -2854,6 +2989,7 @@ begin
   SchemaID := FindSchema(Schema);
   if SchemaID = -1 then Exit;
   OleDBConnection := GetConnection as IZOleDBConnection;
+  FByteBuffer := OleDBConnection.GetByteBufferAddress;
   try
     OleCheck(OleDBConnection.GetSession.QueryInterface(IID_IDBSchemaRowset, SchemaRS));
     {$IFDEF WITH_VAR_INIT_WARNING}OleArgs := nil;{$ENDIF}

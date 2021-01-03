@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -60,8 +60,9 @@ interface
 {$IFEND}
 {$IFNDEF ZEOS_DISABLE_ADO}
 uses
-  Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, ActiveX,
-  ZCompatibility, ZSysUtils, FmtBCD,
+  Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, ActiveX, FmtBCD,
+  {$IFNDEF FPC}ZClasses,{$ENDIF} //inlined Get method of TZCustomElementList
+  ZCompatibility, ZSysUtils,
   ZDbcIntfs, ZDbcStatement, ZDbcAdo, ZPlainAdo, ZVariant, ZDbcAdoUtils,
   ZDbcOleDBStatement, ZDbcUtils;
 
@@ -108,6 +109,14 @@ type
   public //setters
     //a performance thing: direct dispatched methods for the interfaces :
     //https://stackoverflow.com/questions/36137977/are-interface-methods-always-virtual
+
+    /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
+    ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(Index: Integer; {%H-}SQLType: TZSQLType);
     procedure SetBoolean(Index: Integer; AValue: Boolean); reintroduce;
     procedure SetByte(Index: Integer; AValue: Byte);
@@ -257,13 +266,16 @@ begin
       if (FAdoRecordSet = nil) or (FAdoRecordSet.MaxRecords <> MaxRows) then begin
         FAdoRecordSet := CoRecordSet.Create;
         FAdoRecordSet.MaxRecords := MaxRows;
-        FAdoRecordSet._Set_ActiveConnection(FAdoCommand.Get_ActiveConnection);
-        if (GetResultSetType = rtForwardOnly) or (GetResultSetConcurrency = rcUpdatable)
-        then FAdoRecordSet.CursorLocation := adUseServer
-        else FAdoRecordSet.CursorLocation := adUseClient;
-        FAdoRecordSet.CacheSize := 128*1024;
-        FAdoRecordSet.MaxRecords := MaxRows;
-        FAdoRecordSet.Open(FAdoCommand, EmptyParam, adOpenForwardOnly, adLockReadOnly, adOptionUnspecified);
+        //handle a MSAccess issue: https://zeoslib.sourceforge.io/viewtopic.php?f=50&t=127118
+        if Self.FAdoConnection.GetServerProvider <> spMSJet then begin
+          FAdoRecordSet._Set_ActiveConnection(FAdoCommand.Get_ActiveConnection);
+          if (GetResultSetType = rtForwardOnly) or (GetResultSetConcurrency = rcUpdatable)
+          then FAdoRecordSet.CursorLocation := adUseServer
+          else FAdoRecordSet.CursorLocation := adUseClient;
+          FAdoRecordSet.CacheSize := 128*1024;
+          FAdoRecordSet.Open(FAdoCommand, EmptyParam, adOpenForwardOnly, adLockReadOnly, adOptionUnspecified);
+        end else
+          FAdoRecordSet.Open(FAdoCommand, EmptyParam, adOpenForwardOnly, adLockOptimistic, adAsyncFetch);
       end else
         FAdoRecordSet.Requery(adOptionUnspecified);
     end else
@@ -838,7 +850,7 @@ begin
 set_var:          FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}].Value := V;
                 end;
     else        begin
-                  CurrToUnicode(AValue, PWideChar(fByteBuffer), @PD);
+                  CurrToUnicode(AValue, '.', PWideChar(fByteBuffer), @PD);
                   SetPWideChar(Index, PWideChar(fByteBuffer), PWideChar(PD) - PWideChar(fByteBuffer));
                 end;
   end;

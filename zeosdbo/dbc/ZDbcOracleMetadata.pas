@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -69,8 +69,12 @@ type
 //      const TypeNamePattern: string; const Types: TIntegerDynArray): IZResultSet; override;
   public
     // database/driver/server info:
+    /// <summary>What's the name of this database product?</summary>
+    /// <returns>database product name</returns>
     function GetDatabaseProductName: string; override;
     function GetDatabaseProductVersion: string; override;
+    /// <summary>What's the name of this ZDBC driver?
+    /// <returns>ZDBC driver name</returns>
     function GetDriverName: string; override;
 //    function GetDriverVersion: string; override; -> Same as parent
     function GetDriverMajorVersion: Integer; override;
@@ -261,10 +265,6 @@ uses
 //----------------------------------------------------------------------
 // First, a variety of minor information about the target database.
 
-{**
-  What's the name of this database product?
-  @return database product name
-}
 function TZOracleDatabaseInfo.GetDatabaseProductName: string;
 begin
   Result := 'Oracle';
@@ -279,10 +279,6 @@ begin
   Result := '';
 end;
 
-{**
-  What's the name of this JDBC driver?
-  @return JDBC driver name
-}
 function TZOracleDatabaseInfo.GetDriverName: string;
 begin
   Result := 'Zeos Database Connectivity Driver for Oracle';
@@ -1389,7 +1385,7 @@ var
         OCI_TYPEPARAM_INOUT : Result.UpdateInt(ProcColColumnTypeIndex, Ord(pctInOut));
       end;
       SQLType := NormalizeOracleTypeToSQLType(Arg.DataType,
-        Arg.DataSize, Arg.DescriptorType, Arg.Precision, Arg.Scale, ConSettings, Descriptor.IODirection);
+        Arg.DataSize, Arg.DescriptorType, Arg.Precision, Arg.Scale, ConSettings);
       if (Ord(SQLType) >= Ord(stString)) and (Ord(SQLType) <= Ord(stBytes))
       then Result.UpdateInt(ProcColPrecisionIndex, Arg.DataSize)
       else Result.UpdateInt(ProcColPrecisionIndex, Arg.Precision);
@@ -1444,7 +1440,7 @@ var
         OCI_TYPEPARAM_INOUT : Result.UpdateInt(ProcColColumnTypeIndex, Ord(pctInOut));
       end;
       SQLType := NormalizeOracleTypeToSQLType(Arg.DataType,
-        Arg.DataSize, Arg.DescriptorType, Arg.Precision, Arg.Scale, ConSettings, Descriptor.IODirection);
+        Arg.DataSize, Arg.DescriptorType, Arg.Precision, Arg.Scale, ConSettings);
       if (Ord(SQLType) >= Ord(stString)) and (Ord(SQLType) <= Ord(stBytes))
       then Result.UpdateInt(ProcColPrecisionIndex, Arg.DataSize)
       else Result.UpdateInt(ProcColPrecisionIndex, Arg.Precision);
@@ -1630,7 +1626,7 @@ begin
     while Next do begin
       sName := IC.Quote(GetString(OBJECT_NAME_Index));
       if GetString(PROCEDURE_NAME_Index) <> '' then
-        sName :=  sName+'.'+IC.Quote(GetString(PROCEDURE_NAME_Index));
+        sName :=  sName+'.'+IC.Quote(GetString(PROCEDURE_NAME_Index), iqStoredProcedure);
       Result.MoveToInsertRow;
       //Result.UpdateNull(CatalogNameIndex);
       Result.UpdatePAnsiChar(SchemaNameIndex, GetPAnsiChar(PROCEDURE_SCHEM_Index, Len), Len);

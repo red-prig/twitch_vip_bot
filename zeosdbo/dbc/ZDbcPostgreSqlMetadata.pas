@@ -40,7 +40,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -63,13 +63,13 @@ uses
   ZSelectSchema, ZPlainPostgreSqlDriver;
 
 type
-  {** Implements a PostgreSQL Case Sensitive/Unsensitive identifier convertor. }
-  TZPostgreSQLIdentifierConvertor = class (TZDefaultIdentifierConvertor)
+  {** Implements a PostgreSQL Case Sensitive/Unsensitive identifier converter. }
+  TZPostgreSQLIdentifierConverter = class (TZDefaultIdentifierConverter)
   protected
     function IsSpecialCase(const Value: string): Boolean; override;
   public
     function IsQuoted(const Value: string): Boolean; override;
-    function Quote(const Value: string): string; override;
+    function Quote(const Value: string; Qualifier: TZIdentifierQualifier = iqUnspecified): string; override;
     function ExtractQuote(const Value: string): string; override; 
   end; 
  
@@ -95,8 +95,12 @@ type
 //      const TypeNamePattern: string; const Types: TIntegerDynArray): IZResultSet; override;
   public
     // database/driver/server info:
+    /// <summary>What's the name of this database product?</summary>
+    /// <returns>database product name</returns>
     function GetDatabaseProductName: string; override;
     function GetDatabaseProductVersion: string; override;
+    /// <summary>What's the name of this ZDBC driver?
+    /// <returns>ZDBC driver name</returns>
     function GetDriverName: string; override;
 //    function GetDriverVersion: string; override; -> Same as parent
     function GetDriverMajorVersion: Integer; override;
@@ -297,7 +301,7 @@ type
     function UncachedGetCharacterSets: IZResultSet; override; //EgonHugeist
 
   public
-    function GetIdentifierConvertor: IZIdentifierConvertor; override;
+    function GetIdentifierConverter: IZIdentifierConverter; override;
     procedure ClearCache; override;
  end;
 
@@ -314,10 +318,6 @@ uses
 //----------------------------------------------------------------------
 // First, a variety of minor information about the target database.
 
-{**
-  What's the name of this database product?
-  @return database product name
-}
 function TZPostgreSQLDatabaseInfo.GetDatabaseProductName: string;
 begin
   Result := 'PostgreSQL';
@@ -332,10 +332,6 @@ begin
   Result := '';
 end;
 
-{**
-  What's the name of this JDBC driver?
-  @return JDBC driver name
-}
 function TZPostgreSQLDatabaseInfo.GetDriverName: string;
 begin
   Result := 'Zeos Database Connectivity Driver for PostgreSQL';
@@ -2202,9 +2198,9 @@ begin
       + ' FROM pg_class c, pg_user u WHERE u.usesysid = c.relowner '
       + ' AND c.relkind = ''r'' ';
   end;
-
-  SQL := SQL + ' AND ' + TableNameCondition
-    + ' ORDER BY nspname, relname';
+  if TableNameCondition <> '' then
+    SQL := SQL + ' AND ' + TableNameCondition;
+  SQL := SQL + ' ORDER BY nspname, relname';
 
   Permissions := TStringList.Create;
   PermissionsExp := TStringList.Create;
@@ -2227,7 +2223,7 @@ begin
             Continue;
           Grantee := PermissionsExp.Strings[0];
           if Grantee = '' then
-          Grantee := 'PUBLIC';
+            Grantee := 'PUBLIC';
           Privileges := PermissionsExp.Strings[1];
           for J := 1 to Length(Privileges) do
           begin
@@ -3589,10 +3585,10 @@ begin
   end;
 end;
 
-function TZPostgreSQLDatabaseMetadata.GetIdentifierConvertor: IZIdentifierConvertor;
+function TZPostgreSQLDatabaseMetadata.GetIdentifierConverter: IZIdentifierConverter;
 begin
-  Result := TZDefaultIdentifierConvertor.Create(Self);
-  //Result:= TZPostgreSQLIdentifierConvertor.Create(Self);
+  Result := TZDefaultIdentifierConverter.Create(Self);
+  //Result:= TZPostgreSQLIdentifierConverter.Create(Self);
 end;
 
 {**
@@ -3642,9 +3638,9 @@ begin
   end;
 end;
 
-{ TZPostgresIdentifierConvertor }
+{ TZPostgresIdentifierConverter }
 
-function TZPostgreSQLIdentifierConvertor.ExtractQuote(
+function TZPostgreSQLIdentifierConverter.ExtractQuote(
   const Value: string): string;
 var
   QuoteDelim: string;
@@ -3661,7 +3657,7 @@ begin
     Result := AnsiLowerCase(Value);
 end;
 
-function TZPostgreSQLIdentifierConvertor.IsQuoted(const Value: string): Boolean;
+function TZPostgreSQLIdentifierConverter.IsQuoted(const Value: string): Boolean;
 var
   QuoteDelim: string;
   pQ, pV: PChar;
@@ -3673,7 +3669,7 @@ begin
             ((pV+Length(Value)-1)^ = (pQ+Length(QuoteDelim)-1)^);
 end;
 
-function TZPostgreSQLIdentifierConvertor.IsSpecialCase(
+function TZPostgreSQLIdentifierConverter.IsSpecialCase(
   const Value: string): Boolean;
 var
   P, PEnd: PChar;
@@ -3692,7 +3688,9 @@ begin
     end;
 end;
 
-function TZPostgreSQLIdentifierConvertor.Quote(const Value: string): string;
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Qualifier" not used} {$ENDIF}
+function TZPostgreSQLIdentifierConverter.Quote(const Value: string;
+  Qualifier: TZIdentifierQualifier = iqUnspecified): string;
 var
   QuoteDelim: string;
   P: PChar absolute QuoteDelim;
@@ -3708,6 +3706,7 @@ begin
     end;
   end;
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 {$ENDIF ZEOS_DISABLE_POSTGRESQL} //if set we have an empty unit
 end.

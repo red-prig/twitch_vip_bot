@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -57,7 +57,8 @@
   miab3
   marsupilami97
   mse
-  EgonHugeist and many others i'm not aware about
+  EgonHugeist
+  and many others
 *)
 
 unit ZAbstractConnection;
@@ -188,6 +189,11 @@ type
     procedure SetProperties(Value: TStrings);
     procedure SetTransactIsolationLevel(Value: TZTransactIsolationLevel);
     procedure SetAutoCommit(Value: Boolean);
+    /// <summary>Puts this connection in read-only mode as a hint to enable
+    ///  database optimizations. Note: This method cannot be called while in the
+    ///  middle of a transaction.</summary>
+    /// <param>"value" true enables read-only mode; false disables read-only
+    ///  mode.</param>
     procedure SetReadOnly(Value: Boolean);
     function GetDbcDriver: IZDriver;
     function GetInTransaction: Boolean;
@@ -356,10 +362,16 @@ type
     FAfterRollback: TNotifyEvent;
     FConnection: TZAbstractConnection;
     FTransaction: IZTransaction;
+    FTxnLevel: Integer;
     function GetActive: Boolean;
     function GetAutoCommit: Boolean;
     function GetDataSetCount: Integer;
     procedure SetAutoCommit(Value: Boolean);
+    /// <summary>Puts this transaction in read-only mode as a hint to enable
+    ///  database optimizations. Note: This method cannot be called while in the
+    ///  middle of a transaction.</summary>
+    /// <param>"value" true enables read-only mode; false disables read-only
+    ///  mode.</param>
     procedure SetReadOnly(Value: Boolean);
     procedure SetTransactIsolationLevel(Value: TZTransactIsolationLevel);
     function GetDataSet(Index: Integer): TDataSet;
@@ -631,7 +643,9 @@ begin
   else if Value <> GetConnected then
     if Value
     then Connect
-    else Disconnect;
+    else Disconnect
+  else if Not Value And Assigned(FConnection) Then
+    FConnection := nil; // Make sure to throw away FConnection to ensure reconnecting. Otherwise a next call to .Connect will not do anything!!!
 end;
 
 {**
@@ -1025,11 +1039,11 @@ begin
 
     ShowSqlHourGlass;
     try
-      FConnection.SetOnConnectionLostErrorHandler(nil);
       CloseAllDataSets;
       CloseAllSequences;
       CloseAllTransactions;
       FConnection.Close;
+      FConnection.SetOnConnectionLostErrorHandler(nil);
     finally
       FConnection := nil;
       HideSqlHourGlass;
@@ -1246,11 +1260,21 @@ begin
   LastState := GetConnected;
   If FConnection <> Nil Then
     Begin
-      Result := (FConnection.PingServer=0);
-      // Connection now is false but was true
-      If (Not Result) And (LastState) Then
-        // Generate OnDisconnect event
-        SetConnected(Result);
+      Try
+        Result := (FConnection.PingServer=0);
+        // Connection now is false but was true
+        If (Not Result) And (LastState) Then
+          // Generate OnDisconnect event
+          SetConnected(Result);
+      Except
+        On E:Exception Do
+        Begin
+         If LastState Then
+           // Generate OnDisconnect event
+           SetConnected(False);
+         Raise;
+       End
+      End;
     End
   Else
     // Connection now is false but was true
@@ -1661,6 +1685,11 @@ begin
       TZAbstractDataset(FDatasets[i]).Transaction := nil;
   FreeAndNil(FParams);
   FreeAndNil(FDatasets);
+  if (FTransaction <> nil) then begin
+    with GetTransactionManager do
+      if IsTransactionValid(FTransaction) then ReleaseTransaction(FTransaction);
+    FTransaction := nil;
+  end;
   inherited BeforeDestruction;
 end;
 
@@ -1675,7 +1704,7 @@ var I: Integer;
     Row: NativeInt;
     B: Boolean;
 begin
-  if (FTransaction = nil) then
+  if (FTransaction = nil) or FTransaction.GetAutoCommit then
     raise EZDatabaseError.Create(SInvalidOpInAutoCommit);
   if Assigned(FBeforeCommit) then
     FBeforeCommit(Self);
@@ -1709,7 +1738,8 @@ begin
   FDatasets := TZSortedList.Create;
   FDisposePendingUpdatesOnRollback := True;
   FApplyPendingUpdatesOnCommit := True;
-  FTransactIsolationLevel := tiReadCommitted
+  FTransactIsolationLevel := tiReadCommitted;
+  FAutoCommit := True;
 end;
 
 function TZAbstractTransaction.GetActive: Boolean;
@@ -1839,14 +1869,19 @@ begin
 end;
 
 function TZAbstractTransaction.StartTransaction: Integer;
-var Txn: IZTransaction;
+var AutoCommit: Boolean;
 begin
-  if GetActive
-  then Txn := FTransaction
-  else Txn := GetIZTransaction;
+  AutoCommit := FAutoCommit;
+  if not GetActive then try
+    FAutoCommit := False;
+    FTransaction := GetIZTransaction;
+  finally
+    FAutoCommit := AutoCommit;
+  end;
   if Assigned(FBeforeStartTransaction) then
     FBeforeStartTransaction(Self);
-  Result := Txn.StartTransaction;
+  Result := FTransaction.StartTransaction;
+  FTxnLevel := Result;
   if Assigned(FAfterStartTransaction) then
     FAfterStartTransaction(Self);
 end;

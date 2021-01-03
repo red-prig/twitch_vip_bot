@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -96,7 +96,17 @@ type
     function ExecuteQueryPrepared: IZResultSet; override;
     function ExecuteUpdatePrepared: Integer; override;
     function ExecutePrepared: Boolean; override;
-
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
   end;
@@ -408,7 +418,7 @@ begin
         else            LastUpdateCount := -1;
       end;
     end;
-  end else ExceuteBatch;
+  end else ExecuteBatchDml;
 end;
 
 procedure TZAbstractInterbase6PreparedStatement.ReleaseConnection;
@@ -461,7 +471,7 @@ begin
     Result := IZResultSet(FOpenResultSet)
   else begin
     NativeResultSet := TZInterbase6XSQLDAResultSet.Create(Self, SQL, @FStmtHandle,
-      FResultXSQLDA, FStatementType);
+      FResultXSQLDA, FOrgTypeList, FStatementType);
     if (GetResultSetConcurrency = rcUpdatable) or (GetResultSetType <> rtForwardOnly) then begin
       if FIBConnection.IsFirebirdLib and (FIBConnection.GetHostVersion >= 2000000) //is the SQL2003 st. IS DISTINCT FROM supported?
       then CachedResolver  := TZFirebird2upCachedResolver.Create(Self, NativeResultSet.GetMetadata)
@@ -500,6 +510,7 @@ var
   XSQLDA: PXSQLDA;
   P: PAnsiChar;
   Status: ISC_STATUS;
+  NewSQLType: ISC_SHORT;
 label jmpEB;
 
   procedure PrepareArrayStmt(var Slot: TZIB_FBStmt);
@@ -591,21 +602,45 @@ begin
       end else if FStatementType in [stSelect, stExecProc, stSelectForUpdate] then begin
         FResultXSQLDA := TZSQLDA.Create(Connection, ConSettings);
         { Initialise ouput param and fields }
-        if FPlainDriver.isc_dsql_describe(@FStatusVector, @FStmtHandle, GetDialect, FResultXSQLDA.GetData) <> 0 then
+        XSQLDA := FResultXSQLDA.GetData;
+        if FPlainDriver.isc_dsql_describe(@FStatusVector, @FStmtHandle, GetDialect, XSQLDA) <> 0 then
           FIBConnection.HandleErrorOrWarning(lcOther, @FStatusVector, {$IFDEF DEBUG}'isc_dsql_describe'{$ELSE}''{$ENDIF}, Self);
+        FOrgTypeList.Clear;
         if FResultXSQLDA.GetData^.sqld <> FResultXSQLDA.GetData^.sqln then begin
-          FResultXSQLDA.AllocateSQLDA;
-          if FPlainDriver.isc_dsql_describe(@FStatusVector, @FStmtHandle, GetDialect, FResultXSQLDA.GetData) <> 0 then
+          XSQLDA := FResultXSQLDA.AllocateSQLDA;
+          if FPlainDriver.isc_dsql_describe(@FStatusVector, @FStmtHandle, GetDialect, XSQLDA) <> 0 then
             FIBConnection.HandleErrorOrWarning(lcOther, @FStatusVector, {$IFDEF DEBUG}'isc_dsql_describe'{$ELSE}''{$ENDIF}, Self);
         end;
         FOutMessageCount := FResultXSQLDA.GetData.sqld;
+        FOrgTypeList.Capacity := FOutMessageCount;
         if FOutMessageCount > 0 then begin
-          XSQLDA := FResultXSQLDA.GetData;
           Mem := 0;
           {$R-}
           for Index := 0 to FOutMessageCount -1 do begin
             XSQLVAR := @XSQLDA.sqlvar[Index];
           {$IFDEF RangeCheckEnabled} {$R+} {$ENDIF}
+            NewSQLType := XSQLVAR.sqltype and not 1;
+            FOrgTypeList.Add(NewSQLType, XSQLVAR.sqlscale, XSQLVAR.sqltype and 1 = 1);
+            if (NewSQLType = SQL_INT128) or (NewSQLType = SQL_DEC_FIXED) then begin
+              NewSQLType := SQL_VARYING;
+              if XSQLVAR.sqltype and 1 = 1 then
+                NewSQLType := NewSQLType and 1;
+              XSQLVAR.sqltype := NewSQLType;
+              XSQLVAR.sqlsubtype := CS_NONE;
+              XSQLVAR.sqllen := 46;
+            end else if (NewSQLType = SQL_TIME_TZ_EX) or (NewSQLType = SQL_TIME_TZ) then begin
+              NewSQLType := SQL_TYPE_TIME;
+              if XSQLVAR.sqltype and 1 = 1 then
+                NewSQLType := NewSQLType and 1;
+              XSQLVAR.sqltype := NewSQLType;
+              XSQLVAR.sqllen := SizeOf(TISC_TIME);
+            end else if (NewSQLType = SQL_DEC16) or (NewSQLType = SQL_DEC34) then begin
+              NewSQLType := SQL_DOUBLE;
+              if XSQLVAR.sqltype and 1 = 1 then
+                NewSQLType := NewSQLType and 1;
+              XSQLVAR.sqltype := NewSQLType;
+              XSQLVAR.sqllen := SizeOf(Double);
+            end;
             Mem := mem + XSQLVAR.sqllen;
             if XSQLVAR.sqltype and not (1) = SQL_VARYING then
               Mem := mem + SizeOf(ISC_USHORT);
@@ -668,6 +703,7 @@ var
   XSQLVAR: PXSQLVAR;
   CS_ID: Word;
   P: PAnsiChar;
+label jmpSetL_T;
 begin
   With FIBConnection do begin
     {create the parameter bind structure}
@@ -704,8 +740,26 @@ begin
         sqltype := XSQLVAR.sqltype and not (1);
         if sqltype = SQL_TEXT then begin //length might be zero
           //we don't use the fixed char fields. We don't space padd the data nor changing the sqllen
-          XSQLVAR.sqltype := SQL_VARYING;
           sqltype := SQL_VARYING;
+          goto jmpSetL_T;
+        end else if (sqltype = SQL_TIMESTAMP_TZ) or (sqltype = SQL_TIMESTAMP_TZ_EX) then begin
+          XSQLVAR.sqllen := SizeOf(TISC_TIMESTAMP);
+          sqltype := SQL_TIMESTAMP;
+          goto jmpSetL_T;
+        end else if (sqltype = SQL_TIME_TZ) or  (sqltype = SQL_TIME_TZ_EX) then begin
+          XSQLVAR.sqllen := SizeOf(TISC_TIME);
+          sqltype := SQL_TYPE_TIME;
+          goto jmpSetL_T;
+        end else if (sqltype = SQL_DEC16) or (sqltype = SQL_DEC34) then begin
+          XSQLVAR.sqllen := SQL_DOUBLE;
+          sqllen := SizeOf(Double);
+          goto jmpSetL_T;
+        end else if (sqltype = SQL_INT128) or (sqltype = SQL_DEC_FIXED) then begin
+          sqltype := SQL_VARYING;
+          XSQLVAR.sqllen := 46;
+jmpSetL_T:if XSQLVAR.sqltype and 1 = 1
+          then XSQLVAR.sqltype := sqltype and not 1
+          else XSQLVAR.sqltype := sqltype;
         end;
         if sqltype = SQL_VARYING then begin
           sqllen := ((XSQLVAR.sqllen shr 2) + 1) shl 2; //4Byte align incluing 4 bytes reserved for overlongs {let fb raise the Exception}

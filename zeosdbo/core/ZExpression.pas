@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -55,7 +55,7 @@ interface
 
 {$I ZCore.inc}
 
-uses SysUtils, Classes, {$IFNDEF NO_UNIT_CONTNRS}Contnrs,{$ENDIF}
+uses SysUtils, Classes, {$IF not defined(NO_UNIT_CONTNRS) and not defined(FPC)}Contnrs,{$IFEND} //used for inline methods
   ZClasses, ZCompatibility, ZVariant, ZTokenizer, ZExprParser;
 
 type

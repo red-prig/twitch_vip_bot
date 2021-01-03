@@ -43,7 +43,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -107,7 +107,7 @@ const
 {$ENDIF FRENCH}
 {$ENDIF FPC}
 
-{$IF defined(FPC) and (defined(DEBUG) or not defined(ASCII7_MESSAGES)) and
+{$IF defined(FPC) and not defined(ASCII7_MESSAGES)) and
      (defined(WITH_DEFAULTSYSTEMCODEPAGE) or defined(LCL))}
   {$IFNDEF WITH_RTLCONSTS_SInvalidGuidArray}
   function SInvalidGuidArray: String;

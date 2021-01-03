@@ -154,7 +154,7 @@ begin
 
  if ResultSet.First then
  begin
-  sub_mod.T.TimeRv:=ResultSet.GetInt(1);
+  sub_mod.T.TimeRv:=ResultSet.GetInt(FirstDbcIndex);
   sub_mod.T.TimeDB:=sub_mod.T.TimeRv;
   UpdateTextSubTime(2);
  end;

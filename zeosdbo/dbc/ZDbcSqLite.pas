@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -82,8 +82,8 @@ type
     function GetConnectionHandle: Psqlite;
     function GetUndefinedVarcharAsStringLength: Integer;
     function GetSQLiteIntAffinity: Boolean;
-    function enable_load_extension(OnOff: Integer): Integer;
-    function load_extension(zFile: PAnsiChar; zProc: Pointer; var pzErrMsg: PAnsiChar): Integer;
+    function enable_load_extension(OnOff: Boolean): Integer;
+    function load_extension(const zFile, zProc: String; out ErrMsg: String): Integer;
     function GetByteBufferAddress: PByteBuffer;
     function GetPlainDriver: TZSQLitePlainDriver;
     procedure HandleErrorOrWarning(LogCategory: TZLoggingCategory;
@@ -96,7 +96,7 @@ type
   {** Implements SQLite Database Connection. }
 
   { TZSQLiteConnection }
-  TZSQLiteConnection = class(TZAbstractSuccedaneousTxnConnection, IZConnection,
+  TZSQLiteConnection = class(TZAbstractSingleTxnConnection, IZConnection,
     IZSQLiteConnection, IZTransaction)
   private
     FUndefinedVarcharAsStringLength: Integer;
@@ -113,8 +113,8 @@ type
   public //IZSQLiteConnection
     function GetUndefinedVarcharAsStringLength: Integer;
     function GetSQLiteIntAffinity: Boolean;
-    function enable_load_extension(OnOff: Integer): Integer;
-    function load_extension(zFile: PAnsiChar; zProc: Pointer; var pzErrMsg: PAnsiChar): Integer;
+    function enable_load_extension(OnOff: Boolean): Integer;
+    function load_extension(const zFile, zProc: String; out ErrMsg: String): Integer;
     function GetPlainDriver: TZSQLitePlainDriver;
     procedure HandleErrorOrWarning(LogCategory: TZLoggingCategory;
       ErrorCode: Integer; const LogMessage: String;
@@ -122,23 +122,115 @@ type
   public
     procedure AfterConstruction; override;
   public
+    /// <summary>Creates a <c>Statement</c> interface for sending SQL statements
+    ///  to the database. SQL statements without parameters are normally
+    ///  executed using Statement objects. If the same SQL statement
+    ///  is executed many times, it is more efficient to use a
+    ///  <c>PreparedStatement</c> object. Result sets created using the returned
+    ///  <c>Statement</c> interface will by default have forward-only type and
+    ///  read-only concurrency.</summary>
+    /// <param>Info a statement parameters.</param>
+    /// <returns>A new Statement interface</returns>
     function CreateStatementWithParams(Info: TStrings): IZStatement;
-    function PrepareCallWithParams(const Name: String; Info: TStrings):
+    /// <summary>Creates a <code>CallableStatement</code> object for calling
+    ///  database stored procedures. The <code>CallableStatement</code> object
+    ///  provides methods for setting up its IN and OUT parameters, and methods
+    ///  for executing the call to a stored procedure. Note: This method is
+    ///  optimized for handling stored procedure call statements. Some drivers
+    ///  may send the call statement to the database when the method
+    ///  <c>prepareCall</c> is done; others may wait until the
+    ///  <c>CallableStatement</c> object is executed. This has no direct effect
+    ///  on users; however, it does affect which method throws certain
+    ///  EZSQLExceptions. Result sets created using the returned
+    ///  IZCallableStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"Name" a procedure or function name.</param>
+    /// <param>"Params" a statement parameters list.</param>
+    /// <returns> a new IZCallableStatement interface containing the
+    ///  pre-compiled SQL statement </returns>
+    function PrepareCallWithParams(const Name: String; Params: TStrings):
       IZCallableStatement;
+    /// <summary>Creates a <c>PreparedStatement</c> interface for sending
+    ///  parameterized SQL statements to the database. A SQL statement with
+    ///  or without IN parameters can be pre-compiled and stored in a
+    ///  PreparedStatement object. This object can then be used to efficiently
+    ///  execute this statement multiple times.
+    ///  Note: This method is optimized for handling parametric SQL statements
+    ///  that benefit from precompilation. If the driver supports
+    ///  precompilation, the method <c>prepareStatement</c> will send the
+    ///  statement to the database for precompilation. Some drivers may not
+    ///  support precompilation. In this case, the statement may not be sent to
+    ///  the database until the <c>PreparedStatement</c> is executed. This has
+    ///  no direct effect on users; however, it does affect which method throws
+    ///  certain SQLExceptions. Result sets created using the returned
+    ///  PreparedStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"SQL" a SQL statement that may contain one or more '?' IN
+    ///  parameter placeholders.</param>
+    /// <param> Info a statement parameter list.</param>
+    /// <returns> a new PreparedStatement object containing the
+    ///  optional pre-compiled statement</returns>
     function PrepareStatementWithParams(const SQL: string; Info: TStrings):
       IZPreparedStatement;
 
     function AbortOperation: Integer; override;
   public
     procedure Open; override;
-
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  released. Otherwise makes all changes made since the previous commit/
+    ///  rollback permanent and releases any database locks currently held by
+    ///  the Connection. This method should be used only when auto-commit mode
+    ///  has been disabled. See setAutoCommit.</summary>
     procedure Commit;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  rolled back. Otherwise drops all changes made since the previous
+    ///  commit/rollback and releases any database locks currently held by this
+    ///  Connection. This method should be used only when auto-commit has been
+    ///  disabled. See setAutoCommit.</summary>
     procedure Rollback;
+    /// <summary>Sets this connection's auto-commit mode. If a connection is in
+    ///  auto-commit mode, then all its SQL statements will be executed and
+    ///  committed as individual transactions. Otherwise, its SQL statements are
+    ///  grouped into transactions that are terminated by a call to either the
+    ///  method <c>commit</c> or the method <c>rollback</c>. By default, new
+    ///  connections are in auto-commit mode. The commit occurs when the
+    ///  statement completes or the next execute occurs, whichever comes first.
+    ///  In the case of statements returning a ResultSet, the statement
+    ///  completes when the last row of the ResultSet has been retrieved or the
+    ///  ResultSet has been closed. In advanced cases, a single statement may
+    ///  return multiple results as well as output parameter values. In these
+    ///  cases the commit occurs when all results and output parameter values
+    ///  have been retrieved. It is not recommented setting autoCommit to false
+    ///  because a call to either the method <c>commit</c> or the method
+    ///  <c>rollback</c> will restart the transaction. It's use full only if
+    ///  repeately many opertions are done and no startTransaction is intended
+    ///  to use. If you change mode to true the current Transaction and it's
+    ///  nested SavePoints are committed then.</summary>
+    /// <param>"Value" true enables auto-commit; false disables auto-commit.</param>
     procedure SetAutoCommit(Value: Boolean); override;
+    /// <summary>Attempts to change the transaction isolation level to the one
+    ///  given. The constants defined in the interface <c>Connection</c> are the
+    ///  possible transaction isolation levels. Note: This method cannot be
+    ///  called while in the middle of a transaction.
+    /// <param>"value" one of the TRANSACTION_* isolation values with the
+    ///  exception of TRANSACTION_NONE; some databases may not support other
+    ///  values. See DatabaseInfo.SupportsTransactionIsolationLevel</param>
     procedure SetTransactionIsolation(Level: TZTransactIsolationLevel); override;
+    /// <summary>Starts transaction support or saves the current transaction.
+    ///  If the connection is closed, the connection will be opened.
+    ///  If a transaction is underway a nested transaction or a savepoint will
+    ///  be spawned. While the tranaction(s) is/are underway the AutoCommit
+    ///  property is set to False. Ending up the transaction with a
+    ///  commit/rollback the autocommit property will be restored if changing
+    ///  the autocommit mode was triggered by a starttransaction call.</summary>
+    /// <returns>Returns the current txn-level. 1 means a expicit transaction
+    ///  was started. 2 means the transaction was saved. 3 means the previous
+    ///  savepoint got saved too and so on.</returns>
     function StartTransaction: Integer;
-
-
+    /// <summary>Sets a catalog name in order to select a subspace of this
+    ///  Connection's database in which to work. If the driver does not support
+    ///  catalogs, it will silently ignore this request.</summary>
+    /// <param>"value" new catalog name to be used.</param>
     procedure SetCatalog(const Catalog: string); override;
     function GetCatalog: string; override;
 
@@ -273,11 +365,48 @@ begin
   Result := ErrorCode;
 end;
 
-function TZSQLiteConnection.load_extension(zFile: PAnsiChar; zProc: Pointer;
-  var pzErrMsg: PAnsiChar): Integer;
+{$IFDEF FPC} {$PUSH} {$WARN 5057 off : hint local variable "pzErrMsg" does not seem to be intialized} {$ENDIF}
+function TZSQLiteConnection.load_extension(const zFile, zProc: String;
+  out ErrMsg: String): Integer;
+var rFile, rProc: RawByteString;
+  pzErrMsg: PAnsiChar;
+  L: LengthInt;
 begin
-  Result := FPlainDriver.sqlite3_load_extension(FHandle, zFile, zProc, pzErrMsg);
+  ErrMsg := '';
+  {$IFDEF UNICODE}
+  rFile := ZUnicodeToRaw(zFile, zCP_UTF8);
+  rProc := ZUnicodeToRaw(zProc, zCP_UTF8);
+  {$ELSE !UNICODE}
+    {$IF defined(LCL) or not defined(MSWINDOWS)}
+  rFile := zFile;
+  rProc := zProc;
+    {$ELSE}
+  if ZDetectUTF8Encoding(Pointer(zFile), Length(zFile)) = etANSI then begin
+    rFile := '';
+    PRawToRawConvert(Pointer(zFile), Length(zFile), zOSCodePage, zCP_UTF8, rFile)
+  end else rFile := zFile;
+  if ZDetectUTF8Encoding(Pointer(zProc), Length(zProc)) = etANSI then begin
+    rProc := '';
+    PRawToRawConvert(Pointer(zProc), Length(zProc), zOSCodePage, zCP_UTF8, rProc)
+  end else rProc := zProc;
+    {$IFEND}
+  {$ENDIF UNICODE}
+  Result := FPlainDriver.sqlite3_load_extension(FHandle, Pointer(rFile), Pointer(rProc), pzErrMsg);
+  if (Result = SQLITE_ERROR) then begin
+    L := StrLen(pzErrMsg);
+    {$IFDEF UNICODE}
+    ErrMsg := PRawToUnicode(pzErrMsg, L, zCP_UTF8);
+    {$ELSE}
+      {$IF defined(LCL) or not defined(MSWINDOWS)}
+      System.SetString(ErrMsg, pzErrMsg, L);
+      {$ELSE}
+      PRawToRawConvert(pzErrMsg, L, zCP_UTF8, zOSCodePage, RawByteString(ErrMsg));
+      {$IFEND}
+    {$ENDIF}
+    FPlainDriver.sqlite3_free(pzErrMsg);
+  end;
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 {**
   Reencrypt a database with a new key. The old/current key needs to be
@@ -306,27 +435,46 @@ end;
 }
 procedure TZSQLiteConnection.Open;
 var
-  SQL: RawByteString;
-  TmpInt: Integer;
+  SQL, zVfs: RawByteString;
+  TmpInt, Flags: Integer;
+  S: String;
 begin
   if not Closed then
     Exit;
 
   FLogMessage := Format(SConnect2AsUser, [URL.Database, URL.UserName]);
+  if Assigned(FPlainDriver.sqlite3_open_v2)
+  then S := Info.Values[ConnProps_SQLiteOpen_zVfs]
+  else S := '';
   {$IFDEF UNICODE}
   SQL := ZUnicodeToRaw(DataBase, zCP_UTF8);
+  zVfs := ZUnicodeToRaw(S, zCP_UTF8);
   {$ELSE}
     {$IFDEF LCL}
     SQL := DataBase;
+    zVfs := S;
     {$ELSE}
     if ZEncoding.ZDetectUTF8Encoding(Pointer(DataBase), Length(DataBase)) = etANSI then begin
       SQL := '';
       PRawToRawConvert(Pointer(DataBase), Length(DataBase), zOSCodePage, zCP_UTF8, SQL)
     end else SQL := DataBase;
+    if ZEncoding.ZDetectUTF8Encoding(Pointer(S), Length(S)) = etANSI then begin
+      zVfs := '';
+      PRawToRawConvert(Pointer(S), Length(S), zOSCodePage, zCP_UTF8, zVfs)
+    end else begin
+      SQL := DataBase;
+      zVfs := S;
+    end;
     {$ENDIF}
   {$ENDIF}
-  //patch by omaga software see https://sourceforge.net/p/zeoslib/tickets/312/
-  TmpInt := FPlainDriver.sqlite3_open(Pointer(SQL), FHandle);
+  if Assigned(FPlainDriver.sqlite3_open_v2)
+  then S := Info.Values[ConnProps_SQLiteOpen_Flags]
+  else S := '';
+  Flags := StrToIntDef(S, 0);
+  if Assigned(FPlainDriver.sqlite3_open_v2) and ((Flags <> 0) or (Pointer(zVfs) <> nil))
+  then TmpInt := FPlainDriver.sqlite3_open_v2(Pointer(SQL), FHandle, Flags, Pointer(zVfs))
+  else //patch by omaga software see https://sourceforge.net/p/zeoslib/tickets/312/
+    TmpInt := FPlainDriver.sqlite3_open(Pointer(SQL), FHandle);
   if TmpInt <> SQLITE_OK then
     HandleErrorOrWarning(lcConnect, TmpInt, FLogMessage, IImmediatelyReleasable(FWeakImmediatRelPtr));
   if DriverManager.HasLoggingListener then
@@ -377,71 +525,17 @@ begin
   end;
 end;
 
-{**
-  Creates a <code>CallableStatement</code> object for calling
-  database stored procedures.
-  The <code>CallableStatement</code> object provides
-  methods for setting up its IN and OUT parameters, and
-  methods for executing the call to a stored procedure.
-
-  <P><B>Note:</B> This method is optimized for handling stored
-  procedure call statements. Some drivers may send the call
-  statement to the database when the method <code>prepareCall</code>
-  is done; others
-  may wait until the <code>CallableStatement</code> object
-  is executed. This has no
-  direct effect on users; however, it does affect which method
-  throws certain SQLExceptions.
-
-  Result sets created using the returned CallableStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param Name a procedure or function identifier
-    parameter placeholders. Typically this  statement is a JDBC
-    function call escape string.
-  @param Info a statement parameters.
-  @return a new CallableStatement object containing the
-    pre-compiled SQL statement
-}
 {$IFDEF FPC} {$PUSH}
-  {$WARN 5024 off : Parameter "Name,Info" not used}
+  {$WARN 5024 off : Parameter "Name,Params" not used}
   {$WARN 5033 off : Function result does not seem to be set}
 {$ENDIF}
 function TZSQLiteConnection.PrepareCallWithParams(const Name: String;
-  Info: TStrings): IZCallableStatement;
+  Params: TStrings): IZCallableStatement;
 begin
   Raise EZUnsupportedException.Create(SUnsupportedOperation);
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
-{**
-  Creates a <code>PreparedStatement</code> object for sending
-  parameterized SQL statements to the database.
-
-  A SQL statement with or without IN parameters can be
-  pre-compiled and stored in a PreparedStatement object. This
-  object can then be used to efficiently execute this statement
-  multiple times.
-
-  <P><B>Note:</B> This method is optimized for handling
-  parametric SQL statements that benefit from precompilation. If
-  the driver supports precompilation,
-  the method <code>prepareStatement</code> will send
-  the statement to the database for precompilation. Some drivers
-  may not support precompilation. In this case, the statement may
-  not be sent to the database until the <code>PreparedStatement</code> is
-  executed.  This has no direct effect on users; however, it does
-  affect which method throws certain SQLExceptions.
-
-  Result sets created using the returned PreparedStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param sql a SQL statement that may contain one or more '?' IN
-    parameter placeholders
-  @param Info a statement parameters.
-  @return a new PreparedStatement object containing the
-    pre-compiled statement
-}
 function TZSQLiteConnection.PrepareStatementWithParams(const SQL: string;
   Info: TStrings): IZPreparedStatement;
 begin
@@ -450,20 +544,6 @@ begin
   Result := TZSQLiteCAPIPreparedStatement.Create(Self, SQL, Info);
 end;
 
-{**
-  Creates a <code>Statement</code> object for sending
-  SQL statements to the database.
-  SQL statements without parameters are normally
-  executed using Statement objects. If the same SQL statement
-  is executed many times, it is more efficient to use a
-  <code>PreparedStatement</code> object.
-  <P>
-  Result sets created using the returned <code>Statement</code>
-  object will by default have forward-only type and read-only concurrency.
-
-  @param Info a statement parameters.
-  @return a new Statement object
-}
 function TZSQLiteConnection.CreateStatementWithParams(
   Info: TStrings): IZStatement;
 begin
@@ -473,9 +553,9 @@ begin
   Result := TZSQLiteStatement.Create(Self, Info);
 end;
 
-function TZSQLiteConnection.enable_load_extension(OnOff: Integer): Integer;
+function TZSQLiteConnection.enable_load_extension(OnOff: Boolean): Integer;
 begin
-  Result := FPlainDriver.sqlite3_enable_load_extension(FHandle, OnOff);
+  Result := FPlainDriver.sqlite3_enable_load_extension(FHandle, Ord(OnOff));
 end;
 
 {$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "PZTail" does not seem to be initialized} {$ENDIF}
@@ -671,13 +751,6 @@ begin
   CheckCharEncoding('UTF-8');
 end;
 
-{**
-  Makes all changes made since the previous
-  commit/rollback permanent and releases any database locks
-  currently held by the Connection. This method should be
-  used only when auto-commit mode has been disabled.
-  @see #setAutoCommit
-}
 procedure TZSQLiteConnection.Commit;
 var S: RawByteString;
 begin
@@ -697,13 +770,6 @@ begin
   end
 end;
 
-{**
-  Drops all changes made since the previous
-  commit/rollback and releases any database locks currently held
-  by this Connection. This method should be used only when auto-
-  commit has been disabled.
-  @see #setAutoCommit
-}
 procedure TZSQLiteConnection.Rollback;
 var S: RawByteString;
 begin
@@ -810,19 +876,11 @@ begin
   end;
 end;
 
-{**
-  Sets a new selected catalog name.
-  @param Catalog a selected catalog name.
-}
 procedure TZSQLiteConnection.SetCatalog(const Catalog: string);
 begin
   FCatalog := Catalog;
 end;
 
-{**
-  Sets a new transact isolation level.
-  @param Level a new transact isolation level.
-}
 procedure TZSQLiteConnection.SetTransactionIsolation(
   Level: TZTransactIsolationLevel);
 begin

@@ -209,7 +209,7 @@ begin
   vtInteger      :Result:=IntToRaw(Value.VInteger);
   vtUInteger     :Result:=IntToRaw(Value.VUInteger);
   vtDouble       :Result:=ZSysUtils.FloatToSqlRaw(Value.VDouble);
-  vtCurrency     :Result:=ZFastCode.CurrToRaw(Value.VCurrency);
+  vtCurrency     :Result:=ZFastCode.CurrToRaw(Value.VCurrency,'.');
   vtBigDecimal   :Result:=ZSysUtils.BcdToSQLRaw(Value.VBigDecimal);
   vtGUID         :Result:=GUIDToRaw(Value.VGUID,[guidWithBrackets]);
   vtTime         :Result:=_TimeToRaw(Value);
@@ -287,7 +287,7 @@ begin
   vtInteger      :Result:=IntToUnicode(Value.VInteger);
   vtUInteger     :Result:=IntToUnicode(Value.VUInteger);
   vtDouble       :Result:=ZSysUtils.FloatToSqlUnicode(Value.VDouble);
-  vtCurrency     :Result:=ZFastCode.CurrToUnicode(Value.VCurrency);
+  vtCurrency     :Result:=ZFastCode.CurrToUnicode(Value.VCurrency,'.');
   vtBigDecimal   :Result:=ZSysUtils.BcdToSQLUni(Value.VBigDecimal);
   vtGUID         :Result:=GUIDToUnicode(Value.VGUID,[guidWithBrackets]);
   vtTime         :Result:=_TimeToUni(Value);

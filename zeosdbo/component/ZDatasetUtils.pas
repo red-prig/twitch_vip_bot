@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -61,6 +61,7 @@ uses
   {$IFNDEF NO_UNIT_CONTNRS}Contnrs,{$ELSE}ZClasses,{$ENDIF}
   {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings, {$ENDIF}
   {$IFDEF MSWINDOWS}Windows, {$ENDIF}
+  {$IFNDEF DISABLE_ZPARAM}ZDatasetParam,{$ENDIF}
   ZDbcIntfs, ZDbcCache, ZCompatibility, ZExpression, ZVariant, ZTokenizer,
   ZDbcResultSetMetadata, ZSelectSchema;
 
@@ -130,7 +131,7 @@ function ConvertFieldToColumnInfo(Field: TField; StringFieldCodePage: Word): TZC
   @param OnlyDataFields <code>True</code> if only data fields selected.
 }
 function DefineFields(DataSet: TDataset; const FieldNames: string;
-  out OnlyDataFields: Boolean; const Tokenizer: IZTokenizer): TObjectDynArray;
+  out OnlyDataFields: Boolean; const Tokenizer: IZTokenizer): TZFieldsLookUpDynArray;
 
 {**
   Defins a indices of filter fields.
@@ -138,8 +139,8 @@ function DefineFields(DataSet: TDataset; const FieldNames: string;
   @param Expression a expression calculator.
   @returns an array with field object references.
 }
-function DefineFilterFields(DataSet: TDataset;
-  const Expression: IZExpression): TObjectDynArray;
+function DefineFilterFields(DataSet: TDataset; const Expression: IZExpression;
+  const FieldsLookupTable: TZFieldsLookUpDynArray): TZFieldsLookUpDynArray;
 
 {**
   Retrieves a set of specified field values.
@@ -148,7 +149,7 @@ function DefineFilterFields(DataSet: TDataset;
   @param ResultValues a container for result values.
   @return an array with field values.
 }
-procedure RetrieveDataFieldsFromResultSet(const FieldRefs: TObjectDynArray;
+procedure RetrieveDataFieldsFromResultSet(const FieldRefs: TZFieldsLookUpDynArray;
   const ResultSet: IZResultSet; const ResultValues: TZVariantDynArray);
 
 {**
@@ -168,7 +169,7 @@ procedure FillDataFieldsFromSourceLookup(const FieldIndices: TZFieldsLookUpDynAr
   @param ResultSet an initial result set object.
   @param Variables a list of variables.
 }
-procedure CopyDataFieldsToVars(const Fields: TObjectDynArray;
+procedure CopyDataFieldsToVars(const Fields: TZFieldsLookUpDynArray;
   const ResultSet: IZResultSet; const Variables: IZVariablesList);
 
 {**
@@ -179,7 +180,7 @@ procedure CopyDataFieldsToVars(const Fields: TObjectDynArray;
   @param PartialKey <code>True</code> if values should be started with the keys.
   @param CaseInsensitive <code>True</code> if keys are case insensitive.
 }
-procedure PrepareValuesForComparison(const FieldRefs: TObjectDynArray;
+procedure PrepareValuesForComparison(const FieldRefs: TZFieldsLookUpDynArray;
   const DecodedKeyValues: TZVariantDynArray; const ResultSet: IZResultSet;
   PartialKey: Boolean; CaseInsensitive: Boolean; const VariantManager: IZClientVariantManager);
 
@@ -203,7 +204,7 @@ function CompareDataFields(const KeyValues, RowValues: TZVariantDynArray;
   @param CaseInsensitive <code>True</code> if keys are case insensitive.
   @return <code> if values are equal.
 }
-function CompareFieldsFromResultSet(const FieldRefs: TObjectDynArray;
+function CompareFieldsFromResultSet(const FieldRefs: TZFieldsLookUpDynArray;
   const KeyValues: TZVariantDynArray; const ResultSet: IZResultSet; PartialKey: Boolean;
   CaseInsensitive: Boolean; const VariantManager: IZClientVariantManager): Boolean;
 
@@ -222,7 +223,7 @@ function DefineKeyFields(Fields: TFields; const IdConverter: IZIdentifierConvert
   @param Field2 the second field object.
 }
 function CompareKeyFields(Field1: TField; const ResultSet: IZResultSet;
-  Field2: TField): Boolean;
+  Field2: TField; const FieldsLookupTable: TZFieldsLookUpDynArray): Boolean;
 
 {**
   Defins a indices and directions for sorted fields.
@@ -234,7 +235,7 @@ function CompareKeyFields(Field1: TField; const ResultSet: IZResultSet;
   @param OnlyDataFields <code>True</code> if only data fields selected.
 }
 procedure DefineSortedFields(DataSet: TDataset;
-  const SortedFields: string; out FieldRefs: TObjectDynArray;
+  const SortedFields: string; out FieldRefs: TZFieldsLookUpDynArray;
   out CompareKinds: TComparisonKindArray; out OnlyDataFields: Boolean);
 
 {**
@@ -253,7 +254,7 @@ function DefineFieldIndex(const FieldsLookupTable: TZFieldsLookUpDynArray;
   @returns an array with original fields indices.
 }
 function DefineFieldIndices(const FieldsLookupTable: TZFieldsLookUpDynArray;
-  const FieldRefs: TObjectDynArray): TZFieldsLookUpDynArray;
+  const FieldRefs: TZFieldsLookUpDynArray): TZFieldsLookUpDynArray;
 
 {**
   Splits up a qualified object name into pieces. Catalog, schema
@@ -277,8 +278,13 @@ function GetTransliterateCodePage(ControlsCodePage: TZControlsCodePage): Word; {
   @param Statement the PrepredStatement where the values have been assigned
   @param Param the TParam where the value is assigned from
 }
+{$IFNDEF DISABLE_ZPARAM}
+procedure SetStatementParam(Index: Integer;
+  const Statement: IZPreparedStatement; Param: TZParam);
+{$ELSE}
 procedure SetStatementParam(Index: Integer;
   const Statement: IZPreparedStatement; Param: TParam);
+{$ENDIF}
 
 const ProcColDbcToDatasetType: array[TZProcedureColumnType] of TParamType =
   (ptUnknown{pctUnknown}, ptInput{pctIn}, ptInputOutput{pctInOut},
@@ -338,7 +344,8 @@ implementation
 uses
   FmtBCD, Variants,
   ZFastCode, ZMessages, ZGenericSqlToken, ZAbstractRODataset,
-  ZSysUtils, ZDbcResultSet, ZDbcUtils, ZEncoding;
+  ZSysUtils, {$IFDEF DISABLE_ZPARAM}ZDbcResultSet, {$ENDIF}ZDbcUtils, ZEncoding;
+
 
 {**
   Converts DBC Field Type to TDataset Field Type.
@@ -410,7 +417,7 @@ begin
         then Result := {$IFDEF WITH_WIDEMEMO}ftWideMemo{$ELSE}ftWideString{$ENDIF}
         else Result := ftMemo;
     {$IFDEF WITH_FTDATASETSUPPORT}
-    stDataSet:
+    stResultSet:
       Result := ftDataSet;
     {$ENDIF}
     stArray:
@@ -492,7 +499,7 @@ begin
     {$ENDIF}
     {$IFDEF WITH_FTDATASETSUPPORT}
     ftDataSet:
-      Result := stDataSet;
+      Result := stResultSet;
     {$ENDIF}
     ftArray:
       Result := stArray;
@@ -547,6 +554,7 @@ begin
   Result.DefaultExpression := Field.DefaultExpression;
 end;
 
+type TZDataSet = class(TZAbstractRODataset);
 {**
   Defines fields indices for the specified dataset.
   @param DataSet a dataset object.
@@ -554,13 +562,14 @@ end;
   @param OnlyDataFields <code>True</code> if only data fields selected.
 }
 function DefineFields(DataSet: TDataset; const FieldNames: string;
-  out OnlyDataFields: Boolean; const Tokenizer: IZTokenizer): TObjectDynArray;
+  out OnlyDataFields: Boolean; const Tokenizer: IZTokenizer): TZFieldsLookUpDynArray;
 var
-  I, TokenValueInt: Integer;
+  I, J, TokenValueInt: Integer;
   Tokens: TZTokenList;
   Token: PZToken;
   Field: TField;
   FieldCount: Integer;
+  FieldsLookupTable: TZFieldsLookUpDynArray;
 begin
   OnlyDataFields := True;
   FieldCount := 0;
@@ -568,6 +577,7 @@ begin
   SetLength(Result, FieldCount);
   Tokens := Tokenizer.TokenizeBufferToList(FieldNames,
     [toSkipEOF, toSkipWhitespaces, toUnifyNumbers]);
+  FieldsLookupTable := TZDataSet(DataSet as TZAbstractRODataset).FieldsLookupTable;
 
   try
     for I := 0 to Tokens.Count - 1 do
@@ -593,12 +603,21 @@ begin
           raise EZDatabaseError.CreateFmt(SIncorrectSymbol, [TokenAsString(Token^)]);
       end;
 
-      if Field <> nil then
-      begin
+      if Field <> nil then begin
         OnlyDataFields := OnlyDataFields and (Field.FieldKind = fkData);
+        SetLength(Result, FieldCount+1);
+        if FieldsLookupTable = nil then begin
+          Result[FieldCount].Field := Field;
+          if Field.FieldKind = fkData
+          then Result[FieldCount].DataSource := dltResultSet
+          else Result[FieldCount].DataSource := dltAccessor;
+          Result[FieldCount].Index := FieldCount {$IFNDEF GENERIC_INDEX}+1{$ENDIF}
+        end else for J := 0 to High(FieldsLookupTable) do
+          if FieldsLookupTable[j].Field = Pointer(Field) then begin
+            Result[FieldCount] := FieldsLookupTable[j];
+            Break;
+          end;
         Inc(FieldCount);
-        SetLength(Result, FieldCount);
-        Result[FieldCount - 1] := Field;
       end;
     end;
   finally
@@ -612,10 +631,10 @@ end;
   @param Expression a expression calculator.
   @returns an array with field object references.
 }
-function DefineFilterFields(DataSet: TDataset;
-  const Expression: IZExpression): TObjectDynArray;
+function DefineFilterFields(DataSet: TDataset; const Expression: IZExpression;
+  const FieldsLookupTable: TZFieldsLookUpDynArray): TZFieldsLookUpDynArray;
 var
-  I: Integer;
+  I, J: Integer;
   Current: TField;
 begin
   result := nil;
@@ -623,10 +642,14 @@ begin
     SetLength(Result, Expression.DefaultVariables.Count);
     for I := 0 to Expression.DefaultVariables.Count - 1 do begin
       Current := DataSet.FindField(Expression.DefaultVariables.Names[I]);
-      if Current <> nil then
-        Result[I] := Current
-      else
-        Result[I] := nil;
+      if Current <> nil then begin
+        for J := 0 to High(FieldsLookupTable) do
+          if FieldsLookupTable[j].Field = Pointer(Current) then begin
+            Result[i] := FieldsLookupTable[j];
+            Break;
+          end;
+      end else
+        Result[I].Field := nil;
     end;
   end;
 end;
@@ -638,18 +661,17 @@ end;
   @param ResultValues a container for result values.
   @return an array with field values.
 }
-procedure RetrieveDataFieldsFromResultSet(const FieldRefs: TObjectDynArray;
+procedure RetrieveDataFieldsFromResultSet(const FieldRefs: TZFieldsLookUpDynArray;
   const ResultSet: IZResultSet; const ResultValues: TZVariantDynArray);
 var
   I, ColumnIndex: Integer;
   Metadata: IZResultSetMetaData;
 begin
   Metadata := ResultSet.GetMetadata;
-  for I := 0 to High(FieldRefs) do
-  begin
-    ColumnIndex := TField(FieldRefs[I]).FieldNo{$IFDEF GENERIC_INDEX}-1{$ENDIF};
-    if ColumnIndex >= 0 then begin
-      case TField(FieldRefs[I]).DataType of
+  for I := 0 to High(FieldRefs) do begin
+    ColumnIndex := FieldRefs[i].Index;
+    if FieldRefs[i].DataSource = dltResultSet then begin
+      case TField(FieldRefs[I].Field).DataType of
         ftString:
           ResultValues[I] := EncodeString(ResultSet.GetString(ColumnIndex));
         ftBoolean:
@@ -779,68 +801,70 @@ end;
   @param ResultSet an initial result set object.
   @param Variables a list of variables.
 }
-procedure CopyDataFieldsToVars(const Fields: TObjectDynArray;
+procedure CopyDataFieldsToVars(const Fields: TZFieldsLookUpDynArray;
   const ResultSet: IZResultSet; const Variables: IZVariablesList);
 var
   I, ColumnIndex: Integer;
   TinyBuffer: array[Byte] of Byte;
   procedure CopyFromField;
   begin
-    if TField(Fields[I]).IsNull then
+    if TField(Fields[I].Field).IsNull then
       Variables.Values[I] := NullVariant
-    else case TField(Fields[I]).DataType of
+    else case TField(Fields[I].Field).DataType of
       ftBoolean:
-        Variables.Values[I] := EncodeBoolean(TField(Fields[I]).AsBoolean);
+        Variables.Values[I] := EncodeBoolean(TField(Fields[I].Field).AsBoolean);
       {$IFDEF WITH_FTBYTE}ftByte,{$ENDIF}{$IFDEF WITH_FTSHORTINT}ftShortInt,{$ENDIF}
       ftWord, ftSmallInt, ftInteger, ftAutoInc:
-        Variables.Values[I] := EncodeInteger(TField(Fields[I]).AsInteger);
+        Variables.Values[I] := EncodeInteger(TField(Fields[I].Field).AsInteger);
       {$IFDEF WITH_FTSINGLE}
       ftSingle,
       {$ENDIF}
       ftCurrency,
       ftFloat:
-        Variables.Values[I] := EncodeDouble(TField(Fields[I]).AsFloat);
+        Variables.Values[I] := EncodeDouble(TField(Fields[I].Field).AsFloat);
       {$IFDEF WITH_FTEXTENDED}
       ftExtended:
-        Variables.Values[I] := EncodeDouble(TField(Fields[I]).AsExtended);
+        Variables.Values[I] := EncodeDouble(TField(Fields[I].Field).{$IFDEF WITH_TFIELD_ASEXTENDED}AsExtended{$ELSE}AsFloat{$ENDIF});
       {$ENDIF}
-      {$IFDEF WITH_FTLONGWORD}ftLongword,{$ENDIF}ftLargeInt:
-        Variables.Values[I] := EncodeInteger(ResultSet.GetLong(ColumnIndex));
+      {$IF defined(WITH_FTLONGWORD) and declared(TLongWordField)}
+      ftLongword: Variables.Values[I] := EncodeUInteger(TLongWordField(Fields[I].Field).Value);
+      {$IFEND}
+      ftLargeInt: Variables.Values[I] := EncodeInteger({$IFDEF TFIELD_HAS_ASLARGEINT}TField{$ELSE}TLargeIntField{$ENDIF}(Fields[I].Field).AsLargeInt);
       ftBCD:
         Variables.Values[I] := EncodeCurrency(ResultSet.GetCurrency(ColumnIndex));
-      ftFmtBCD: Variables.Values[I] := EncodeBigDecimal(TField(Fields[I]).AsBCD);
+      ftFmtBCD: Variables.Values[I] := EncodeBigDecimal(TField(Fields[I].Field).AsBCD);
       ftDate, ftTime, ftDateTime:
-        Variables.Values[I] := EncodeDateTime(TField(Fields[I]).AsDateTime);
+        Variables.Values[I] := EncodeDateTime(TField(Fields[I].Field).AsDateTime);
       //ftString, ftMemo:
         //Variables.Values[I] := EncodeString(TField(Fields[I]).AsString);
     {$IFNDEF UNICODE}
       {$IFDEF WITH_VIRTUAL_TFIELD_ASWIDESTRING}
       ftWidestring, ftWideMemo:
-        Variables.Values[I] := EncodeUnicodeString(TField(Fields[I]).AsWideString);
+        Variables.Values[I] := EncodeUnicodeString(TField(Fields[I].Field).AsWideString);
       {$ELSE}
-      ftWidestring: Variables.Values[I] := EncodeUnicodeString(TWideStringField(Fields[I]).Value);
+      ftWidestring: Variables.Values[I] := EncodeUnicodeString(TWideStringField(Fields[I].Field).Value);
       {$ENDIF}
     {$ENDIF}
       ftBytes, ftVarBytes:
         {$IFDEF TFIELD_HAS_ASBYTES}
-        Variables.Values[I] := EncodeBytes(TField(Fields[I]).AsBytes);
+        Variables.Values[I] := EncodeBytes(TField(Fields[I].Field).AsBytes);
         {$ELSE}
-        Variables.Values[I] := EncodeBytes(VarToBytes(TField(Fields[I]).AsVariant));
+        Variables.Values[I] := EncodeBytes(VarToBytes(TField(Fields[I].Field).AsVariant));
         {$ENDIF}
       ftArray, ftDataSet: raise EZDatabaseError.Create(SDataTypeDoesNotSupported)
-      else Variables.Values[I] := EncodeString(TField(Fields[I]).AsString);
+      else Variables.Values[I] := EncodeString(TField(Fields[I].Field).AsString);
     end;
   end;
 begin
   for I := 0 to High(Fields) do begin
-    if Fields[I] = nil then
+    if Fields[I].Field = nil then
       Continue;
 
-    ColumnIndex := TField(Fields[I]).FieldNo {$IFDEF GENERIC_INDEX}-1{$ENDIF};
-    if ColumnIndex = -1 then
+    ColumnIndex := Fields[I].Index;
+    if Fields[I].DataSource = dltAccessor then
       CopyFromField
     else if not ResultSet.IsNull(ColumnIndex) then
-      case TField(Fields[I]).DataType of
+      case TField(Fields[I].Field).DataType of
         ftBoolean:
           Variables.Values[I] := EncodeBoolean(ResultSet.GetBoolean(ColumnIndex));
         {$IFDEF WITH_FTBYTE}ftByte,{$ENDIF}{$IFDEF WITH_FTSHORTINT}ftShortInt,{$ENDIF}
@@ -982,23 +1006,19 @@ end;
   @param PartialKey <code>True</code> if values should be started with the keys.
   @param CaseInsensitive <code>True</code> if keys are case insensitive.
 }
-procedure PrepareValuesForComparison(const FieldRefs: TObjectDynArray;
+procedure PrepareValuesForComparison(const FieldRefs: TZFieldsLookUpDynArray;
   const DecodedKeyValues: TZVariantDynArray; const ResultSet: IZResultSet;
   PartialKey: Boolean; CaseInsensitive: Boolean;
   const VariantManager: IZClientVariantManager);
 var
   I: Integer;
-  Current: TField;
   CurrentType : TZSQLType;
 begin
   { Preprocesses cycle variables. }
-  for I := 0 to High(FieldRefs) do
-  begin
-    Current := TField(FieldRefs[I]);
-
+  for I := 0 to High(FieldRefs) do begin
     if DecodedKeyValues[I].VType = vtNull then
       Continue;
-    CurrentType := ResultSet.GetMetadata.GetColumnType(Current.FieldNo{$IFDEF GENERIC_INDEX} -1{$ENDIF});
+    CurrentType := ResultSet.GetMetadata.GetColumnType(FieldRefs[I].Index);
 
     if PartialKey then begin
       {$IFNDEF NEXTGEN}
@@ -1072,7 +1092,7 @@ end;
   @param CaseInsensitive <code>True</code> if keys are case insensitive.
   @return <code> if values are equal.
 }
-function CompareFieldsFromResultSet(const FieldRefs: TObjectDynArray;
+function CompareFieldsFromResultSet(const FieldRefs: TZFieldsLookUpDynArray;
   const KeyValues: TZVariantDynArray; const ResultSet: IZResultSet; PartialKey: Boolean;
   CaseInsensitive: Boolean; const VariantManager: IZClientVariantManager): Boolean;
 var
@@ -1097,7 +1117,7 @@ begin
   Result := True;
   for I := 0 to High(KeyValues) do
   begin
-    ColumnIndex := TField(FieldRefs[I]).FieldNo{$IFDEF GENERIC_INDEX}-1{$ENDIF};
+    ColumnIndex := FieldRefs[I].Index;
 
     if KeyValues[I].VType = vtNull then begin
       Result := ResultSet.IsNull(ColumnIndex);
@@ -1238,7 +1258,7 @@ begin
   begin
     if (Fields[I].FieldKind = fkData)
       and not (Fields[I].DataType in [ftBlob, ftGraphic, ftMemo, ftBytes, ftVarBytes {$IFDEF WITH_WIDEMEMO}, ftWideMemo{$ENDIF}]) then
-      AppendSepString(Result, IdConverter.Quote(Fields[I].FieldName), ',');
+      AppendSepString(Result, IdConverter.Quote(Fields[I].FieldName, iqColumn), ',');
   end;
 end;
 
@@ -1253,63 +1273,66 @@ end;
   @param Field2 the second field object.
 }
 function CompareKeyFields(Field1: TField; const ResultSet: IZResultSet;
-  Field2: TField): Boolean;
+  Field2: TField; const FieldsLookupTable: TZFieldsLookUpDynArray): Boolean;
 var
-  ColumnIndex: Integer;
+  I, ColumnIndex: Integer;
   BCD1: TBCD;
   BCD2: TBCD;
 begin
   Result := False;
-  if Field1.FieldNo >= 1 then
-  begin
-    ColumnIndex := Field1.FieldNo{$IFDEF GENERIC_INDEX}-1{$ENDIF};
-    case Field1.DataType of
-      ftBoolean:
-        Result := ResultSet.GetBoolean(ColumnIndex) = Field2.AsBoolean;
-      {$IFDEF WITH_FTBYTE}ftByte,{$ENDIF}
-      {$IFDEF WITH_FTSHORTINT}ftShortInt,{$ENDIF}
-      ftSmallInt, ftInteger, ftAutoInc:
-        Result := ResultSet.GetInt(ColumnIndex) = Field2.AsInteger;
-      {$IFDEF WITH_FTSINGLE}
-      ftSingle:
-        Result := Abs(ResultSet.GetFloat(ColumnIndex)
-          - Field2.AsSingle) < FLOAT_COMPARE_PRECISION_SINGLE;
-      {$ENDIF}
-      ftFloat:
-        begin
-          Result := Abs(ResultSet.GetDouble(ColumnIndex)
-            - Field2.AsFloat) < FLOAT_COMPARE_PRECISION;
-        end;
-      {$IFDEF WITH_FTEXTENDED}
-      ftExtended:
-          Result := Abs(ResultSet.GetDouble(ColumnIndex)
-            - Field2.AsExtended) < FLOAT_COMPARE_PRECISION;
-      {$ENDIF}
-      {$IFDEF WITH_FTLONGWORD}
-      ftLongword:
-        Result := ResultSet.GetULong(ColumnIndex)
-          = Field2.{$IFDEF TFIELD_HAS_ASLARGEINT}AsLargeInt{$ELSE}AsInteger{$ENDIF};
-      {$ENDIF}
-      ftLargeInt:
-          if Field2 is TLargeIntField
-          then Result := ResultSet.GetLong(ColumnIndex) = TLargeIntField(Field2).AsLargeInt
-          else Result := ResultSet.GetInt(ColumnIndex) = Field2.AsInteger;
-      ftFmtBCD: begin
-          ResultSet.GetBigDecimal(ColumnIndex, BCD2);
-          BCD1 := Field2.AsBCD;
-          Result := ZBCDCompare(BCD1, BCD2) = 0;
-        end;
-      ftBCD: Result := ResultSet.GetCurrency(ColumnIndex) = TBCDField(Field2).AsCurrency;
-      ftCurrency: Result := (ResultSet.GetDouble(ColumnIndex) - Field2.AsFloat) < FLOAT_COMPARE_PRECISION;
-      ftDate: Result := ResultSet.GetDate(ColumnIndex) = Field2.AsDateTime;
-      ftTime: Result := ResultSet.GetTime(ColumnIndex) = Field2.AsDateTime;
-      ftDateTime: Result := ResultSet.GetTimestamp(ColumnIndex) = Field2.AsDateTime;
-      ftWideString:
-        Result := ResultSet.GetUnicodeString(ColumnIndex) =
-          Field2.{$IFDEF WITH_ASVARIANT}AsVariant{$ELSE}AsWideString{$ENDIF};
-      else //includes ftGUID
-        Result := ResultSet.GetString(ColumnIndex) = Field2.AsString;
+  ColumnIndex := InvalidDbcIndex;
+  for I := 0 to High(FieldsLookupTable) do
+    if (FieldsLookupTable[I].Field = Pointer(Field1)) and (FieldsLookupTable[I].DataSource = dltResultSet) then begin
+      ColumnIndex := FieldsLookupTable[I].Index;
+      Break;
     end;
+  if ColumnIndex = InvalidDbcIndex then Exit;
+  case Field1.DataType of
+    ftBoolean:
+      Result := ResultSet.GetBoolean(ColumnIndex) = Field2.AsBoolean;
+    {$IFDEF WITH_FTBYTE}ftByte,{$ENDIF}
+    {$IFDEF WITH_FTSHORTINT}ftShortInt,{$ENDIF}
+    ftSmallInt, ftInteger, ftAutoInc:
+      Result := ResultSet.GetInt(ColumnIndex) = Field2.AsInteger;
+    {$IFDEF WITH_FTSINGLE}
+    ftSingle:
+      Result := Abs(ResultSet.GetFloat(ColumnIndex)
+        - Field2.AsSingle) < FLOAT_COMPARE_PRECISION_SINGLE;
+    {$ENDIF}
+    ftFloat:
+      begin
+        Result := Abs(ResultSet.GetDouble(ColumnIndex)
+          - Field2.AsFloat) < FLOAT_COMPARE_PRECISION;
+      end;
+    {$IFDEF WITH_FTEXTENDED}
+    ftExtended:
+        Result := Abs(ResultSet.GetDouble(ColumnIndex)
+          - Field2.{$IFDEF WITH_TFIELD_ASEXTENDED}AsExtended{$ELSE}AsFloat{$ENDIF}) < FLOAT_COMPARE_PRECISION;
+    {$ENDIF}
+    {$IFDEF WITH_FTLONGWORD}
+    ftLongword:
+      Result := ResultSet.GetULong(ColumnIndex)
+        = Field2.{$IFDEF TFIELD_HAS_ASLARGEINT}AsLargeInt{$ELSE}AsInteger{$ENDIF};
+    {$ENDIF}
+    ftLargeInt:
+        if Field2 is TLargeIntField
+        then Result := ResultSet.GetLong(ColumnIndex) = TLargeIntField(Field2).AsLargeInt
+        else Result := ResultSet.GetInt(ColumnIndex) = Field2.AsInteger;
+    ftFmtBCD: begin
+        ResultSet.GetBigDecimal(ColumnIndex, BCD2);
+        BCD1 := Field2.AsBCD;
+        Result := ZBCDCompare(BCD1, BCD2) = 0;
+      end;
+    ftBCD: Result := ResultSet.GetCurrency(ColumnIndex) = TBCDField(Field2).AsCurrency;
+    ftCurrency: Result := (ResultSet.GetDouble(ColumnIndex) - Field2.AsFloat) < FLOAT_COMPARE_PRECISION;
+    ftDate: Result := ResultSet.GetDate(ColumnIndex) = Field2.AsDateTime;
+    ftTime: Result := ResultSet.GetTime(ColumnIndex) = Field2.AsDateTime;
+    ftDateTime: Result := ResultSet.GetTimestamp(ColumnIndex) = Field2.AsDateTime;
+    ftWideString:
+      Result := ResultSet.GetUnicodeString(ColumnIndex) =
+        Field2.{$IFDEF WITH_ASVARIANT}AsVariant{$ELSE}AsWideString{$ENDIF};
+    else //includes ftGUID
+      Result := ResultSet.GetString(ColumnIndex) = Field2.AsString;
   end;
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
@@ -1324,14 +1347,15 @@ end;
   @param OnlyDataFields <code>True</code> if only data fields selected.
 }
 procedure DefineSortedFields(DataSet: TDataset;
-  const SortedFields: string; out FieldRefs: TObjectDynArray;
+  const SortedFields: string; out FieldRefs: TZFieldsLookUpDynArray;
   out CompareKinds: TComparisonKindArray; out OnlyDataFields: Boolean);
 var
-  I, TokenValueInt: Integer;
+  I, J, TokenValueInt: Integer;
   Tokens: TZTokenList;
   Field: TField;
   FieldCount: Integer;
   PrevTokenWasField: Boolean;
+  FieldsLookupTable: TZFieldsLookUpDynArray;
 begin
   OnlyDataFields := True;
   FieldCount := 0;
@@ -1342,7 +1366,7 @@ begin
   SetLength(CompareKinds, FieldCount);
   Tokens := CommonTokenizer.TokenizeBufferToList(SortedFields,
     [toSkipEOF, toSkipWhitespaces, toUnifyNumbers]);
-
+  FieldsLookupTable := TZDataSet(DataSet as TZAbstractRODataset).FieldsLookupTable;
   try
     for I := 0 to Tokens.Count - 1 do
     begin
@@ -1386,13 +1410,22 @@ begin
       end;
 
       PrevTokenWasField := (Field <> nil);
-      if Field <> nil then
-      begin
+      if Field <> nil then begin
         OnlyDataFields := OnlyDataFields and (Field.FieldKind = fkData);
+        SetLength(FieldRefs, FieldCount+1);
+        SetLength(CompareKinds, FieldCount+1);
+        if FieldsLookupTable = nil then begin
+          FieldRefs[FieldCount].Field := Pointer(Field);
+          if Field.FieldKind = fkData
+          then FieldRefs[FieldCount].DataSource := dltResultSet
+          else FieldRefs[FieldCount].DataSource := dltAccessor;
+          FieldRefs[FieldCount].Index := FieldCount{$IFNDEF GENERIC_INDEX}+1{$ENDIF};
+        end else for J := 0 to High(FieldsLookupTable) do
+          if FieldsLookupTable[j].Field = Pointer(Field) then begin
+            FieldRefs[FieldCount] := FieldsLookupTable[j];
+            Break;
+          end;
         Inc(FieldCount);
-        SetLength(FieldRefs, FieldCount);
-        SetLength(CompareKinds, FieldCount);
-        FieldRefs[FieldCount - 1] := Field;
         CompareKinds[FieldCount - 1] := ckAscending;
       end;
     end;
@@ -1428,7 +1461,7 @@ end;
   @returns an array with original fields indices.
 }
 function DefineFieldIndices(const FieldsLookupTable: TZFieldsLookUpDynArray;
-  const FieldRefs: TObjectDynArray): TZFieldsLookUpDynArray;
+  const FieldRefs: TZFieldsLookUpDynArray): TZFieldsLookUpDynArray;
 var I, J: Integer;
 begin
   if FieldRefs = nil then begin
@@ -1439,7 +1472,7 @@ begin
   SetLength(Result, Length(FieldRefs));
   for I := 0 to High(Result) do
     for J := 0 to high(FieldsLookupTable) do
-      if FieldsLookupTable[j].Field = TField(FieldRefs[I]) then begin
+      if FieldsLookupTable[j].Field = FieldRefs[I].Field then begin
         Result[i] := FieldsLookupTable[j];
         Break;
       end;
@@ -1641,13 +1674,68 @@ begin
     {$ENDIF}
   end;
 end;
-type THackParam = class(TParam);
+
 {**
   Assigns a Statement value from a TParam
   @param Index the index of Statement.SetXxxx(ColumnIndex, xxx);
   @param Statement the PrepredStatement where the values have been assigned
   @param Param the TParam where the value is assigned from
 }
+{$IFNDEF DISABLE_ZPARAM}
+type TZHackParam = class(TZParam);
+procedure SetStatementParam(Index: Integer;
+  const Statement: IZPreparedStatement; Param: TZParam);
+  function CreateUnknownTypeError: EZDatabaseError;
+  begin
+    Result := EZDatabaseError.Create(SUnKnownParamDataType + ' ('+
+      ZFastCode.IntToStr(Ord(Param.DataType))+')');
+      //GetEnumName(TypeInfo(TFieldType), Ord(Param.DataType))+')'); //using Typinfo results in collission with tFloatType ):
+  end;
+begin
+  if TZHackParam(Param).FArraySize = 0 then
+    if Param.IsNull then
+      Statement.SetNull(Index, TZHackParam(Param).SQLType)
+    else case TZHackParam(Param).FSQLDataType of
+      stBoolean:      Statement.SetBoolean(Index, TZHackParam(Param).FData.pvBool);
+      stByte:         Statement.SetByte(Index, TZHackParam(Param).FData.pvByte);
+      stShort:        Statement.SetShort(Index, TZHackParam(Param).FData.pvShortInt);
+      stWord:         Statement.SetWord(Index, TZHackParam(Param).FData.pvWord);
+      stSmall:        Statement.SetSmall(Index, TZHackParam(Param).FData.pvSmallInt);
+      stInteger:      Statement.SetInt(Index, TZHackParam(Param).FData.pvInteger);
+      stLongWord:     Statement.SetUInt(Index, TZHackParam(Param).FData.pvCardinal);
+      stULong:        Statement.SetULong(Index, TZHackParam(Param).FData.pvUInt64);
+      stLong:         Statement.SetLong(Index, TZHackParam(Param).FData.pvInt64);
+      stFloat:        Statement.SetFloat(Index, TZHackParam(Param).FData.pvSingle);
+      stDouble:       Statement.SetDouble(Index, TZHackParam(Param).FData.pvDouble);
+      stCurrency:     Statement.SetCurrency(Index, TZHackParam(Param).FData.pvCurrency);
+      stBigDecimal:   Statement.SetBigDecimal(Index, TZHackParam(Param).FData.pvBCD);
+      stDate:         Statement.SetDate(Index, TZHackParam(Param).FData.pvDate);
+      stTime:         Statement.SetTime(Index, TZHackParam(Param).FData.pvTime);
+      stTimestamp:    Statement.SetTimestamp(Index, TZHackParam(Param).FData.pvTimeStamp);
+      stGUID:         Statement.SetGuid(Index, TZHackParam(Param).FData.pvGUID);
+      stString:       if TZHackParam(Param).VariantType = vtUTF8String then
+                        Statement.SetUTF8String(Index, UTF8String(TZHackParam(Param).FData.pvPointer))
+                      {$IFNDEF NO_ANSISTRING}
+                      else if TZHackParam(Param).VariantType = vtAnsiString then
+                        Statement.SetAnsiString(Index, AnsiString(TZHackParam(Param).FData.pvPointer))
+                      {$ENDIF}
+                      else Statement.SetRawByteString(Index, RawByteString(TZHackParam(Param).FData.pvPointer));
+      stUnicodeString:Statement.SetUnicodeString(Index, UnicodeString(TZHackParam(Param).FData.pvPointer));
+      stBytes:        Statement.SetBytes(Index, TBytes(TZHackParam(Param).FData.pvPointer));
+      stAsciiStream:  Statement.SetBlob(Index, stAsciiStream, IZClob(TZHackParam(Param).FData.pvPointer));
+      stUnicodeStream:Statement.SetBlob(Index, stUnicodeStream, IZClob(TZHackParam(Param).FData.pvPointer));
+      stBinaryStream: Statement.SetBlob(Index, stBinaryStream, IZBlob(TZHackParam(Param).FData.pvPointer));
+      else raise CreateUnknownTypeError;
+    end
+  else begin
+    Statement.SetDataArray(Index, TZHackParam(Param).FData.pvDynArray.VArray,
+      TZHackParam(Param).FSQLDataType, TZHackParam(Param).FZVariantType);
+    Statement.SetNullArray(Index, stBoolean,
+      TZHackParam(Param).FData.pvDynArray.VIsNullArray, vtNull);
+  end;
+end;
+{$ELSE !DISABLE_ZPARAM}
+type THackParam = class(TParam);
 procedure SetStatementParam(Index: Integer;
   const Statement: IZPreparedStatement; Param: TParam);
   function CreateUnknownTypeError: EZDatabaseError;
@@ -1709,7 +1797,7 @@ begin
     {$ENDIF}
     {$IFDEF WITH_FTLONGWORD}
     ftLongWord:
-      Statement.SetInt(Index, Integer(Param.AsLongWord));
+      Statement.SetUInt(Index, Param.AsLongWord);
     {$ENDIF}
     ftLargeInt: case TvarData(Param.Value).VType of
         {$IFDEF WITH_VARIANT_UINT64}
@@ -1725,13 +1813,12 @@ begin
         {$ENDIF}
         else Statement.SetLong(Index, {$IFDEF WITH_PARAM_ASLARGEINT}Param.AsLargeInt{$ELSE}StrToInt64(Param.AsString){$ENDIF});
       end;
-    ftBCD:  Statement.SetCurrency(Index, Param.AsBCD);
+    ftBCD:  Statement.SetCurrency(Index, Param.{$IFDEF WITH_PARAM_ASBCD}AsBCD{$ELSE}AsCurrency{$ENDIF});
     ftString, ftFixedChar{$IFDEF WITH_FTWIDESTRING}, ftWideString{$ENDIF}:
       {$IFNDEF UNICODE}
       if (TVarData(Param.Value).VType = varOleStr) {$IFDEF WITH_varUString} or (TVarData(Param.Value).VType = varUString){$ENDIF}
       then Statement.SetUnicodeString(Index, Param.Value)
       else begin
-        {$IFDEF DEBUG}Assert(THackParam(Param).DataSet.InheritsFrom(TZAbstractRODataset), 'Wrong parameter dataset');{$ENDIF}
         ConSettings := TZAbstractRODataset(THackParam(Param).DataSet).Connection.DbcConnection.GetConSettings;
         if ConSettings.ClientCodePage.Encoding = ceUTF16 then begin
           CP := TZAbstractRODataset(THackParam(Param).DataSet).Connection.RawCharacterTransliterateOptions.GetRawTransliterateCodePage(ttParam);
@@ -1776,7 +1863,6 @@ begin
     ftDateTime:
       Statement.SetTimestamp(Index, Param.AsDateTime);
     ftMemo, ftFmtMemo{$IFDEF WITH_WIDEMEMO},ftWideMemo{$ENDIF}: begin
-        {$IFDEF DEBUG}Assert(THackParam(Param).DataSet.InheritsFrom(TZAbstractRODataset), 'Wrong parameter dataset');{$ENDIF}
         ConSettings := TZAbstractRODataset(THackParam(Param).DataSet).Connection.DbcConnection.GetConSettings;
         case TvarData(Param.Value).VType of //it's worth it checking the type i.e. Encodings
           {$IFDEF WITH_varUString}varUString,{$ENDIF}
@@ -1837,6 +1923,7 @@ begin
       raise CreateUnknownTypeError;
   end;
 end;
+{$ENDIF DISABLE_ZPARAM}
 
 function ConvertAsFractionFormat(const Frmt: String; Scale: Integer;
   ReplaceFractions: Boolean; out FractionLen: Integer): String;

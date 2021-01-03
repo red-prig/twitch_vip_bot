@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -95,7 +95,7 @@ type
   public
     constructor Create(const Statement: IZStatement; const SQL: string;
       StmtHandleAddr: PISC_STMT_HANDLE; const XSQLDA: IZSQLDA;
-      StmtType: TZIbSqlStatementType);
+      OrgTypeList: TZIBFBOrgSqlTypeAndScaleList; StmtType: TZIbSqlStatementType);
 
     procedure AfterClose; override;
     procedure ResetCursor; override;
@@ -149,6 +149,17 @@ type
   protected
     function CreateLobStream(CodePage: Word; LobStreamMode: TZLobStreamMode): TStream; override;
   public //IImmediatelyReleasable
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
     function GetConSettings: PZConSettings;
   public
@@ -220,7 +231,7 @@ uses
 }
 constructor TZInterbase6XSQLDAResultSet.Create(const Statement: IZStatement;
   const SQL: string; StmtHandleAddr: PISC_STMT_HANDLE; const XSQLDA: IZSQLDA;
-  StmtType: TZIbSqlStatementType);
+  OrgTypeList: TZIBFBOrgSqlTypeAndScaleList; StmtType: TZIbSqlStatementType);
 var
   I: Word;
   FieldSqlType: TZSQLType;
@@ -233,7 +244,6 @@ begin
   inherited Create(Statement, SQL);
   FIZSQLDA := XSQLDA; //localize the interface to avoid automatic free the object
   FXSQLDA := XSQLDA.GetData; // localize buffer for fast access
-
   FIBConnection := Statement.GetConnection as IZInterbase6Connection;
   FPISC_DB_HANDLE := FIBConnection.GetDBHandle;
   FISC_TR_HANDLE := FIBConnection.GetTrHandle^;
@@ -261,15 +271,17 @@ begin
           ColumnName := FIZSQLDA.GetFieldSqlName(I);
         ColumnLabel := FIZSQLDA.GetFieldAliasName(I);
         FieldSqlType := FIZSQLDA.GetFieldSqlType(I);
-        sqltype := XSQLVAR.sqltype and not (1);
+        sqltype := PZIBFBOrgSqlTypeAndScale(OrgTypeList[i]).sqltype;
+        if (sqltype = SQL_INT128) or (sqltype = SQL_DEC_FIXED) then
+          FieldSqlType := stBigDecimal;
+        sqltype := XSQLVAR.sqltype and not(1);
         sqlsubtype := XSQLVAR.sqlsubtype;
-        sqlscale := XSQLVAR.sqlscale;
+        sqlscale := PZIBFBOrgSqlTypeAndScale(OrgTypeList[i]).scale;
         sqldata := XSQLVAR.sqldata;
         sqlind := XSQLVAR.sqlind;
         if FGUIDProps.ColumnIsGUID(FieldSqlType, XSQLVAR.sqllen, ColumnName) then
           FieldSqlType := stGUID;
         ColumnType := FieldSqlType;
-
         case FieldSqlType of
           stString, stUnicodeString, stGUID: begin
               //see test Bug#886194, we retrieve 565 as CP... the modula get returns the FBID of CP
@@ -315,6 +327,8 @@ jmpLen:         Precision := XSQLVAR.sqllen;
                   SQL_SHORT:  Precision := 4;
                   SQL_LONG:   Precision := 9;
                   SQL_INT64:  Precision := 18;
+                  SQL_DEC_FIXED,
+                  SQL_INT128:  Precision := 38;
                 end;
               end;
               stTime, stTimeStamp: Scale := {-}4; //fb supports 10s of milli second fractions

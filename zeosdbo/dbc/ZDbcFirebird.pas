@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -68,20 +68,46 @@ type
   {** Implements Interbase6 Database Driver. }
   TZFirebirdDriver = class(TZInterbaseFirebirdDriver)
   public
+    /// <summary>Constructs this object with default properties.</summary>
     constructor Create; override;
+    /// <summary>Attempts to create a database connection to the given URL.
+    ///  The driver should return "null" if it realizes it is the wrong kind
+    ///  of driver to connect to the given URL. This will be common, as when
+    ///  the zeos driver manager is asked to connect to a given URL it passes
+    ///  the URL to each loaded driver in turn.
+    ///  The driver should raise a EZSQLException if it is the right
+    ///  driver to connect to the given URL, but has trouble loading the
+    ///  library.</summary>
+    /// <param>Url the TZURL Object used to find the Driver, it's library and
+    ///  assigns the connection properties.</param>
+    /// <returns>a <c>IZConnection</c> interface that represents a
+    ///  connection to the URL</returns>
     function Connect(const Url: TZURL): IZConnection; override;
   end;
 
   IZFirebirdTransaction = interface(IZInterbaseFirebirdTransaction)
     ['{CBCAE412-34E8-489A-A022-EAE325F6D460}']
+    /// <summary>Get the Firebird ITransaction corba interface.</summary>
+    /// <returns>The Firebird ITransaction corba interface.</returns>
     function GetTransaction: ITransaction;
   end;
 
   IZFirebirdConnection = interface(IZInterbaseFirebirdConnection)
     ['{C986AC0E-BC37-44B5-963F-65646333AF7C}']
+    /// <summary>Get the active IZFirebirdTransaction com interface.</summary>
+    /// <returns>The IZFirebirdTransaction com interface.</returns>
     function GetActiveTransaction: IZFirebirdTransaction;
+    /// <summary>Get the Firebird IAttachment corba interface.</summary>
+    /// <returns>The Firebird IAttachment corba interface.</returns>
     function GetAttachment: IAttachment;
+    /// <summary>Get the Firebird IStatus corba interface.</summary>
+    /// <returns>The Firebird IStatus corba interface.</returns>
     function GetStatus: IStatus;
+    /// <summary>Get the Firebird IUtil corba interface.</summary>
+    /// <returns>The Firebird IUtil corba interface.</returns>
+    function GetUtil: IUtil;
+    /// <summary>Get the TZFirebirdPlainDriver object.</summary>
+    /// <returns>The TZFirebirdPlainDriver object.</returns>
     function GetPlainDriver: TZFirebirdPlainDriver;
   end;
 
@@ -90,16 +116,76 @@ type
   private
     FTransaction: ITransaction;
   protected
+    /// <summary>Is the transaction is started?</summary>
+    /// <returns><c>True</c> if so otherwise <c>False</c>.</returns>
     function TxnIsStarted: Boolean; override;
+    /// <summary>This method is called when a Txn should end.
+    ///  It tests if we can fetch all data to the cached resultset and if no
+    ///  uncached lob's are underway.</summary>
+    /// <returns><c>True</c> if so otherwise <c>False</c>.</returns>
     function TestCachedResultsAndForceFetchAll: Boolean; override;
   public { implement ITransaction}
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  released. Otherwise makes all changes made since the previous commit/
+    ///  rollback permanent and releases any database locks currently held by
+    ///  the Connection. This method should be used only when auto-commit mode
+    ///  has been disabled. If Option "Hard_Commit" is set to true or
+    ///  TestCachedResultsAndForceFetchAll returns <c>True</c> the transaction
+    ///  is committed. Otherwise if "Hard_Commit" isn't set to true a
+    ///  retained_commit is performed, and the txn get's removed from the
+    ///  transaction manger. Later if all streams are closed a final
+    ///  commit is called to release the garbage.</summary>
     procedure Commit;
+    /// <summary>Perform a "hard" Commit or Rollback as retained done by User
+    ///  before. Removes this interface from Parent-Transaction manager.
+    ///  Releases a transaction and resources immediately
+    ///  instead of waiting for them to be automatically released. If the
+    ///  transaction is underway a rollback will be done. Note: A
+    ///  Transaction is automatically closed when the Conenction closes or it is
+    ///  garbage collected. Certain fatal errors also result in a closed
+    //// Transaction.</summary>
     procedure Close;
+    /// <summary>Test if the transaction is underway on the server.</summary>
+    /// <returns><c>True</c> if so otherwise <c>False</c>.</returns>
     function IsClosed: Boolean;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  rolled back. Otherwise drops all changes made since the previous
+    ///  commit/rollback and releases any database locks currently held
+    ///  by this Connection. This method should be used only when auto-
+    ///  commit has been disabled. If Option "Hard_Commit" is set to true
+    ///  or TestCachedResultsAndForceFetchAll returns <c>True</c> the
+    ///  transaction is rolled back. Otherwise if "Hard_Commit" isn't set
+    ///  to true a retained_rollback is performed, and the txn get's removed
+    ///  from the transaction manger. Later if all streams are closed a final
+    ///  rollback is called to release the garbage.</summary>
     procedure Rollback;
+    /// <summary>Get's the owner connection that produced that object instance.
+    /// </summary>
+    /// <returns>the connection object interface.</returns>
     function GetConnection: IZConnection;
+    /// <summary>Starts transaction support or saves the current transaction.
+    ///  If the connection is closed, the connection will be opened.
+    ///  If a transaction is underway a nested transaction or a savepoint will
+    ///  be spawned. While the tranaction(s) is/are underway the AutoCommit
+    ///  property is set to False. Ending up the transaction with a
+    ///  commit/rollback the autocommit property will be restored if changing
+    ///  the autocommit mode was triggered by a starttransaction call.</summary>
+    /// <returns>Returns the current txn-level. 1 means a expicit transaction
+    ///  was started. 2 means the transaction was saved. 3 means the previous
+    ///  savepoint got saved too and so on.</returns>
     function StartTransaction: Integer;
   public
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost); override;
   public { implement IZIBTransaction }
     procedure DoStartTransaction;
@@ -122,19 +208,66 @@ type
     procedure ExecuteImmediat(const SQL: RawByteString; LoggingCategory: TZLoggingCategory); overload; override;
   public
     procedure AfterConstruction; override;
+    Destructor Destroy; override;
   public { IZFirebirdConnection }
     function GetActiveTransaction: IZFirebirdTransaction;
     function GetAttachment: IAttachment;
     function GetStatus: IStatus;
     function GetPlainDriver: TZFirebirdPlainDriver;
+    function GetUtil: IUtil;
   public { IZTransactionManager }
     function CreateTransaction(AutoCommit, ReadOnly: Boolean;
       TransactIsolationLevel: TZTransactIsolationLevel; Params: TStrings): IZTransaction;
   public
-    function CreateStatementWithParams(Info: TStrings): IZStatement;
-    function PrepareStatementWithParams(const Name: string; Info: TStrings):
+    /// <summary>Creates a <c>Statement</c> interface for sending SQL statements
+    ///  to the database. SQL statements without parameters are normally
+    ///  executed using Statement objects. If the same SQL statement
+    ///  is executed many times, it is more efficient to use a
+    ///  <c>PreparedStatement</c> object. Result sets created using the returned
+    ///  <c>Statement</c> interface will by default have forward-only type and
+    ///  read-only concurrency.</summary>
+    /// <param>Info a statement parameters.</param>
+    /// <returns>A new Statement interface</returns>
+    function CreateStatementWithParams(Params: TStrings): IZStatement;
+    /// <summary>Creates a <c>PreparedStatement</c> interface for sending
+    ///  parameterized SQL statements to the database. A SQL statement with
+    ///  or without IN parameters can be pre-compiled and stored in a
+    ///  PreparedStatement object. This object can then be used to efficiently
+    ///  execute this statement multiple times.
+    ///  Note: This method is optimized for handling parametric SQL statements
+    ///  that benefit from precompilation. If the driver supports
+    ///  precompilation, the method <c>prepareStatement</c> will send the
+    ///  statement to the database for precompilation. Some drivers may not
+    ///  support precompilation. In this case, the statement may not be sent to
+    ///  the database until the <c>PreparedStatement</c> is executed. This has
+    ///  no direct effect on users; however, it does affect which method throws
+    ///  certain SQLExceptions. Result sets created using the returned
+    ///  PreparedStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"SQL" a SQL statement that may contain one or more '?' IN
+    ///  parameter placeholders.</param>
+    /// <param> Info a statement parameter list.</param>
+    /// <returns> a new PreparedStatement object containing the
+    ///  optional pre-compiled statement</returns>
+    function PrepareStatementWithParams(const SQL: string; Params: TStrings):
       IZPreparedStatement;
-    function PrepareCallWithParams(const SQL: string; Info: TStrings):
+    /// <summary>Creates a <code>CallableStatement</code> object for calling
+    ///  database stored procedures. The <code>CallableStatement</code> object
+    ///  provides methods for setting up its IN and OUT parameters, and methods
+    ///  for executing the call to a stored procedure. Note: This method is
+    ///  optimized for handling stored procedure call statements. Some drivers
+    ///  may send the call statement to the database when the method
+    ///  <c>prepareCall</c> is done; others may wait until the
+    ///  <c>CallableStatement</c> object is executed. This has no direct effect
+    ///  on users; however, it does affect which method throws certain
+    ///  EZSQLExceptions. Result sets created using the returned
+    ///  IZCallableStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"Name" a procedure or function name.</param>
+    /// <param>"Params" a statement parameters list.</param>
+    /// <returns> a new IZCallableStatement interface containing the
+    ///  pre-compiled SQL statement </returns>
+    function PrepareCallWithParams(const Name: string; Params: TStrings):
       IZCallableStatement;
   public
     function IsFirebirdLib: Boolean; override;
@@ -157,29 +290,6 @@ uses ZFastCode, ZDbcFirebirdStatement, ZDbcInterbaseFirebirdMetadata, ZEncoding,
 
 { TZFirebirdDriver }
 
-{**
-  Attempts to make a database connection to the given URL.
-  The driver should return "null" if it realizes it is the wrong kind
-  of driver to connect to the given URL.  This will be common, as when
-  the zeos driver manager is asked to connect to a given URL it passes
-  the URL to each loaded driver in turn.
-
-  <P>The driver should raise a SQLException if it is the right
-  driver to connect to the given URL, but has trouble connecting to
-  the database.
-
-  <P>The java.util.Properties argument can be used to passed arbitrary
-  string tag/value pairs as connection arguments.
-  Normally at least "user" and "password" properties should be
-  included in the Properties.
-
-  @param url the URL of the database to which to connect
-  @param info a list of arbitrary string tag/value pairs as
-    connection arguments. Normally at least a "user" and
-    "password" property should be included.
-  @return a <code>Connection</code> object that represents a
-    connection to the URL
-}
 function TZFirebirdDriver.Connect(const Url: TZURL): IZConnection;
 var iPlainDriver: IZPlainDriver;
     FirebirdPlainDriver: TZFirebirdPlainDriver;
@@ -200,9 +310,6 @@ begin
     {$ENDIF ZEOS_DISABLE_INTERBASE}
 end;
 
-{**
-  Constructs this object with default properties.
-}
 constructor TZFirebirdDriver.Create;
 begin
   inherited Create;
@@ -227,30 +334,18 @@ procedure TZFirebirdConnection.AfterConstruction;
 begin
   FPlainDriver := PlainDriver.GetInstance as TZFirebirdPlainDriver;
   { set default sql dialect it can be overriden }
-  FMaster := FPlainDriver.fb_get_master_interface;
+  FMaster := IMaster(FPlainDriver.fb_get_master_interface);
+  FStatus := FMaster.getStatus;
+  FUtil := FMaster.getUtilInterface;
   inherited AfterConstruction;
 end;
 
-{**
-  Creates a <code>Statement</code> object for sending
-  SQL statements to the database.
-  SQL statements without parameters are normally
-  executed using Statement objects. If the same SQL statement
-  is executed many times, it is more efficient to use a
-  <code>PreparedStatement</code> object.
-  <P>
-  Result sets created using the returned <code>Statement</code>
-  object will by default have forward-only type and read-only concurrency.
-
-  @param Info a statement parameters.
-  @return a new Statement object
-}
 function TZFirebirdConnection.CreateStatementWithParams(
-  Info: TStrings): IZStatement;
+  Params: TStrings): IZStatement;
 begin
   if IsClosed then
     Open;
-  Result := TZFirebirdStatement.Create(Self, Info);
+  Result := TZFirebirdStatement.Create(Self, Params);
 end;
 
 {**
@@ -273,6 +368,16 @@ begin
     Params := Info;
   Result := TZFirebirdTransaction.Create(Self, AutoCommit, ReadOnly, TransactIsolationLevel, Params);
   fTransactions.Add(Result);
+end;
+
+destructor TZFirebirdConnection.Destroy;
+begin
+  inherited;
+  if FStatus <> nil then begin
+    FStatus.Dispose;
+    FStatus := nil;
+  end;
+  //How to free IStatus and IMaster?
 end;
 
 procedure TZFirebirdConnection.ExecuteImmediat(const SQL: RawByteString;
@@ -364,6 +469,11 @@ begin
   Result := FStatus;
 end;
 
+function TZFirebirdConnection.GetUtil: IUtil;
+begin
+  Result := FUtil;
+end;
+
 procedure TZFirebirdConnection.InternalClose;
 begin
   inherited InternalClose;
@@ -375,10 +485,6 @@ begin
   if FProvider <> nil then begin
     FProvider.release;
     FProvider := nil;
-  end;
-  if FStatus <> nil then begin
-    FStatus.dispose;
-    FStatus := nil;
   end;
 end;
 
@@ -430,13 +536,11 @@ var
       Move(P^, FByteBuffer[0], L);
     PByte(PAnsiChar(@FByteBuffer[0])+L)^ := 0;
   end;
-label reconnect, jmpTimeOuts;
+label reconnect;
 begin
   if not Closed then
     Exit;
   FProvider := FMaster.getDispatcher;
-  FStatus := FMaster.getStatus;
-  FUtil := FMaster.getUtilInterface;
   DBCP := '';
   if TransactIsolationLevel = tiReadUncommitted then
     raise EZSQLException.Create('Isolation level do not capable');
@@ -448,73 +552,155 @@ begin
   ConnectionString := ConstructConnectionString;
 
   DBCreated := False;
-  CreateDB := Info.Values[ConnProps_CreateNewDatabase];
-  if (CreateDB <> '') and StrToBoolEx(CreateDB) then begin
-    if (Info.Values[ConnProps_isc_dpb_lc_ctype] <> '') and (Info.Values[ConnProps_isc_dpb_set_db_charset] = '') then
-      Info.Values[ConnProps_isc_dpb_set_db_charset] := Info.Values[ConnProps_isc_dpb_lc_ctype];
-    DBCP := Info.Values[ConnProps_isc_dpb_set_db_charset];
-    PrepareDPB;
-    FAttachment := FProvider.createDatabase(FStatus, @FByteBuffer[0], Smallint(Length(DPB)),Pointer(DPB));
-    Info.Values[ConnProps_CreateNewDatabase] := ''; //prevent recreation on open
-    DBCreated := True;
-    FLogMessage := 'CREATE DATABASE "'+URL.Database+'" AS USER "'+ URL.UserName+'"';
+  reconnect:
+  try
+    CreateDB := Info.Values[ConnProps_CreateNewDatabase];
+    if (CreateDB <> '') and StrToBoolEx(CreateDB) and not DBCreated then begin
+      if (Info.Values[ConnProps_isc_dpb_lc_ctype] <> '') and (Info.Values[ConnProps_isc_dpb_set_db_charset] = '') then
+        Info.Values[ConnProps_isc_dpb_set_db_charset] := Info.Values[ConnProps_isc_dpb_lc_ctype];
+      DBCP := Info.Values[ConnProps_isc_dpb_set_db_charset];
+      PrepareDPB;
+      FAttachment := FProvider.createDatabase(FStatus, @FByteBuffer[0], Smallint(Length(DPB)),Pointer(DPB));
+      Info.Values[ConnProps_CreateNewDatabase] := ''; //prevent recreation on open
+      DBCreated := True;
+      FLogMessage := 'CREATE DATABASE "'+URL.Database+'" AS USER "'+ URL.UserName+'"';
+      if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
+      try
+        HandleErrorOrWarning(lcOther, PARRAY_ISC_STATUS(FStatus.getErrors),
+          FLogMessage, IImmediatelyReleasable(FWeakImmediatRelPtr));
+      finally
+        FProvider.release;
+        FProvider := nil;
+      end;
+      if DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
+    end;
+    if FProvider = nil then
+      FProvider := FMaster.getDispatcher;
+    if FStatus  = nil then
+      FStatus := FMaster.getStatus;
+    if FAttachment = nil then begin
+      PrepareDPB;
+      FLogMessage := Format(SConnect2AsUser, [ConnectionString, URL.UserName]);;
+      FAttachment := FProvider.attachDatabase(FStatus, @FByteBuffer[0], Length(DPB), Pointer(DPB));
+      if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
+        HandleErrorOrWarning(lcConnect, PARRAY_ISC_STATUS(FStatus.getErrors),
+          FLogMessage, IImmediatelyReleasable(FWeakImmediatRelPtr));
+      { Logging connection action }
+      if DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
+    end;
+    { Dialect could have changed by isc_dpb_set_db_SQL_dialect command }
+    FByteBuffer[0] := isc_info_db_SQL_Dialect;
+    FAttachment.getInfo(FStatus, 1, @FByteBuffer[0], SizeOf(TByteBuffer)-1, @FByteBuffer[1]);
     if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
-      HandleErrorOrWarning(lcOther, PARRAY_ISC_STATUS(FStatus.getErrors),
-        FLogMessage, IImmediatelyReleasable(FWeakImmediatRelPtr));
-    if DriverManager.HasLoggingListener then
-      DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
-  end;
-reconnect:
-  if FProvider = nil then
-    FProvider := FMaster.getDispatcher;
-  if FStatus  = nil then
-    FStatus := FMaster.getStatus;
-  if FAttachment = nil then begin
-    PrepareDPB;
-    FLogMessage := Format(SConnect2AsUser, [ConnectionString, URL.UserName]);;
-    FAttachment := FProvider.attachDatabase(FStatus, @FByteBuffer[0], Length(DPB), Pointer(DPB));
-    if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
-      HandleErrorOrWarning(lcConnect, PARRAY_ISC_STATUS(FStatus.getErrors),
-        FLogMessage, IImmediatelyReleasable(FWeakImmediatRelPtr));
-    { Logging connection action }
-    if DriverManager.HasLoggingListener then
-      DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
-  end;
-  { Dialect could have changed by isc_dpb_set_db_SQL_dialect command }
-  FByteBuffer[0] := isc_info_db_SQL_Dialect;
-  FAttachment.getInfo(FStatus, 1, @FByteBuffer[0], SizeOf(TByteBuffer)-1, @FByteBuffer[1]);
-  if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
-    HandleErrorOrWarning(lcOther, PARRAY_ISC_STATUS(FStatus.getErrors), 'IAttachment.getInfo', Self);
-  if FByteBuffer[1] = isc_info_db_SQL_Dialect
-  then FDialect := ReadInterbase6Number(FPlainDriver, FByteBuffer[2])
-  else FDialect := SQL_DIALECT_V5;
-  inherited SetAutoCommit(AutoCommit or (Info.IndexOf(TxnProps_isc_tpb_autocommit) <> -1));
-  FRestartTransaction := not AutoCommit;
+      HandleErrorOrWarning(lcOther, PARRAY_ISC_STATUS(FStatus.getErrors), 'IAttachment.getInfo', Self);
+    if FByteBuffer[1] = isc_info_db_SQL_Dialect
+    then FDialect := ReadInterbase6Number(FPlainDriver, FByteBuffer[2])
+    else FDialect := SQL_DIALECT_V5;
+    inherited SetAutoCommit(AutoCommit or (Info.IndexOf(TxnProps_isc_tpb_autocommit) <> -1));
+    FRestartTransaction := not AutoCommit;
 
-  FHardCommit := StrToBoolEx(Info.Values[ConnProps_HardCommit]);
-  if (DBCP <> '') and not DBCreated then
-    goto jmpTimeOuts;
-  inherited Open;
+    FHardCommit := StrToBoolEx(Info.Values[ConnProps_HardCommit]);
+    inherited Open;
+  finally
+    if Closed then begin
+      if FAttachment <> nil then begin
+        FAttachment.Release;
+        FAttachment := nil;
+      end;
+      if FProvider <> nil then begin
+        FProvider.Release;
+        FProvider := nil;
+      end;
+    end;
+  end;
   with GetMetadata.GetDatabaseInfo as IZInterbaseDatabaseInfo do
   begin
     CollectServerInformations; //keep this one first!
     FHostVersion := GetHostVersion;
     FXSQLDAMaxSize := GetMaxSQLDASize;
   end;
-
-  {Check for ClientCodePage: if empty switch to database-defaults
-    and/or check for charset 'NONE' which has a different byte-width
-    and no convertions where done except the collumns using collations}
-  if not DBCreated then begin
-    Statement := CreateStatementWithParams(nil);
-    try
-      with Statement.ExecuteQuery('SELECT RDB$CHARACTER_SET_NAME FROM RDB$DATABASE') do begin
-        if Next then DBCP := GetString(FirstDbcIndex);
-        Close;
+  if (DBCP = '') and not DBCreated then begin
+    {Check for ClientCodePage: if empty switch to database-defaults
+      and/or check for charset 'NONE' which has a different byte-width
+      and no convertions where done except the collumns using collations}
+    if not DBCreated then begin
+      Statement := CreateStatementWithParams(nil);
+      try
+        with Statement.ExecuteQuery('SELECT RDB$CHARACTER_SET_NAME FROM RDB$DATABASE') do begin
+          if Next then DBCP := GetString(FirstDbcIndex);
+          Close;
+        end;
+      finally
+        Statement := nil;
       end;
-    finally
-      Statement := nil;
+      ti := GetActiveTransaction;
+      try
+        ti.Close;
+      finally
+        ti := nil;
+      end;
     end;
+    if DBCP = 'NONE' then begin { SPECIAL CASE CHARCTERSET "NONE":
+      EH: the server makes !NO! charset conversion if CS_NONE.
+      Attaching a CS "NONE" db with a characterset <> CS_NONE has this effect:
+      All field codepages are retrieved as the given client-characterset.
+      This works nice as long the fields have it's own charset definition.
+      But what's the encoding of the CS_NONE fields? The more what about CLOB encoding?
+
+      If we're attaching the db with CS "NONE" all userdefined field CP's are
+      returned gracefully. Zeos can convert everything to your Controls-CP.
+      Except the CP_NONE fields. And the text lob's where encoding is unknown too.
+      For the Unicode-IDE's this case is a nightmare. Jan's suggestion is to use
+      the fields as Byte/BlobFields only. My idea is to use such fields with the
+      CPWIN1252 Charset which maps each byte to words and vice versa.
+      So no information is lost and the data is still readable "somehow".
+
+      Side-note: see: https://firebirdsql.org/rlsnotesh/str-charsets.html
+      Any DDL/DML in non ASCII7 range will give a maleformed string if encoding is
+      different to UTF8/UNICODE_FSS because the RDB$-Tables have a
+      UNICODE_FSS collation}
+
+      {test if charset is not given or is CS_NONE }
+      if CSNoneCP = ''
+      then CSNoneCP := FClientCodePage
+      else if FCLientCodePage <> ''
+        then CSNoneCP := FCLientCodePage
+        else CSNoneCP := 'WIN1252'; {WIN1252 would be optimal propably}
+      ResetCurrentClientCodePage(CSNoneCP, False);
+      ConSettings^.ClientCodePage^.ID := 0;
+      //Now notify our metadata object all fields are retrieved in utf8 encoding
+      (FMetadata as TZInterbase6DatabaseMetadata).SetUTF8CodePageInfo;
+      if (FCLientCodePage <> DBCP) then begin
+        Info.Values[ConnProps_isc_dpb_lc_ctype] := DBCP;
+        InternalClose;
+        goto reconnect; //build new TDB and reopen in SC_NONE mode
+      end;
+    end else if FClientCodePage = '' then
+      CheckCharEncoding(DBCP);
+  end;
+  if (FAttachment.vTable.version >= 4) and (FHostVersion >= 4000000) then begin
+    TimeOut := StrToIntDef(Info.Values[ConnProps_StatementTimeOut], 0);
+    if TimeOut > 0 then begin
+      FAttachment.SetStatementTimeOut(Fstatus, TimeOut);
+      if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
+        HandleErrorOrWarning(lcOther, PARRAY_ISC_STATUS(FStatus.getErrors),
+          'IAttachment.SetStatmentTimeOut', IImmediatelyReleasable(FWeakImmediatRelPtr));
+    end;
+    TimeOut := StrToIntDef(Info.Values[ConnProps_SessionIdleTimeOut], 0);
+    if TimeOut > 16 then begin
+      FAttachment.setIdleTimeout(Fstatus, TimeOut);
+      if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
+        HandleErrorOrWarning(lcOther, PARRAY_ISC_STATUS(FStatus.getErrors),
+          'IAttachment.setIdleTimeout', IImmediatelyReleasable(FWeakImmediatRelPtr));
+    end;
+  end;
+  if (FHostVersion >= 4000000) then begin
+    if (Info.Values[ConnProps_isc_dpb_session_time_zone] = '') then
+      ExecuteImmediat('SET TIME ZONE LOCAL', lcExecute);
+    ExecuteImmediat('SET BIND OF TIME ZONE TO LEGACY', lcExecute);
+    ExecuteImmediat('SET BIND OF DECFLOAT TO LEGACY', lcExecute);
     ti := GetActiveTransaction;
     try
       ti.Close;
@@ -522,61 +708,6 @@ reconnect:
       ti := nil;
     end;
   end;
-  if DBCP = 'NONE' then begin { SPECIAL CASE CHARCTERSET "NONE":
-    EH: the server makes !NO! charset conversion if CS_NONE.
-    Attaching a CS "NONE" db with a characterset <> CS_NONE has this effect:
-    All field codepages are retrieved as the given client-characterset.
-    This works nice as long the fields have it's own charset definition.
-    But what's the encoding of the CS_NONE fields? The more what about CLOB encoding?
-
-    If we're attaching the db with CS "NONE" all userdefined field CP's are
-    returned gracefully. Zeos can convert everything to your Controls-CP.
-    Except the CP_NONE fields. And the text lob's where encoding is unknown too.
-    For the Unicode-IDE's this case is a nightmare. Jan's suggestion is to use
-    the fields as Byte/BlobFields only. My idea is to use such fields with the
-    CPWIN1252 Charset which maps each byte to words and vice versa.
-    So no information is lost and the data is still readable "somehow".
-
-    Side-note: see: https://firebirdsql.org/rlsnotesh/str-charsets.html
-    Any DDL/DML in non ASCII7 range will give a maleformed string if encoding is
-    different to UTF8/UNICODE_FSS because the RDB$-Tables have a
-    UNICODE_FSS collation}
-
-    {test if charset is not given or is CS_NONE }
-    if CSNoneCP = ''
-    then CSNoneCP := FClientCodePage
-    else if FCLientCodePage <> ''
-      then CSNoneCP := FCLientCodePage
-      else CSNoneCP := 'WIN1252'; {WIN1252 would be optimal propably}
-    ResetCurrentClientCodePage(CSNoneCP, False);
-    ConSettings^.ClientCodePage^.ID := 0;
-    //Now notify our metadata object all fields are retrieved in utf8 encoding
-    (FMetadata as TZInterbase6DatabaseMetadata).SetUTF8CodePageInfo;
-    if (FCLientCodePage <> DBCP) then begin
-      Info.Values[ConnProps_isc_dpb_lc_ctype] := DBCP;
-      InternalClose;
-      goto reconnect; //build new TDB and reopen in SC_NONE mode
-    end;
-  end else if FClientCodePage = '' then
-    CheckCharEncoding(DBCP);
-jmpTimeOuts:
-  if (FAttachment.vTable.version >= 4) and (FHostVersion >= 4000000) then begin
-    TimeOut := StrToIntDef(Info.Values[ConnProps_StatementTimeOut], 0);
-    if TimeOut > 0 then begin
-      IAttachment_V4(FAttachment).SetStatementTimeOut(Fstatus, TimeOut);
-      if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
-        HandleErrorOrWarning(lcOther, PARRAY_ISC_STATUS(FStatus.getErrors),
-          'IAttachment.SetStatmentTimeOut', IImmediatelyReleasable(FWeakImmediatRelPtr));
-    end;
-    TimeOut := StrToIntDef(Info.Values[ConnProps_SessionIdleTimeOut], 0);
-    if TimeOut > 16 then begin
-      IAttachment_V4(FAttachment).setIdleTimeout(Fstatus, TimeOut);
-      if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
-        HandleErrorOrWarning(lcOther, PARRAY_ISC_STATUS(FStatus.getErrors),
-          'IAttachment.setIdleTimeout', IImmediatelyReleasable(FWeakImmediatRelPtr));
-    end;
-  end;
-
 end;
 
 {**
@@ -607,46 +738,22 @@ end;
   @return a new PreparedStatement object containing the
     pre-compiled statement
 }
-function TZFirebirdConnection.PrepareCallWithParams(const SQL: string;
-  Info: TStrings): IZCallableStatement;
+function TZFirebirdConnection.PrepareCallWithParams(const Name: string;
+  Params: TStrings): IZCallableStatement;
 begin
   if IsClosed then
     Open;
-  Result := TZFirebirdCallableStatement.Create(Self, SQL, Info);
+  Result := TZFirebirdCallableStatement.Create(Self, Name, Params);
 end;
 
-{**
-  Creates a <code>CallableStatement</code> object for calling
-  database stored procedures.
-  The <code>CallableStatement</code> object provides
-  methods for setting up its IN and OUT parameters, and
-  methods for executing the call to a stored procedure.
-
-  <P><B>Note:</B> This method is optimized for handling stored
-  procedure call statements. Some drivers may send the call
-  statement to the database when the method <code>prepareCall</code>
-  is done; others
-  may wait until the <code>CallableStatement</code> object
-  is executed. This has no
-  direct effect on users; however, it does affect which method
-  throws certain SQLExceptions.
-
-  Result sets created using the returned CallableStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param Name a procedure or function identifier
-    parameter placeholders. Typically this  statement is a JDBC
-    function call escape string.
-  @param Info a statement parameters.
-  @return a new CallableStatement object containing the
-    pre-compiled SQL statement
-}
-function TZFirebirdConnection.PrepareStatementWithParams(const Name: string;
-  Info: TStrings): IZPreparedStatement;
+function TZFirebirdConnection.PrepareStatementWithParams(const SQL: string;
+  Params: TStrings): IZPreparedStatement;
 begin
   if IsClosed then
     Open;
-  Result := TZFirebirdPreparedStatement.Create(Self, Name, Info);
+  {if Self.FHostVersion >= 4000000
+  then Result := TZFirebird4upPreparedStatement.Create(Self, SQL, Params)
+  else }Result := TZFirebirdPreparedStatement.Create(Self, SQL, Params);
 end;
 
 var
@@ -663,20 +770,13 @@ begin
     FTransaction.release;
     FTransaction := nil;
     fSavepoints.Clear;
-	  if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
+    if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
       HandleErrorOrWarning(lcTransaction, PARRAY_ISC_STATUS(FStatus.getErrors),
         sCommitMsg, IImmediatelyReleasable(FWeakImmediatRelPtr));
     FOwner.ReleaseTransaction(IZTransaction(FWeakIZTransactionPtr));
   end;
 end;
 
-{**
-  Makes all changes made since the previous
-  commit/rollback permanent and releases any database locks
-  currently held by the Connection. This method should be
-  used only when auto-commit mode has been disabled.
-  @see #setAutoCommit
-}
 procedure TZFirebirdTransaction.Commit;
 var S: RawByteString;
 begin
@@ -699,12 +799,13 @@ begin
       FTransaction.commitRetaining(FStatus);
       ReleaseTransaction(IZTransaction(FWeakIZTransactionPtr));
     end;
-	  if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
+    if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
       HandleErrorOrWarning(lcTransaction, PARRAY_ISC_STATUS(FStatus.getErrors),
         sCommitMsg, IImmediatelyReleasable(FWeakImmediatRelPtr));
   finally
-    if fDoLog and DriverManager.HasLoggingListener then
-      DriverManager.LogMessage(lcTransaction, URL.Protocol, sCommitMsg);
+    if fDoLog and (ZDbcIntfs.DriverManager <> nil) and
+       ZDbcIntfs.DriverManager.HasLoggingListener then //don't use the local DriverManager of ZDbcConnection
+      ZDbcIntfs.DriverManager.LogMessage(lcTransaction, URL.Protocol, sCommitMsg);
   end;
 end;
 
@@ -744,13 +845,6 @@ begin
   end;
 end;
 
-{**
-  Drops all changes made since the previous
-  commit/rollback and releases any database locks currently held
-  by this Connection. This method should be used only when auto-
-  commit has been disabled.
-  @see #setAutoCommit
-}
 procedure TZFirebirdTransaction.Rollback;
 var S: RawByteString;
 begin
@@ -773,27 +867,16 @@ begin
       FTransaction.rollbackRetaining(FStatus);
       ReleaseTransaction(IZTransaction(FWeakIZTransactionPtr));
     end;
-	  if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
+    if ((Fstatus.getState and {$IFDEF WITH_CLASS_CONST}IStatus.STATE_ERRORS{$ELSE}IStatus_STATE_ERRORS{$ENDIF}) <> 0) then
       HandleErrorOrWarning(lcTransaction, PARRAY_ISC_STATUS(FStatus.getErrors),
         sRollbackMsg, IImmediatelyReleasable(FWeakImmediatRelPtr));
   finally
-    if fDoLog and DriverManager.HasLoggingListener then
-      DriverManager.LogMessage(lcTransaction, URL.Protocol, sRollbackMsg);
+    if fDoLog and (ZDbcIntfs.DriverManager <> nil) and
+       ZDbcIntfs.DriverManager.HasLoggingListener then //don't use the local DriverManager of ZDbcConnection
+      ZDbcIntfs.DriverManager.LogMessage(lcTransaction, URL.Protocol, sRollbackMsg);
   end;
 end;
 
-{**
-  Starts transaction support or saves the current transaction.
-  If the connection is closed, the connection will be opened.
-  If a transaction is underway a nested transaction or a savepoint will be
-  spawned. While the tranaction(s) is/are underway the AutoCommit property is
-  set to False. Ending up the transaction with a commit/rollback the autocommit
-  property will be restored if changing the autocommit mode was triggered by a
-  starttransaction call.
-  @return the current txn-level. 1 means a transaction was started.
-  2 means the transaction was saved. 3 means the previous savepoint got saved
-  too and so on
-}
 function TZFirebirdTransaction.StartTransaction: Integer;
 var S: String;
 begin
@@ -805,7 +888,8 @@ begin
         Length(FTPB){$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}-1{$ENDIF}, Pointer(FTPB));
       FTransaction.AddRef;
       Result := Ord(not Self.FAutoCommit);
-      DriverManager.LogMessage(lcTransaction, URL.Protocol, 'TRANSACTION STARTED.');
+      if DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcTransaction, URL.Protocol, 'TRANSACTION STARTED.');
     end else begin
       Result := FSavePoints.Count+2;
       S := 'SP'+ZFastcode.IntToStr(NativeUInt(Self))+'_'+ZFastCode.IntToStr(Result);

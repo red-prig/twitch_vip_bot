@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -73,8 +73,8 @@ type
     procedure SetTableName(const Value: string);
 
   protected
-  {$IFDEF WITH_IPROVIDER}
     function PSIsSQLBased: Boolean; override;
+  {$IFDEF WITH_IPROVIDER}
     {$IFDEF  WITH_IPROVIDERWIDE}
     function PSGetTableNameW: WideString; override;
     {$ELSE}
@@ -127,8 +127,6 @@ begin
   end;
 end;
 
-{$IFDEF WITH_IPROVIDER}
-
 {**
   Checks if dataset can execute SQL queries?
   @returns <code>True</code> if the query can execute SQL.
@@ -138,6 +136,7 @@ begin
   Result := False;
 end;
 
+{$IFDEF WITH_IPROVIDER}
 {**
   Gets the name of the table.
   @returns the name of this table.

@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -73,18 +73,68 @@ type
   {** Resolver to post updates. }
   IZCachedResolver = interface (IZInterface)
     ['{546ED716-BB88-468C-8CCE-D7111CF5E1EF}']
-
+    /// <summary>Calculate default values for the fields.</summary>
+    /// <param>"Sender" a cached result set object.</param>
+    /// <param>"RowAccessor" an accessor object to column values.</param>
     procedure CalculateDefaults(const Sender: IZCachedResultSet;
       const RowAccessor: TZRowAccessor);
+    /// <summary>Posts updates to database.</summary>
+    /// <param>"Sender" a cached result set inteface.</param>
+    /// <param>"UpdateType" a type of updates.</param>
+    /// <param>"OldRowAccessor" an accessor object to old column values.</param>
+    /// <param>"NewRowAccessor" an accessor object to new column values.</param>
     procedure PostUpdates(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
       const OldRowAccessor, NewRowAccessor: TZRowAccessor);
-    {BEGIN of PATCH [1185969]: Do tasks after posting updates. ie: Updating AutoInc fields in MySQL }
+    /// <summary>Posts updates the autoincrement fields.</summary>
+    /// <param>"Sender" a cached result set inteface.</param>
+    /// <param>"UpdateType" a type of updates.</param>
+    /// <param>"OldRowAccessor" an accessor object to old column values.</param>
+    /// <param>"NewRowAccessor" an accessor object to new column values.</param>
+    /// <param>"Resolver" the resolver object used to load the column data.</param>
     procedure UpdateAutoIncrementFields(const Sender: IZCachedResultSet; UpdateType: TZRowUpdateType;
       const OldRowAccessor, NewRowAccessor: TZRowAccessor; const Resolver: IZCachedResolver);
-    {END of PATCH [1185969]: Do tasks after posting updates. ie: Updating AutoInc fields in MySQL }
+    /// <summary>Refreshes the current row.</summary>
+    /// <param>"Sender" a cached result set inteface.</param>
+    /// <param>"RowAccessor" an accessor object to current column values.</param>
     procedure RefreshCurrentRow(const Sender: IZCachedResultSet; RowAccessor: TZRowAccessor); //FOS+ 07112006
-
+    /// <summary>Set a transaction object used for the crud-operations.</summary>
+    /// <param>"Value" the IZTransaction object.</param>
     procedure SetTransaction(const Value: IZTransaction);
+    /// <summary>Test if the resolver-transaction is a autocommit txn.</summary>
+    /// <returns><c>True</c> if the transaction object is in autocommit mode;
+    ///  <c>False</c> otherwise.</returns>
+    function HasAutoCommitTransaction: Boolean;
+  end;
+
+  IZGenerateSQLCachedResolver = interface(IZCachedResolver)
+    ['{D2694EF6-F6B6-4A11-BB46-456ED63DCC18}']
+    /// <summary>Set the readonly state of a field. The value will be ignored
+    ///  if the field is not writable.</summary>
+    /// <param>"ColumnIndex" the columnnumber of the field.</param>
+    /// <param>"Value" if <c>true</c> then the field will be ignored on
+    ///  generating the dml's.</param>
+    procedure SetReadOnly(ColumnIndex: Integer; Value: Boolean);
+    /// <summary>Set the searchable state of a field. The value will be ignored
+    ///  if the field is not searchable at all e.g. LOB's.</summary>
+    /// <param>"ColumnIndex" the columnnumber of the field.</param>
+    /// <param>"Value" if <c>true</c> then the field will be ignored on
+    ///  generating the where clause of the dml's.</param>
+    procedure SetSearchable(ColumnIndex: Integer; Value: Boolean);
+    /// <summary>Set the Calculate null columns defaults.</summary>
+    /// <param>"Value" <c>true</c> means calc defaults.</param>
+    procedure SetCalcDefaults(Value: Boolean);
+    /// <summary>Set the WhereAll state for generating the where clause of the
+    ///  dml's. The value will be ignored if no indexfields are defined and
+    ///  if no primary key is available. If both conditions are true the
+    ///  whereAll mode is always true.</summary>
+    /// <param>"Value" <c>true</c> means use all searchable columns. Otherwise
+    ///  the primary key will or given index fields are used.</param>
+    procedure SetWhereAll(Value: Boolean);
+    /// <summary>Set the updateAll state for generating the dml's. <c>true</c>
+    ///  means use all updatable columns. Otherwise only changed fields are used
+    ///  for updates.</summary>
+    /// <param>"Value" the UpdateAll mode should be used.</param>
+    procedure SetUpdateAll(Value: Boolean);
   end;
 
   {** Represents a cached result set. }
@@ -119,7 +169,7 @@ type
   private
     FCachedUpdates: Boolean;
     FCachedLobs: WordBool;
-    FRowsList: {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF};
+    FRowsList: TZSortedList;
     FInitialRowsList: {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF};
     FCurrentRowsList: {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF};
     FIndexPairList: TZIndexPairList;
@@ -150,7 +200,7 @@ type
     procedure PrepareRowForUpdates;
 
     property CachedUpdates: Boolean read FCachedUpdates write FCachedUpdates;
-    property RowsList: {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF} read FRowsList write FRowsList;
+    property RowsList: TZSortedList read FRowsList write FRowsList;
     property InitialRowsList: {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF} read FInitialRowsList
       write FInitialRowsList;
     property CurrentRowsList: {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF} read FCurrentRowsList
@@ -211,7 +261,7 @@ type
     procedure GetTime(ColumnIndex: Integer; var Result: TZTime); overload;
     procedure GetTimestamp(ColumnIndex: Integer; var Result: TZTimeStamp); overload;
     function GetBlob(ColumnIndex: Integer; LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
-    function GetDefaultExpression(ColumnIndex: Integer): string; override;
+    function GetDefaultExpression(ColumnIndex: Integer): string;
 
     //---------------------------------------------------------------------
     // Traversal/Positioning
@@ -270,9 +320,6 @@ type
     procedure RefreshRow; override;// FOS+ 071106
 
 
-    procedure MoveToInsertRow; override;
-    procedure MoveToCurrentRow; override;
-
     function CompareRows(Row1, Row2: NativeInt; const ColumnIndices: TIntegerDynArray;
       const CompareFuncs: TCompareFuncs): Integer; override;
     function GetCompareFuncs(const ColumnIndices: TIntegerDynArray;
@@ -291,6 +338,8 @@ type
     procedure SetCachedUpdates(Value: Boolean);
     function IsPendingUpdates: Boolean; virtual;
 
+    procedure MoveToInsertRow; override;
+    procedure MoveToCurrentRow; override;
     procedure PostUpdates; virtual;
     procedure CancelUpdates; virtual;
     procedure RevertRecord; virtual;
@@ -482,18 +531,14 @@ end;
 }
 function TZAbstractCachedResultSet.LocateRow(RowsList: {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF};
   RowIndex: Integer): Integer;
-var
-  I: Integer;
+var I: Integer;
 begin
   Result := -1;
   for I := 0 to RowsList.Count - 1 do
-  begin
-    if PZRowBuffer(RowsList[I]).Index = RowIndex then
-    begin
+    if PZRowBuffer(RowsList[I]).Index = RowIndex then begin
       Result := I;
       Break;
     end;
-  end;
 end;
 
 {**
@@ -519,7 +564,7 @@ end;
 }
 procedure TZAbstractCachedResultSet.PrepareRowForUpdates;
 begin
-  if (RowAccessor.RowBuffer = FSelectedRow) and (FSelectedRow <> FUpdatedRow) then begin
+  if (RowAccessor.RowBuffer = FSelectedRow) and (FSelectedRow <> FUpdatedRow) and (FSelectedRow.UpdateType <> utInserted) then begin
     FSelectedRow := FUpdatedRow;
     RowAccessor.RowBuffer := FSelectedRow;
     RowAccessor.CloneFrom(PZRowBuffer(FRowsList[RowNo - 1]));
@@ -704,12 +749,24 @@ begin
     while i < FInitialRowsList.Count do begin
       OldRowAccessor.RowBuffer := PZRowBuffer(FInitialRowsList[i]);
       NewRowAccessor.RowBuffer := PZRowBuffer(FCurrentRowsList[i]);
-      Inc(i);
       { Updates default field values. }
       if NewRowAccessor.RowBuffer.UpdateType in [utInserted, utModified] then
         CalculateRowDefaults(NewRowAccessor);
       { Posts row updates. }
       PostRowUpdates(OldRowAccessor, NewRowAccessor);
+      if Resolver.HasAutoCommitTransaction then begin
+        if NewRowAccessor.RowBuffer.UpdateType <> utDeleted then begin
+          NewRowAccessor.RowBuffer.UpdateType := utUnmodified;
+          if (FSelectedRow <> nil)
+            and (FSelectedRow.Index = NewRowAccessor.RowBuffer.Index) then
+              FSelectedRow.UpdateType := utUnmodified;
+        end;
+        { Remove cached rows. }
+        OldRowAccessor.Dispose;
+        FInitialRowsList.Delete(i);
+        FCurrentRowsList.Delete(i);
+      end else
+        Inc(i);
     end;
   end;
 end;
@@ -719,10 +776,11 @@ end;
   PostUpdatesCached.
 }
 procedure TZAbstractCachedResultSet.DisposeCachedUpdates;
+var i: Integer;
 begin
-  while FInitialRowsList.Count > 0 do begin
-    OldRowAccessor.RowBuffer := PZRowBuffer(FInitialRowsList[0]);
-    NewRowAccessor.RowBuffer := PZRowBuffer(FCurrentRowsList[0]);
+  for I := FInitialRowsList.Count -1 downto 0 do begin
+    OldRowAccessor.RowBuffer := PZRowBuffer(FInitialRowsList[i]);
+    NewRowAccessor.RowBuffer := PZRowBuffer(FCurrentRowsList[i]);
 
     if NewRowAccessor.RowBuffer.UpdateType <> utDeleted then begin
       NewRowAccessor.RowBuffer.UpdateType := utUnmodified;
@@ -732,8 +790,8 @@ begin
     end;
     { Remove cached rows. }
     OldRowAccessor.Dispose;
-    FInitialRowsList.Delete(0);
-    FCurrentRowsList.Delete(0);
+    FInitialRowsList.Delete(i);
+    FCurrentRowsList.Delete(i);
   end;
 end;
 
@@ -741,14 +799,13 @@ end;
   Cancels updates for all rows.
 }
 procedure TZAbstractCachedResultSet.CancelUpdates;
-var
-  InitialRow, CurrentRow: PZRowBuffer;
+var i: Integer;
+    InitialRow, CurrentRow: PZRowBuffer;
 begin
   CheckClosed;
-  while FInitialRowsList.Count > 0 do
-  begin
-    InitialRow := PZRowBuffer(FInitialRowsList[0]);
-    CurrentRow := PZRowBuffer(FCurrentRowsList[0]);
+  for I := FInitialRowsList.Count -1 downto 0 do begin
+    InitialRow := PZRowBuffer(FInitialRowsList[i]);
+    CurrentRow := PZRowBuffer(FCurrentRowsList[i]);
 
     if CurrentRow.UpdateType = utInserted then
       InitialRow.UpdateType := utDeleted;
@@ -761,8 +818,8 @@ begin
     end;
 
     FRowAccessor.DisposeBuffer(InitialRow);
-    FInitialRowsList.Delete(0);
-    FCurrentRowsList.Delete(0);
+    FInitialRowsList.Delete(i);
+    FCurrentRowsList.Delete(i);
   end;
 end;
 
@@ -804,6 +861,9 @@ begin
       CurrentRow := FRowsList[FSelectedRow.Index];
       FRowAccessor.ClearBuffer(FSelectedRow);
       FSelectedRow := CurrentRow;
+    end else if (FRowAccessor.RowBuffer = FInsertedRow) then begin
+      FRowAccessor.Clear;
+      FRowAccessor.RowBuffer := FSelectedRow;
     end;
   end;
 end;
@@ -817,7 +877,7 @@ begin
   if not Closed then
     raise EZSQLException.Create(SResultsetIsAlreadyOpened);
 
-  FRowsList := {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF}.Create;
+  FRowsList := TZSortedList.Create;
   FInitialRowsList := {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF}.Create;
   FCurrentRowsList := {$IFDEF TLIST_IS_DEPRECATED}TZSortedList{$ELSE}TList{$ENDIF}.Create;
 
@@ -861,6 +921,12 @@ var
   I: Integer;
 begin
   inherited AfterClose;
+  //required for FPC which has a different logic freeing the interfaces..
+  //the reolver caches some dml stmts, even if we close the resultset and nil the
+  //intf afterwards, FPC holds the rs in memory, thus some "Object is in use"
+  //errors may mappen, see TZTestDbcInterbaseCase.Test_GENERATED_BY_DEFAULT_64 f.e.
+  FNativeResolver := nil;
+  FResolver := nil; //required for FPC
   if Assigned(FRowAccessor) then begin
     for I := 0 to FRowsList.Count - 1 do
       FRowAccessor.DisposeBuffer(PZRowBuffer(FRowsList[I]));
@@ -2005,9 +2071,15 @@ begin
     if (Row >= 1) and (Row <= LastRowNo) then begin
       Result := True;
       FSelectedRow := PZRowBuffer(FRowsList[Row - 1]);
-      if (FSelectedRow.Index = FUpdatedRow.Index) and (FUpdatedRow.UpdateType = utModified)
-      then FSelectedRow := FUpdatedRow;
-      RowAccessor.RowBuffer := FSelectedRow;
+      if (FSelectedRow.Index = FUpdatedRow.Index) and (FUpdatedRow.UpdateType = utModified) then
+        FSelectedRow := FUpdatedRow
+      else if (FSelectedRow.UpdateType = utInserted) and FCachedUpdates then begin
+        Row := LocateRow(FCurrentRowsList, FSelectedRow.Index);
+        if (Row >= 0) then begin
+          FSelectedRow := FCurrentRowsList[Row];
+          RowAccessor.RowBuffer := FSelectedRow;
+        end else RowAccessor.RowBuffer := FSelectedRow;
+      end else RowAccessor.RowBuffer := FSelectedRow;
     end else begin
       Result := False;
       FSelectedRow := nil;
@@ -2135,7 +2207,7 @@ begin
   if PZRowBuffer(FRowsList[RowNo - 1]).UpdateType = utDeleted then
     raise EZSQLException.Create(SCanNotUpdateDeletedRow);
 
-  if FSelectedRow <> FUpdatedRow then
+  if (FSelectedRow <> FUpdatedRow) then
       Exit;
 
   AppendRow(FRowsList[RowNo - 1]); //move org row to initiallist
@@ -2462,6 +2534,7 @@ begin
     inherited ResetCursor;
   end;
 end;
+
 {**
   Retrieves the  number, types and properties of
   this <code>ResultSet</code> object's columns.

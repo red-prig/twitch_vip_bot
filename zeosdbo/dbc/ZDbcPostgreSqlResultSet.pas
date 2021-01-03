@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -174,6 +174,17 @@ type
     function GetBlobOid: Oid;
     function Clone(LobStreamMode: TZLobStreamMode): IZBlob;
   public //IImmediatelyReleasable
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
     function GetConSettings: PZConSettings;
   public
@@ -946,7 +957,7 @@ begin
                       Result := PAnsiChar(fByteBuffer);
                     end;
         stCurrency: begin
-                      CurrToRaw(GetCurrency(ColumnIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}), PAnsiChar(fByteBuffer), @PEnd);
+                      CurrToRaw(GetCurrency(ColumnIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}), '.', PAnsiChar(fByteBuffer), @PEnd);
 JmpPEndTinyBuf:       Result := PAnsiChar(fByteBuffer);
                       Len := PEnd - Result;
                     end;
@@ -1133,7 +1144,7 @@ begin
                     end;
         stCurrency: begin
                       C := GetCurrency(ColumnIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF});
-                      CurrToUnicode(C, PWideChar(fByteBuffer), @PEnd);
+                      CurrToUnicode(C, '.', PWideChar(fByteBuffer), @PEnd);
 JmpPEndTinyBuf:       Result := PWideChar(fByteBuffer);
                       Len := PEnd - Result;
                     end;
@@ -2491,7 +2502,7 @@ begin
     Connection := nil;
     Analyser := nil;
     Tokenizer := nil;
-    IdentifierConvertor := nil;
+    IdentifierConverter := nil;
     PGMetaData := nil;
   end;
   Loaded := True;
@@ -2529,7 +2540,7 @@ begin
     if I > 0 then
       SQLWriter.AddText(' AND ', Result);
     S := MetaData.GetColumnName(idx);
-    Tmp := IdentifierConvertor.Quote(S);
+    Tmp := IdentifierConverter.Quote(S, iqColumn);
     SQLWriter.AddText(Tmp, Result);
     if (Metadata.IsNullable(idx) = ntNullable)
     then SQLWriter.AddText(' IS NOT DISTINCT FROM ?', Result)
@@ -2596,8 +2607,9 @@ var RAColumns: TObjectList;
 begin
   {EH: usuall this code is NOT nessecary if we would handle the types as the
   providers are able to. But in current state we just copy all the incompatibilities
-  from the DataSets into dbc... grumble. the only treamed data pg supports are oid-lobs
-  those we leave as streams, doesn't matter if cached or not, just identify purpose}
+  from the DataSets into dbc... grumble. the only streamed data pg supports are
+  oid-lobs. Those we leave as streams, doesn't matter if cached or not, just
+  identify purpose}
   RAColumns := TObjectList.Create(True);
   CopyColumnsInfo(ColumnsInfo, RAColumns);
   for I := 0 to RAColumns.Count -1 do begin
@@ -2826,7 +2838,7 @@ begin
     for I := 0 to FInsertColumns.Count-1 do begin
       ColumnIndex := PZIndexPair(FInsertColumns[i])^.ColumnIndex;
       Tmp := Metadata.GetColumnName(ColumnIndex);
-      Tmp := IdentifierConvertor.Quote(Tmp);
+      Tmp := IdentifierConverter.Quote(Tmp, iqColumn);
       SQLWriter.AddText(Tmp, Result);
       SQLWriter.AddChar(',', Result);
     end;
@@ -2857,7 +2869,7 @@ begin
             Fields.Delete(ColumnIndex); { avoid duplicates }
         end;
         {$IFEND}
-        Tmp := IdentifierConvertor.Quote(Tmp);
+        Tmp := IdentifierConverter.Quote(Tmp, iqColumn);
         SQLWriter.AddText(Tmp, Result);
         SQLWriter.AddChar(',', Result);
       end;
@@ -2871,7 +2883,7 @@ begin
         if ColumnIndex = InvalidDbcIndex then
           raise CreateColumnWasNotFoundException(Tmp);
         FReturningPairs.Add(ColumnIndex, FReturningPairs.Count{$IFNDEF GENERIC_INDEX}+1{$ENDIF});
-        Tmp := IdentifierConvertor.Quote(Tmp);
+        Tmp := IdentifierConverter.Quote(Tmp, iqColumn);
         SQLWriter.AddText(Tmp, Result);
         SQLWriter.AddChar(',', Result);
       end;

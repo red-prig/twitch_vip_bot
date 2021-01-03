@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -196,7 +196,17 @@ type
     function GetIbSqlType(const Index: Word): Smallint;
     function GetIbSqlSubType(const Index: Word): Smallint;
     function GetIbSqlLen(const Index: Word): Smallint;
-
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
   end;
 
@@ -1014,8 +1024,8 @@ testBCD:  Scale := Abs(Scale);
         else //http://sourceforge.net/p/zeoslib/tickets/111/
           Result := stBinaryStream;
       end;
-    blr_dec64,
-    blr_dec128,
+    blr_dec64: Result := stDouble; //assume the DEC16 has 64 bit and an 16digit mantissa whereas a double has 15digit mantissa..Exaptable?
+    blr_dec128: Result := stString; //yet defined, we have no Soft-128Bit Decimal128 IEEE 754
     blr_int128: Result := stBigDecimal;
     else
       Result := ZDbcIntfs.stUnknown;
@@ -1266,11 +1276,16 @@ begin
           Result := stBigDecimal;
     SQL_FLOAT:
       Result := stFloat;
+    SQL_DEC16, SQL_DEC34,
     SQL_DOUBLE, SQL_D_FLOAT:
       Result := stDouble;
     SQL_BOOLEAN, SQL_BOOLEAN_FB:
       Result := stBoolean;
+    SQL_TIMESTAMP_TZ_EX,
+    SQL_TIMESTAMP_TZ,
     SQL_DATE: Result := stTimestamp;
+    SQL_TIME_TZ_EX,
+    SQL_TIME_TZ,
     SQL_TYPE_TIME: Result := stTime;
     SQL_TYPE_DATE: Result := stDate;
     SQL_INT64:
@@ -1286,6 +1301,7 @@ begin
         then Result := stAsciiStream
         else Result := stBinaryStream;
     SQL_ARRAY: Result := stArray;
+    SQL_DEC_FIXED, SQL_INT128: Result := stBigDecimal;
     else  Result := stString;
   end;
 end;

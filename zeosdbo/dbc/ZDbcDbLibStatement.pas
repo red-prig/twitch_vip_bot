@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -109,6 +109,13 @@ type
   protected
     procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZSQLStringWriter; Var Result: SQLString); override;
   public
+    /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
+    ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(ParameterIndex: Integer; SQLType: TZSQLType);
     procedure SetBoolean(ParameterIndex: Integer; Value: Boolean);
     procedure SetByte(ParameterIndex: Integer; Value: Byte);
@@ -154,6 +161,13 @@ type
     constructor Create(const Connection: IZConnection;
       const RemoteProcedureName: String; const Info: TStrings);
   public
+    /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
+    ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(ParameterIndex: Integer; SQLType: TZSQLType);
     procedure SetBoolean(ParameterIndex: Integer; Value: Boolean);
     procedure SetByte(ParameterIndex: Integer; Value: Byte);
@@ -348,6 +362,7 @@ begin
   FetchResults;
   while GetMoreResults and (FlastResultSet = nil) do ;
   Result := GetResultSet;
+  FlastResultSet := nil;
 end;
 
 {**
@@ -617,7 +632,7 @@ procedure TZDBLibPreparedStatementEmulated.SetCurrency(ParameterIndex: Integer;
 begin
   {$IFNDEF GENERIC_INDEX}ParameterIndex := ParameterIndex-1;{$ENDIF}
   CheckParameterIndex(ParameterIndex);
-  BindList.Put(ParameterIndex, stCurrency, CurrToRaw(Value), FClientCP);
+  BindList.Put(ParameterIndex, stCurrency, CurrToRaw(Value, '.'), FClientCP);
 end;
 
 procedure TZDBLibPreparedStatementEmulated.SetDate(ParameterIndex: Integer;
@@ -1294,7 +1309,7 @@ procedure TZDBLIBPreparedRPCStatement.SetCurrency(ParameterIndex: Integer;
 begin
   {$IFNDEF GENERIC_INDEX}ParameterIndex := ParameterIndex-1;{$ENDIF}
   CheckParameterIndex(ParameterIndex);
-  BindList.Put(ParameterIndex, stString, CurrToRaw(Value), FClientCP);
+  BindList.Put(ParameterIndex, stString, CurrToRaw(Value, '.'), FClientCP);
 end;
 
 procedure TZDBLIBPreparedRPCStatement.SetDate(ParameterIndex: Integer;

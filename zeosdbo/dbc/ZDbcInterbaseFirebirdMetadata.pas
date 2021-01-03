@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -95,8 +95,12 @@ type
     function SupportsBinaryInSQL: Boolean;
     function GetMaxSQLDASize: LongWord;
     // database/driver/server info:
+    /// <summary>What's the name of this database product?</summary>
+    /// <returns>database product name</returns>
     function GetDatabaseProductName: string; override;
     function GetDatabaseProductVersion: string; override;
+    /// <summary>What's the name of this ZDBC driver?
+    /// <returns>ZDBC driver name</returns>
     function GetDriverName: string; override;
 //    function GetDriverVersion: string; override; -> Same as parent
 //    function GetDriverMajorVersion: Integer; override; Same as parent
@@ -425,10 +429,6 @@ begin
   Result := FIsFireBird and (FHostVersion >= 2000000);
 end;
 
-{**
-  What's the name of this database product?
-  @return database product name
-}
 function TZInterbase6DatabaseInfo.GetDatabaseProductName: string;
 begin
   Result := DBProvider[FIsFireBird];
@@ -443,10 +443,6 @@ begin
   Result := FProductVersion;
 end;
 
-{**
-  What's the name of this JDBC driver?
-  @return JDBC driver name
-}
 function TZInterbase6DatabaseInfo.GetDriverName: string;
 begin
   Result := 'Zeos Database Connectivity Driver for Interbase and Firebird';
@@ -1211,7 +1207,8 @@ end;
 function TZInterbase6DatabaseInfo.GetDefaultTransactionIsolation:
   TZTransactIsolationLevel;
 begin
-  Result := tiSerializable;
+  //Result := tiSerializable;
+  Result := tiReadCommitted;
 end;
 
 {**
@@ -1622,8 +1619,10 @@ function TZInterbase6DatabaseMetadata.UncachedGetTables(const Catalog: string;
 var
   SQL, TableNameCondition: string;
   I: Integer;
+  VRS: IZVirtualResultSet;
 begin
   Result := inherited UncachedGetTables(Catalog, SchemaPattern, TableNamePattern, Types);
+  Result.QueryInterface(IZVirtualResultSet, VRS);
 
   TableNameCondition := ConstructNameCondition(TableNamePattern,
     'RDB$RELATION_NAME');
@@ -1651,9 +1650,7 @@ begin
   end;
   SQL := SQL + 'ORDER BY RDB$RELATION_NAME';
 
-  Result := CopyToVirtualResultSet(
-    CreateStatement.ExecuteQuery(SQL),
-    ConstructVirtualResultSet(TableColumnsDynArray));
+  Result := CopyToVirtualResultSet(CreateStatement.ExecuteQuery(SQL),VRS);
 end;
 
 {**

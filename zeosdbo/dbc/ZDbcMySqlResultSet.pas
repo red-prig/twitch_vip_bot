@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -133,6 +133,17 @@ type
     destructor Destroy; override;
     procedure BeforeClose; override;
     procedure AfterClose; override;
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
 
@@ -206,7 +217,7 @@ type
   private
     FPlainDriver: TZMySQLPlainDriver;
     FBind: PMYSQL_aligned_BIND;
-    FStmtHandle: PPMYSQL_STMT;
+    FStmtHandle: PMYSQL_STMT;
     FIndex: Cardinal;
     FReleased: Boolean;
     FLobRow: Integer;
@@ -220,6 +231,17 @@ type
       LobStreamMode: TZLobStreamMode; const OpenLobStreams: TZSortedList;
       CurrentRowAddr: PInteger);
   public //implement IImmediatelyReleasable
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
     function GetConSettings: PZConSettings;
   public //implement IZLob
@@ -341,9 +363,7 @@ end;
   @return SQL type from java.sql.Types
 }
 function TZMySQLResultSetMetadata.GetColumnType(ColumnIndex: Integer): TZSQLType;
-begin {EH: does anyone know why the LoadColumns was made? Note the column-types are perfect determinable on MySQL}
-  //if not Loaded then
-    // LoadColumns;
+begin
   Result := TZColumnInfo(ResultSet.ColumnsInfo[ColumnIndex{$IFNDEF GENERIC_INDEX} - 1{$ENDIF}]).ColumnType;
 end;
 
@@ -390,7 +410,7 @@ var
   TableColumns: IZResultSet;
   Connection: IZConnection;
   Driver: IZDriver;
-  IdentifierConvertor: IZIdentifierConvertor;
+  IdentifierConverter: IZIdentifierConverter;
   Analyser: IZStatementAnalyser;
   Tokenizer: IZTokenizer;
 begin
@@ -401,7 +421,7 @@ begin
     Driver := Connection.GetDriver;
     Analyser := Driver.GetStatementAnalyser;
     Tokenizer := Driver.GetTokenizer;
-    IdentifierConvertor := Metadata.GetIdentifierConvertor;
+    IdentifierConverter := Metadata.GetIdentifierConverter;
     try
       if Analyser.DefineSelectSchemaFromQuery(Tokenizer, SQL) <> nil then
         for I := 0 to ResultSet.ColumnsInfo.Count - 1 do begin
@@ -409,7 +429,7 @@ begin
           ClearColumn(Current);
           if Current.TableName = '' then
             continue;
-          TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConvertor.Quote(Current.TableName)),'');
+          TableColumns := Metadata.GetColumns(Current.CatalogName, Current.SchemaName, Metadata.AddEscapeCharToWildcards(IdentifierConverter.Quote(Current.TableName, iqTable)),'');
           if TableColumns <> nil then begin
             TableColumns.BeforeFirst;
             while TableColumns.Next do
@@ -424,7 +444,7 @@ begin
       Connection := nil;
       Analyser := nil;
       Tokenizer := nil;
-      IdentifierConvertor := nil;
+      IdentifierConverter := nil;
     end;
   end;
   Loaded := True;
@@ -826,7 +846,7 @@ begin
     FMYSQL_STMT := FPMYSQL_STMT^;
   if FMYSQL_STMT <> nil then begin
     if not fBindBufferAllocated then begin
-      for I := 0 to Self.ColumnsInfo.Count -1 do begin
+      for I := 0 to ColumnsInfo.Count -1 do begin
         {$R-}
         Bind := @FMYSQL_aligned_BINDs[I];
         {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
@@ -2681,7 +2701,7 @@ begin
     if I > 0 then
       SQLWriter.AddText(' AND ', Result);
     S := MetaData.GetColumnName(idx);
-    Tmp := IdentifierConvertor.Quote(S);
+    Tmp := IdentifierConverter.Quote(S, iqColumn);
     SQLWriter.AddText(Tmp, Result);
     if (Metadata.IsNullable(idx) = ntNullable)
     then SQLWriter.AddText('<=>?', Result) //"null safe equals" operator
@@ -2773,7 +2793,7 @@ begin
   then Result := nil
   else begin
     if LobStreamMode <> lsmWrite then begin
-      if FCurrentRowAddr^ -1 <> FLobRow then begin
+      if (FCurrentRowAddr^ -1 <> FLobRow) then begin
         FPlainDriver.mysql_stmt_data_seek(FStmtHandle, FLobRow);
         Status := FPlainDriver.mysql_stmt_fetch(FStmtHandle);
         if Status = STMT_FETCH_ERROR then
@@ -2785,6 +2805,8 @@ begin
     Result := TZMySQLLobStream.Create(Self);
   end;
 {$IF defined (RangeCheckEnabled) and defined(WITH_UINT64_C1118_ERROR)}{$R+}{$IFEND}
+  if (FColumnCodePage <> zCP_Binary) and (CodePage <> FColumnCodePage) then
+    Result := TZCodePageConversionStream.Create(Result, FColumnCodePage, CodePage, FConSettings, FOpenLobStreams);
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
@@ -2870,11 +2892,11 @@ begin
     Count := FOwner.FBind.Length[0] - FOffset;
   FOwner.FBind^.buffer_Length_address^ := Count;
   FOwner.FBind^.buffer_address^ := @Buffer;
-  Status := FOwner.FPlainDriver.mysql_stmt_fetch_column(FOwner.FStmtHandle^, FOwner.FBind.mysql_bind, FOwner.FIndex, Foffset);
+  Status := FOwner.FPlainDriver.mysql_stmt_fetch_column(FOwner.FStmtHandle, FOwner.FBind.mysql_bind, FOwner.FIndex, Foffset);
   FOwner.FBind^.buffer_Length_address^ := 0;
   FOwner.FBind^.buffer_address^ := nil;
   if Status = STMT_FETCH_ERROR then
-    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle^,
+    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle,
       'mysql_stmt_fetch_column', Self);
   Result := Count;
   FOffSet := Foffset + ULong(Count);
@@ -2904,10 +2926,10 @@ begin
   end;
   if FOwner.FLobStreamMode = lsmRead then
     raise CreateWriteOnlyException;
-  Status := FOwner.FPlainDriver.mysql_stmt_send_long_data(FOwner.FStmtHandle^, FOwner.FIndex,
+  Status := FOwner.FPlainDriver.mysql_stmt_send_long_data(FOwner.FStmtHandle, FOwner.FIndex,
     @Buffer, Count);
   if Status = 1 then
-    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle^,
+    FOwner.FMySQLConnection.HandleErrorOrWarning(lcOther, FOwner.FStmtHandle,
       'mysql_stmt_send_long_data', Self);
   Result := Count;
   FOffSet := Foffset + ULong(Result);

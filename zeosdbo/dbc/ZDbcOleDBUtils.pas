@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -99,6 +99,8 @@ function PrepareOleColumnDBBindings(DBUPARAMS: DB_UPARAMS;
 
 function MapOleTypesToZeos(DBType: DBTYPEENUM; Precision, Scale: Integer): DBTYPE;
 
+/// <summary>Try to determine the server-proverder by given Provider-Name</summary>
+/// <returns>the best knonw Server-proveider</returns>
 function ProviderNamePrefix2ServerProvider(const ProviderNamePrefix: String): TZServerProvider;
 
 const SQLType2OleDBTypeEnum: array[TZSQLType] of DBTYPEENUM = (DBTYPE_NULL,
@@ -171,7 +173,7 @@ begin
     DBTYPE_FILETIME:    Result := stTimeStamp;
     DBTYPE_PROPVARIANT: Result := stString;
     DBTYPE_XML:         Result := stUnicodeStream;
-    DBTYPE_TABLE:       Result := stDataSet;
+    DBTYPE_TABLE:       Result := stResultSet;
     else //makes compiler happy
       {
       DBTYPE_IDISPATCH:
@@ -247,7 +249,7 @@ begin
     DBTYPE_FILETIME:    Result := stTimeStamp;
     DBTYPE_PROPVARIANT: Result := stString;
     DBTYPE_XML:         Result := stAsciiStream;
-    DBTYPE_TABLE:       Result := stDataSet;
+    DBTYPE_TABLE:       Result := stResultSet;
     else //makes compiler happy
       {
       DBTYPE_IDISPATCH:
@@ -467,11 +469,12 @@ const
     (ProviderNamePrefix: 'SQLNCLI';       Provider: spMSSQL),
     (ProviderNamePrefix: 'SQLOLEDB';      Provider: spMSSQL),
     (ProviderNamePrefix: 'SSISOLEDB';     Provider: spMSSQL),
-    (ProviderNamePrefix: 'MSDASQL';       Provider: spMSSQL), //??
+    //(ProviderNamePrefix: 'MSDASQL';       Provider: spMSSQL), ODBC proivider for everything
     (ProviderNamePrefix: 'MYSQLPROV';     Provider: spMySQL),
     (ProviderNamePrefix: 'IBMDA400';      Provider: spAS400),
     (ProviderNamePrefix: 'IFXOLEDBC';     Provider: spInformix),
     (ProviderNamePrefix: 'MICROSOFT.JET.OLEDB'; Provider: spMSJet),
+    (ProviderNamePrefix: 'MICROSOFT.ACE'; Provider: spMSJet),
     (ProviderNamePrefix: 'IB';            Provider: spIB_FB),
     (ProviderNamePrefix: 'POSTGRESSQL';   Provider: spPostgreSQL),
     (ProviderNamePrefix: 'CUBRID';        Provider: spCUBRID)
@@ -480,7 +483,7 @@ var
   I: Integer;
   ProviderNamePrefixUp: string;
 begin
-  Result := spMSSQL;
+  Result := spUnknown;
   ProviderNamePrefixUp := UpperCase(ProviderNamePrefix);
   for i := low(KnownDriverName2TypeMap) to high(KnownDriverName2TypeMap) do
     if StartsWith(ProviderNamePrefixUp, KnownDriverName2TypeMap[i].ProviderNamePrefix) then begin

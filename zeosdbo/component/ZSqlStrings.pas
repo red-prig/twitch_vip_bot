@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -94,6 +94,7 @@ type
     FParams: TStringList;
     FMultiStatements: Boolean;
     FParamChar: Char;
+    FDoNotRebuildAll: Boolean;
 
     function GetParamCount: Integer;
     function GetParamName(Index: Integer): string;
@@ -112,7 +113,9 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-
+  public
+    procedure Assign(Source: TPersistent); override;
+  public
     property Dataset: TObject read FDataset write SetDataset;
     property ParamCheck: Boolean read FParamCheck write SetParamCheck;
     property ParamCount: Integer read GetParamCount;
@@ -286,7 +289,7 @@ end;
 
 procedure TZSQLStrings.SetTextStr(const Value: string);
 begin
-  if Value <> Text then //prevent rebuildall if nothing changed see:
+  if Trim(Value) <> Trim(Text) then //prevent rebuildall if nothing changed see:
     inherited SetTextStr(Value);
 end;
 
@@ -357,10 +360,11 @@ var
   ParamIndex: Integer;
   ParamIndices: TIntegerDynArray;
   ParamIndexCount: Integer;
-  ParamName, S, NormalizeParam: string;
+  ParamName, S, NormalizedParam: string;
   SQL: SQLString;
   Tokenizer: IZTokenizer;
   SQLStringWriter: TZSQLStringWriter;
+  IgnoreParam: Boolean;
   procedure NextToken;
   begin
     Token := Tokens[TokenIndex];
@@ -368,6 +372,10 @@ var
   end;
 begin
   if not (Assigned(FParams) and Assigned(FStatements)) then exit; //Alexs
+  if FDoNotRebuildAll then begin
+    FDoNotRebuildAll := False;
+    Exit;
+  end;
 
   FParams.Clear;
   FStatements.Clear;
@@ -406,16 +414,13 @@ begin
             { Check for correct parameter type. }
             if not (Token.TokenType in [ttWord, ttQuoted, ttQuotedIdentifier, ttKeyWord, ttInteger]) then
               raise EZDatabaseError.Create(SIncorrectToken);
-            NormalizeParam := Tokenizer.NormalizeParamToken(Token^, ParamName);
-            SQLStringWriter.AddText(NormalizeParam, SQL);
-            ParamIndex := FindParam(ParamName);
-            if ParamIndex < 0 then
-              ParamIndex := FParams.Add(ParamName);
-
-            Inc(ParamIndexCount);
-            SetLength(ParamIndices, ParamIndexCount);
-            ParamIndices[ParamIndexCount - 1] := ParamIndex;
-
+            NormalizedParam := Tokenizer.NormalizeParamToken(Token^, ParamName, FParams, ParamIndex, IgnoreParam);
+            SQLStringWriter.AddText(NormalizedParam, SQL);
+            if not IgnoreParam then begin
+              Inc(ParamIndexCount);
+              SetLength(ParamIndices, ParamIndexCount);
+              ParamIndices[ParamIndexCount - 1] := ParamIndex;
+            end;
             Continue;
           end else
             SQLStringWriter.AddChar(FParamChar, SQL);
@@ -440,6 +445,19 @@ begin
     Tokens.Free;
     SQLStringWriter.Free;
   end;
+end;
+
+procedure TZSQLStrings.Assign(Source: TPersistent);
+var Old, New: String;
+begin
+  if Source is TStrings then begin
+    Old := Text;
+    Old := Trim(Old);
+    New := TStrings(Source).Text;
+    New := Trim(New);
+    FDoNotRebuildAll := New = Old;
+  end;
+  inherited Assign(Source);
 end;
 
 {**

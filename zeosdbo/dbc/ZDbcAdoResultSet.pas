@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -400,8 +400,10 @@ begin
       ColumnInfo.Scale := F.NumericScale;
     end else begin
       ColumnInfo.Precision := FieldSize;
+      if ColType in [adChar, adWChar, adBinary] then
+        ColumnInfo.Scale := ColumnInfo.Precision;
     end;
-    ColumnInfo.Signed := ColType in [adTinyInt, adSmallInt, adInteger, adBigInt, adDouble, adSingle, adCurrency, adDecimal, adNumeric, adBinary];
+    ColumnInfo.Signed := ColType in [adTinyInt, adSmallInt, adInteger, adBigInt, adDouble, adSingle, adCurrency, adDecimal, adNumeric];
     ColumnInfo.Writable := (prgInfo.dwFlags and (DBCOLUMNFLAGS_WRITE or DBCOLUMNFLAGS_WRITEUNKNOWN) <> 0) and (F.Properties.Item['BASECOLUMNNAME'].Value <> null) and not ColumnInfo.AutoIncrement;
     ColumnInfo.ReadOnly := (prgInfo.dwFlags and (DBCOLUMNFLAGS_WRITE or DBCOLUMNFLAGS_WRITEUNKNOWN) = 0) or ColumnInfo.AutoIncrement;
     ColumnInfo.Searchable := (prgInfo.dwFlags and DBCOLUMNFLAGS_ISLONG) = 0;
@@ -716,7 +718,7 @@ begin
                         goto Set_From_Buf;
                       end;
       VT_CY:          begin
-                        CurrToRaw(PCurrency(FValueAddr)^, PAnsiChar(fByteBuffer), @Result);
+                        CurrToRaw(PCurrency(FValueAddr)^, '.', PAnsiChar(fByteBuffer), @Result);
 Set_From_Buf:           Len := Result - PAnsiChar(fByteBuffer);
                         Result := PAnsiChar(fByteBuffer);
                       end;
@@ -812,7 +814,7 @@ begin
                         goto Set_From_Buf;
                       end;
       VT_CY:          begin
-                        CurrToUnicode(PCurrency(FValueAddr)^, PWideChar(fByteBuffer), @Result);
+                        CurrToUnicode(PCurrency(FValueAddr)^, '.', PWideChar(fByteBuffer), @Result);
 Set_From_Buf:           Len := Result - PWideChar(fByteBuffer);
                         Result := PWideChar(fByteBuffer);
                       end;

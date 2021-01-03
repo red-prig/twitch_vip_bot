@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -116,17 +116,72 @@ type
     function CreateTransaction(AutoCommit, ReadOnly: Boolean;
       TransactIsolationLevel: TZTransactIsolationLevel; Params: TStrings): IZTransaction;
   public
+    /// <summary>Creates a <c>Statement</c> interface for sending SQL statements
+    ///  to the database. SQL statements without parameters are normally
+    ///  executed using Statement objects. If the same SQL statement
+    ///  is executed many times, it is more efficient to use a
+    ///  <c>PreparedStatement</c> object. Result sets created using the returned
+    ///  <c>Statement</c> interface will by default have forward-only type and
+    ///  read-only concurrency.</summary>
+    /// <param>Info a statement parameters.</param>
+    /// <returns>A new Statement interface</returns>
     function CreateStatementWithParams(Info: TStrings): IZStatement;
+    /// <summary>Creates a <c>PreparedStatement</c> interface for sending
+    ///  parameterized SQL statements to the database. A SQL statement with
+    ///  or without IN parameters can be pre-compiled and stored in a
+    ///  PreparedStatement object. This object can then be used to efficiently
+    ///  execute this statement multiple times.
+    ///  Note: This method is optimized for handling parametric SQL statements
+    ///  that benefit from precompilation. If the driver supports
+    ///  precompilation, the method <c>prepareStatement</c> will send the
+    ///  statement to the database for precompilation. Some drivers may not
+    ///  support precompilation. In this case, the statement may not be sent to
+    ///  the database until the <c>PreparedStatement</c> is executed. This has
+    ///  no direct effect on users; however, it does affect which method throws
+    ///  certain SQLExceptions. Result sets created using the returned
+    ///  PreparedStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"SQL" a SQL statement that may contain one or more '?' IN
+    ///  parameter placeholders.</param>
+    /// <param> Info a statement parameter list.</param>
+    /// <returns> a new PreparedStatement object containing the
+    ///  optional pre-compiled statement</returns>
     function PrepareStatementWithParams(const SQL: string; Info: TStrings):
       IZPreparedStatement;
-    function PrepareCallWithParams(const Name: String; Info: TStrings):
+    /// <summary>Creates a <code>CallableStatement</code> object for calling
+    ///  database stored procedures. The <code>CallableStatement</code> object
+    ///  provides methods for setting up its IN and OUT parameters, and methods
+    ///  for executing the call to a stored procedure. Note: This method is
+    ///  optimized for handling stored procedure call statements. Some drivers
+    ///  may send the call statement to the database when the method
+    ///  <c>prepareCall</c> is done; others may wait until the
+    ///  <c>CallableStatement</c> object is executed. This has no direct effect
+    ///  on users; however, it does affect which method throws certain
+    ///  EZSQLExceptions. Result sets created using the returned
+    ///  IZCallableStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"Name" a procedure or function name.</param>
+    /// <param>"Params" a statement parameters list.</param>
+    /// <returns> a new IZCallableStatement interface containing the
+    ///  pre-compiled SQL statement </returns>
+    function PrepareCallWithParams(const Name: String; Params: TStrings):
       IZCallableStatement;
 
     function PingServer: Integer; override;
     function AbortOperation: Integer; override;
 
     procedure Open; override;
-
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
   end;
@@ -141,15 +196,67 @@ type
     function TxnIsStarted: Boolean; override;
     function TestCachedResultsAndForceFetchAll: Boolean; override;
   public { IZTransaction }
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  released. Otherwise makes all changes made since the previous commit/
+    ///  rollback permanent and releases any database locks currently held by
+    ///  the Connection. This method should be used only when auto-commit mode
+    ///  has been disabled. If Option "Hard_Commit" is set to true or
+    ///  TestCachedResultsAndForceFetchAll returns <c>True</c> the transaction
+    ///  is committed. Otherwise if "Hard_Commit" isn't set to true a
+    ///  retained_commit is performed, and the txn get's removed from the
+    ///  transaction manger. Later if all streams are closed a final
+    ///  commit is called to release the garbage.</summary>
     procedure Commit;
+    /// <summary>Perform a "hard" Commit or Rollback as retained done by User
+    ///  before. Removes this interface from Parent-Transaction manager.
+    ///  Releases a transaction and resources immediately
+    ///  instead of waiting for them to be automatically released. If the
+    ///  transaction is underway a rollback will be done. Note: A
+    ///  Transaction is automatically closed when the Conenction closes or it is
+    ///  garbage collected. Certain fatal errors also result in a closed
+    //// Transaction.</summary>
     procedure Close;
+    /// <summary>Get's the owner connection that produced that object instance.
+    /// </summary>
+    /// <returns>the connection object interface.</returns>
     function GetConnection: IZConnection;
     function IsClosed: Boolean;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  rolled back. Otherwise drops all changes made since the previous
+    ///  commit/rollback and releases any database locks currently held
+    ///  by this Connection. This method should be used only when auto-
+    ///  commit has been disabled. If Option "Hard_Commit" is set to true
+    ///  or TestCachedResultsAndForceFetchAll returns <c>True</c> the
+    ///  transaction is rolled back. Otherwise if "Hard_Commit" isn't set
+    ///  to true a retained_rollback is performed, and the txn get's removed
+    ///  from the transaction manger. Later if all streams are closed a final
+    ///  rollback is called to release the garbage.</summary>
     procedure Rollback;
+    /// <summary>Starts transaction support or saves the current transaction.
+    ///  If the connection is closed, the connection will be opened.
+    ///  If a transaction is underway a nested transaction or a savepoint will
+    ///  be spawned. While the tranaction(s) is/are underway the AutoCommit
+    ///  property is set to False. Ending up the transaction with a
+    ///  commit/rollback the autocommit property will be restored if changing
+    ///  the autocommit mode was triggered by a starttransaction call.</summary>
+    /// <returns>Returns the current txn-level. 1 means a expicit transaction
+    ///  was started. 2 means the transaction was saved. 3 means the previous
+    ///  savepoint got saved too and so on.</returns>
     function StartTransaction: Integer;
   public { IZIBTransaction }
     procedure DoStartTransaction;
     function GetTrHandle: PISC_TR_HANDLE;
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost); override;
   end;
 
@@ -433,8 +540,9 @@ begin
   FHandle := 0;
   DBCreated := False;
   { Create new db if needed }
-  if (Info.Values[ConnProps_CreateNewDatabase] <> '') then begin
-    CreateDB := Info.Values[ConnProps_CreateNewDatabase];
+  CreateDB := Info.Values[ConnProps_CreateNewDatabase];
+  CreateDB := Trim(CreateDB);
+  if (CreateDB <> '') then begin
     if (GetClientVersion >= 2005000) and IsFirebirdLib and (Length(CreateDB)<=4) and StrToBoolEx(CreateDB, False) then begin
       if (Info.Values[ConnProps_isc_dpb_lc_ctype] <> '') and (Info.Values[ConnProps_isc_dpb_set_db_charset] = '') then
         Info.Values[ConnProps_isc_dpb_set_db_charset] := Info.Values[ConnProps_isc_dpb_lc_ctype];
@@ -447,6 +555,22 @@ begin
       if DriverManager.HasLoggingListener then
         DriverManager.LogMessage(lcConnect, URL.Protocol, FLogMessage);
     end else begin
+      DBCP := Uppercase(CreateDB);
+      I := PosEx('CREATE', DBCP);
+      if (I < 1) or (PosEx('DATABASE', DBCP) < 1) then begin
+        DBCP := QuotedStr(URL.Database);
+        CreateDB := 'CREATE DATABASE '+DBCP;
+        DBCP := QuotedStr(URL.UserName);
+        CreateDB := CreateDB + ' USER '+DBCP;
+        DBCP := QuotedStr(URL.Password);
+        CreateDB := CreateDB + ' PASSWORD '+DBCP;
+        DBCP := Info.Values[ConnProps_isc_dpb_page_size];
+        if DBCP <> '' then
+          CreateDB := CreateDb + ' page_size '+FClientCodePage;
+        if FClientCodePage <> '' then
+          CreateDB := CreateDb + ' CHARACTER SET '+FClientCodePage;
+      end;
+      DBCP := '';
       {$IFDEF UNICODE}
       DPB := ZUnicodeToRaw(CreateDB, zOSCodePage);
       {$ELSE}
@@ -580,6 +704,18 @@ reconnect:
     end;
   end else if FClientCodePage = '' then
     CheckCharEncoding(DBCP);
+  if (FHostVersion >= 4000000) then begin
+    if (Info.Values[ConnProps_isc_dpb_session_time_zone] = '') then
+      ExecuteImmediat('SET TIME ZONE LOCAL', lcExecute);
+    ExecuteImmediat('SET BIND OF TIME ZONE TO LEGACY', lcExecute);
+    ExecuteImmediat('SET BIND OF DECFLOAT TO LEGACY', lcExecute);
+    ti := GetActiveTransaction;
+    try
+      ti.Close;
+    finally
+      ti := nil;
+    end;
+  end;
 end;
 
 {**
@@ -631,68 +767,14 @@ begin
   end;
 end;
 
-{**
-  Creates a <code>CallableStatement</code> object for calling
-  database stored procedures.
-  The <code>CallableStatement</code> object provides
-  methods for setting up its IN and OUT parameters, and
-  methods for executing the call to a stored procedure.
-
-  <P><B>Note:</B> This method is optimized for handling stored
-  procedure call statements. Some drivers may send the call
-  statement to the database when the method <code>prepareCall</code>
-  is done; others
-  may wait until the <code>CallableStatement</code> object
-  is executed. This has no
-  direct effect on users; however, it does affect which method
-  throws certain SQLExceptions.
-
-  Result sets created using the returned CallableStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param Name a procedure or function identifier
-    parameter placeholders. Typically this  statement is a JDBC
-    function call escape string.
-  @param Info a statement parameters.
-  @return a new CallableStatement object containing the
-    pre-compiled SQL statement
-}
 function TZInterbase6Connection.PrepareCallWithParams(const Name: String;
-  Info: TStrings): IZCallableStatement;
+  Params: TStrings): IZCallableStatement;
 begin
   if IsClosed then
     Open;
-  Result := TZInterbase6CallableStatement.Create(Self, Name, Info);
+  Result := TZInterbase6CallableStatement.Create(Self, Name, Params);
 end;
 
-{**
-  Creates a <code>PreparedStatement</code> object for sending
-  parameterized SQL statements to the database.
-
-  A SQL statement with or without IN parameters can be
-  pre-compiled and stored in a PreparedStatement object. This
-  object can then be used to efficiently execute this statement
-  multiple times.
-
-  <P><B>Note:</B> This method is optimized for handling
-  parametric SQL statements that benefit from precompilation. If
-  the driver supports precompilation,
-  the method <code>prepareStatement</code> will send
-  the statement to the database for precompilation. Some drivers
-  may not support precompilation. In this case, the statement may
-  not be sent to the database until the <code>PreparedStatement</code> is
-  executed.  This has no direct effect on users; however, it does
-  affect which method throws certain SQLExceptions.
-
-  Result sets created using the returned PreparedStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param sql a SQL statement that may contain one or more '?' IN
-    parameter placeholders
-  @param Info a statement parameters.
-  @return a new PreparedStatement object containing the
-    pre-compiled statement
-}
 function TZInterbase6Connection.PrepareStatementWithParams(const SQL: string;
   Info: TStrings): IZPreparedStatement;
 begin
@@ -714,20 +796,6 @@ begin
     Result := nil;
 end;
 
-{**
-  Creates a <code>Statement</code> object for sending
-  SQL statements to the database.
-  SQL statements without parameters are normally
-  executed using Statement objects. If the same SQL statement
-  is executed many times, it is more efficient to use a
-  <code>PreparedStatement</code> object.
-  <P>
-  Result sets created using the returned <code>Statement</code>
-  object will by default have forward-only type and read-only concurrency.
-
-  @param Info a statement parameters.
-  @return a new Statement object
-}
 function TZInterbase6Connection.CreateStatementWithParams(
   Info: TStrings): IZStatement;
 begin
@@ -763,13 +831,6 @@ begin
   end;
 end;
 
-{**
-  Makes all changes made since the previous
-  commit/rollback permanent and releases any database locks
-  currently held by the Connection. This method should be
-  used only when auto-commit mode has been disabled.
-  @see #setAutoCommit
-}
 procedure TZIBTransaction.Commit;
 var Status: ISC_STATUS;
   S: RawByteString;
@@ -864,18 +925,6 @@ begin
   end;
 end;
 
-{**
-  Starts transaction support or saves the current transaction.
-  If the connection is closed, the connection will be opened.
-  If a transaction is underway a nested transaction or a savepoint will be
-  spawned. While the tranaction(s) is/are underway the AutoCommit property is
-  set to False. Ending up the transaction with a commit/rollback the autocommit
-  property will be restored if changing the autocommit mode was triggered by a
-  starttransaction call.
-  @return the current txn-level. 1 means a transaction was started.
-  2 means the transaction was saved. 3 means the previous savepoint got saved
-  too and so on
-}
 function TZIBTransaction.StartTransaction: Integer;
 var S: String;
 begin

@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -99,6 +99,19 @@ type
     function ExecuteQueryPrepared: IZResultSet; override;
     function ExecuteUpdatePrepared: Integer; override;
     function ExecutePrepared: Boolean; override;
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
+    procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
+      var AError: EZSQLConnectionLost); override;
   end;
 
   {** Implements Prepared SQL Statement for Oracle }
@@ -112,6 +125,13 @@ type
     procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZSQLStringWriter; Var Result: SQLString); override;
   public
     procedure SetPWideChar(Index: Integer; Value: PWideChar; WLen: NativeUInt);
+    /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
+    ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(Index: Integer; SQLType: TZSQLType);
     procedure SetBoolean(Index: Integer; Value: Boolean);
     procedure SetByte(Index: Integer; Value: Byte);
@@ -210,7 +230,7 @@ implementation
 uses
   Math, {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings, {$ENDIF}
   ZFastCode, ZDbcOracleResultSet, ZTokenizer,
-  ZEncoding, ZDbcProperties, ZMessages, ZDbcResultSet,
+  ZEncoding, ZDbcProperties, ZMessages, ZDbcResultSet, ZDbcCachedResultSet,
   ZSelectSchema;
 
 const
@@ -340,12 +360,13 @@ begin
   FRowPrefetchMemory := {$IFDEF UNICODE}UnicodeToIntDef{$ELSE}RawToIntDef{$ENDIF}(ZDbcUtils.DefineStatementParameter(Self, DSProps_RowPrefetchSize, ''), 131072);
   FZBufferSize := {$IFDEF UNICODE}UnicodeToIntDef{$ELSE}RawToIntDef{$ENDIF}(ZDbcUtils.DefineStatementParameter(Self, DSProps_InternalBufSize, ''), 131072);
   FCharSetID := ConSettings.ClientCodePage.ID;
+  FSupportsBidirectionalParamIO := True;
 end;
 
 function TZAbstractOracleStatement.CreateResultSet: IZResultSet;
 var
   NativeResultSet: IZResultSet;
-  CachedResultSet: TZOracleCachedResultSet;
+  CachedResultSet: TZCachedResultset;
 begin
   if FOpenResultSet = nil then begin
     if FStatementType = OCI_STMT_SELECT
@@ -353,7 +374,9 @@ begin
     else NativeResultSet := TZOracleCallableResultSet.Create(Self, SQL, FOCIStmt, FOCIError, FOraVariables, BindList);
     if (GetResultSetConcurrency = rcUpdatable) or (GetResultSetType <> rtForwardOnly) then
     begin
-      CachedResultSet := TZOracleCachedResultSet.Create(NativeResultSet, SQL, nil, ConSettings);
+      if CachedLob
+      then CachedResultSet := TZCachedResultSet.Create(NativeResultSet, SQL, nil, ConSettings)
+      else CachedResultSet := TZOracleCachedResultSet.Create(NativeResultSet, SQL, nil, ConSettings);
       if (GetResultSetConcurrency = rcUpdatable) and (FStatementType = OCI_STMT_SELECT) then
         CachedResultSet.SetConcurrency(rcUpdatable);
       CachedResultSet.SetResolver(TZOracleCachedResolver.Create(Self, NativeResultSet.GetMetadata));
@@ -401,7 +424,8 @@ begin
     if Status <> OCI_SUCCESS then
       FOracleConnection.HandleErrorOrWarning(FOCIError, status, lcOther, 'OCIAttrGet', Self);
     LastUpdateCount := upCnt;
-    if (FStatementType = OCI_STMT_BEGIN) and (BindList.HasOutOrInOutOrResultParam) then
+    if (BindList.HasOutOrInOutOrResultParam) and
+       ((FStatementType < OCI_STMT_CREATE) or (FStatementType > OCI_STMT_ALTER)) then
       FOutParamResultSet := CreateResultSet;
     { logging execution }
     if DriverManager.HasLoggingListener then
@@ -429,7 +453,9 @@ begin
     DriverManager.LogMessage(lcBindPrepStmt,Self);
   RestartTimer;
   { Executes the statement and gets a resultset. }
-  if (FStatementType = OCI_STMT_BEGIN) and (BindList.HasOutOrInOutOrResultParam) then begin
+    if (BindList.HasOutOrInOutOrResultParam) and
+       (FStatementType > OCI_STMT_SELECT) and
+       ((FStatementType < OCI_STMT_CREATE) or (FStatementType > OCI_STMT_ALTER)) then begin
     Status := FPlainDriver.OCIStmtExecute(FOracleConnection.GetServiceContextHandle,
         FOCIStmt, FOCIError, Max(1, BatchDMLArrayCount), 0, nil, nil, CommitMode[Connection.GetAutoCommit]);
     if Status <> OCI_SUCCESS then
@@ -494,7 +520,8 @@ begin
       FOracleConnection.HandleErrorOrWarning(FOCIError, status, lcExecPrepStmt, SQL, Self);
     FPlainDriver.OCIAttrGet(FOCIStmt, OCI_HTYPE_STMT, @upCnt, nil, OCI_ATTR_ROW_COUNT, FOCIError);
     LastUpdateCount := upCnt;
-    if ((FStatementType = OCI_STMT_BEGIN) or (FStatementType = OCI_STMT_DECLARE)) and (BindList.HasOutOrInOutOrResultParam) then
+    if (BindList.HasOutOrInOutOrResultParam) and
+       ((FStatementType < OCI_STMT_CREATE) or (FStatementType > OCI_STMT_ALTER)) then
       FOutParamResultSet := CreateResultSet;
     { logging execution }
     if DriverManager.HasLoggingListener then
@@ -527,8 +554,14 @@ begin
   OCIBind.dty := SQLType2OCIType[SQLType];
 
   {check if the parameter type was registered before -> they should be valid only }
-  if (BindList[Index].ParamType <> pctUnknown) and (SQLType <> BindList[Index].SQLType) then
-    raise EZSQLException.Create(SUnKnownParamDataType);
+  if Boolean(BindList[Index].ParamType) then
+    case SQLType of
+      stUnicodeString: ;//do nothing
+      stString: if FCharSetID = OCI_UTF16ID then
+        SQLType := stUnicodeString;
+      else if (SQLType <> BindList[Index].SQLType) then
+        raise EZSQLException.Create(SUnKnownParamDataType);
+    end;
   if (SQLType in [stLong, stULong]) and not FCanBindInt64 then begin
     OCIBind.dty := SQLT_VNU;
     OCIBind.value_sz := SizeOf(TOCINumber);
@@ -658,6 +691,13 @@ begin
   FOracleConnection := nil;
 end;
 
+procedure TZAbstractOracleStatement.ReleaseImmediat(
+  const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost);
+begin
+  inherited ReleaseImmediat(Sender, AError);
+  Unprepare;
+end;
+
 {**
   Sets a new parameter capacity and initializes the buffers.
   @param NewParamCount a new parameters count.
@@ -699,7 +739,6 @@ begin
   try
     inherited Unprepare;
   finally
-
     if FOCIStmt <> nil then begin
       if FServerStmtCache
       then Status := FPlainDriver.OCIStmtRelease(FOCIStmt, FOCIError, nil, 0, OCI_STMTCACHE_DELETE)
@@ -732,7 +771,7 @@ function TZOracleCallableStatement_A.CreateExecutionStatement(
 var
   ProcSQL: RawByteString;
   SQLWriter: TZRawSQLStringWriter;
-  IC: IZIdentifierConvertor;
+  IC: IZIdentifierConverter;
 
   procedure AddArgs({$IFDEF AUTOREFCOUNT}const{$ENDIF}Params: TObjectList);
   var I: Integer;
@@ -807,7 +846,7 @@ var
     end;
   end;
 begin
-  IC := Connection.GetMetadata.GetIdentifierConvertor;
+  IC := Connection.GetMetadata.GetIdentifierConverter;
   SQLWriter := TZRawSQLStringWriter.Create(1024);
   try
     if FProcDescriptor = nil then
@@ -823,6 +862,10 @@ begin
     end;
     ProcSQL := '';
     SQLWriter.AddText('BEGIN'#10, ProcSQL);
+    if FProcDescriptor.ObjType = OCI_PTYPE_UNK then begin
+      FreeAndNil(FProcDescriptor); //clean up! We re not prepared now
+      raise EZSQLException.Create(SFailedtoInitPrepStmt);
+    end;
     if FProcDescriptor.ObjType = OCI_PTYPE_PKG then
       BuildPackage(FProcDescriptor)
     else if FProcDescriptor.ObjType = OCI_PTYPE_PROC then
@@ -880,10 +923,10 @@ var Idx: Integer;
           else begin
             Self.RegisterParameter(IDX,
               Descriptor.SQLType, OCIParamTypeMatrix[Descriptor.OrdPos = 0][Descriptor.IODirection], {$IFDEF UNICODE}S{$ELSE}tmp{$ENDIF},
-                Max(LengthInt(Descriptor.DataSize), LengthInt(Descriptor.Precision)), Descriptor.Scale);
+                Descriptor.Precision, Descriptor.Scale);
             FExecStatement.RegisterParameter(IDX,
               Descriptor.SQLType, OCIParamTypeMatrix[Descriptor.OrdPos = 0][Descriptor.IODirection], {$IFDEF UNICODE}S{$ELSE}tmp{$ENDIF},
-                Max(LengthInt(Descriptor.DataSize), LengthInt(Descriptor.Precision)), Descriptor.Scale);
+                Descriptor.Precision, Descriptor.Scale);
           end;
           Inc(IDX);
         end;
@@ -941,12 +984,17 @@ begin
   else SQLType := stString;
   if (BindList[Index].SQLType <> SQLType) or (Bind.valuep = nil) or (Bind.value_sz < Len+SizeOf(Integer)) or (Bind.curelen <> 1) then
     InitBuffer(SQLType, Bind, Index, 1, Len);
-  if Bind.dty = SQLT_LVC then begin
-    POCILong(Bind.valuep).Len := Len;
-    if Len > 0 then
-      Move(Buf^, POCILong(Bind.valuep).data[0], Len);
-    Bind.indp[0] := 0;
-  end else if Bind.dty = SQLT_CLOB then begin
+  if Bind.dty = SQLT_LVC then
+    if SQLType = stUnicodeString then
+      POCILong(Bind.valuep).Len := ZEncoding.PRaw2PUnicodeBuf(Buf, @POCILong(Bind.valuep).data[0],
+        Len, ZDbcUtils.GetW2A2WConversionCodePage(ConSettings)) shl 1
+    else begin
+      POCILong(Bind.valuep).Len := Len;
+      if Len > 0 then
+        Move(Buf^, POCILong(Bind.valuep).data[0], Len);
+      Bind.indp[0] := 0;
+    end
+  else if Bind.dty = SQLT_CLOB then begin
     Lob := TZOracleClob.Create(FOracleConnection, nil, SQLCS_IMPLICIT, FClientCP, FOpenLobStreams);
     if Len > 0 then
       Lob.SetPAnsiChar(Buf, FClientCP, Len);
@@ -1332,7 +1380,7 @@ begin
   else if Bind.dty = SQLT_BDOUBLE then
     PDouble(Bind.valuep)^ := Value
   else begin
-    CurrToRaw(Value, PAnsiChar(@POCIVary(Bind.valuep).data[0]), @P);
+    CurrToRaw(Value, '.', PAnsiChar(@POCIVary(Bind.valuep).data[0]), @P);
     POCIVary(Bind.valuep).Len := P-@POCIVary(Bind.valuep).data[0];
   end;
   Bind.indp[0] := 0;
@@ -1358,53 +1406,50 @@ label bind_direct;
   {$R-}
   procedure SetLobs;
   var I: Integer;
-    Lob: IZBLob;
+    Lob: IZLob;
     OCIlob: IZOracleLob;
     OraLobs: TInterfaceDynArray;
     Blob: IZBlob;
     Clob: IZClob;
     Arr: TZArray;
-  label write_lob;
+    dty: ub2;
   begin
     {$IFDEF WITH_VAR_INIT_WARNING}OraLobs := nil;{$ENDIF}
     SetLength(OraLobs, ArrayLen);
     Arr := PZArray(BindList[ParameterIndex].Value)^;
     Arr.VArray := Pointer(OraLobs);
     BindList.Put(ParameterIndex, Arr, True);
-    if SQLType = stBinaryStream then begin
-      if (Bind.dty <> SQLT_BLOB) or (Bind.value_sz <> SizeOf(POCIDescriptor)) or (Bind.curelen <> ArrayLen) then
-        InitBuffer(SQLType, Bind, ParameterIndex, ArrayLen, SizeOf(POCIDescriptor));
-      for i := 0 to ArrayLen -1 do
-        if (TInterfaceDynArray(Value)[I] <> nil) and Supports(TInterfaceDynArray(Value)[I], IZLob, Lob) and not Lob.IsEmpty and
-            Supports(Lob, IZBlob, Blob) and not Supports(Lob, IZOracleLob, OCILob) then begin
-write_lob:OciLob := TZOracleBlob.CreateFromBlob(Blob, nil, FOracleConnection, FOpenLobStreams);
-          PPOCIDescriptor(PAnsiChar(Bind.valuep)+SizeOf(Pointer)*I)^ := OciLob.GetLobLocator;
-          OraLobs[i] := OciLob; //destroy old interface or replace it
-        {$R-}
-          Bind.indp[i] := 0;
-        end else
-          Bind.indp[i] := -1;
-        {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    end else begin
-      if (Bind.dty <> SQLT_CLOB) or (Bind.value_sz <> SizeOf(POCIDescriptor)) or (Bind.curelen <> ArrayLen) then
-        InitBuffer(SQLType, Bind, ParameterIndex, ArrayLen, SizeOf(POCIDescriptor));
-      for i := 0 to ArrayLen -1 do
-        if (TInterfaceDynArray(Value)[I] <> nil) and Supports(TInterfaceDynArray(Value)[I], IZBlob, Lob) and not Lob.IsEmpty then begin
+    if SQLType = stBinaryStream
+    then dty := SQLT_BLOB
+    else dty := SQLT_CLOB;
+    if (Bind.dty <> dty) or (Bind.value_sz <> SizeOf(POCIDescriptor)) or (Bind.curelen <> ArrayLen) then
+      InitBuffer(SQLType, Bind, ParameterIndex, ArrayLen, SizeOf(POCIDescriptor));
+    for i := 0 to ArrayLen -1 do
+      if (TInterfaceDynArray(Value)[I] <> nil) and Supports(TInterfaceDynArray(Value)[I], IZLob, Lob) and not Lob.IsEmpty then begin
+        if SQLType = stBinaryStream then begin
+          if not Supports(Lob, IZBLob, Blob) then
+            raise CreateConversionError(ParameterIndex, SQLType, stBinaryStream);
+          if Lob.QueryInterface(IZOracleLob, OCILob) <> S_OK then
+            OciLob := TZOracleBlob.CreateFromBlob(Blob, nil, FOracleConnection, FOpenLobStreams);
+        end else begin
           if Supports(Lob, IZCLob, CLob) then
             if (ConSettings^.ClientCodePage.ID = OCI_UTF16ID)
             then CLob.SetCodePageTo(zCP_UTF16)
             else CLob.SetCodePageTo(ClientCP)
-          else raise CreateConversionError(ParameterIndex, stBinaryStream, SQLType);
-          if not Supports(Lob, IZOracleLob, OCILob) then begin
+          else raise CreateConversionError(ParameterIndex, SQLType, stUnicodeStream);
+          if not Supports(Lob, IZOracleLob, OCILob) then
             OciLob := TZOracleClob.CreateFromClob(Clob, nil, SQLCS_IMPLICIT, 0, FOracleConnection, FOpenLobStreams);
-            PPOCIDescriptor(PAnsiChar(Bind.valuep)+SizeOf(Pointer)*I)^ := OciLob.GetLobLocator;
-            TInterfaceDynArray(Value)[I] := CLob;
-          end;
-
-          goto write_lob;
-        end else
-          Bind.indp[i] := -1;
-    end;
+        end;
+        PPOCIDescriptor(PAnsiChar(Bind.valuep)+SizeOf(Pointer)*I)^ := OciLob.GetLobLocator;
+        OraLobs[i] := OciLob; //destroy old interface or replace it
+      {$R-}
+        Bind.indp[i] := 0;
+      end else begin
+        Bind.indp[i] := -1;
+      {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+        OraLobs[i] := nil;
+        PPOCIDescriptor(PAnsiChar(Bind.valuep)+SizeOf(Pointer)*I)^ := nil;
+      end;
   end;
   procedure BindRawStrings(const ClientStrings: TRawByteStringDynArray);
   var BufferSize, I: Integer;
@@ -1442,7 +1487,7 @@ write_lob:OciLob := TZOracleBlob.CreateFromBlob(Blob, nil, FOracleConnection, FO
       BufferSize := Max(BufferSize, Length(TUnicodeStringDynArray(Value)[I]));
     BufferSize := (BufferSize shl 2);
     if (Bind.dty <> SQLT_LVC) or (Bind.value_sz < BufferSize+SizeOf(Integer)) or (Bind.curelen <> ArrayLen) then
-      InitBuffer(SQLType, Bind, ParameterIndex, ArrayLen, BufferSize);
+      InitBuffer(stString, Bind, ParameterIndex, ArrayLen, BufferSize);
     P := Bind.valuep;
     for i := 0 to ArrayLen -1 do begin
       POCILong(P).Len := Length(TUnicodeStringDynArray(Value)[I]);
@@ -1651,7 +1696,10 @@ bind_direct:
             PD := @D;
           end else if VariantType = vtDate then
             PD := @TZDateDynArray(Value)[I]
-          else begin
+          else if VariantType = vtTimeStamp then begin
+            DateFromTimeStamp(TZTimestampDynArray(Value)[I], D);
+            PD := @D
+          end else begin
             DT := ArrayValueToDate(BindList[ParameterIndex].Value, I, ConSettings^.WriteFormatSettings);
             DecodeDateTimeToDate(DT, D);
             PD := @D;
@@ -1663,7 +1711,7 @@ bind_direct:
           OraDate.Day   := PD^.Day;
         end;
       end;
-    stTime, stTimeStamp: begin //msec precision -> need a descriptor
+    stTime, stTimeStamp: begin //nsec precision -> need a descriptor
         if (Bind.dty <> SQLT_TIMESTAMP) or (Bind.value_sz <> SizeOf(POCIDescriptor)) or (Bind.curelen <> ArrayLen) then
           InitBuffer(SQLType, Bind, ParameterIndex, ArrayLen, SizeOf(SizeOf(POCIDescriptor)));
         for i := 0 to ArrayLen -1 do begin
@@ -1675,6 +1723,8 @@ bind_direct:
               DecodeDateTimeToTimeStamp(TDateTimeDynArray(Value)[i], TS)
             else if VariantType = vtTime then
               ZSysUtils.TimeStampFromTime(TZTimeDynArray(Value)[i], TS)
+            else if VariantType = vtDate then
+              ZSysUtils.TimeStampFromDate(TZDateDynArray(Value)[i], TS)
             else begin
               DT := ArrayValueToDatetime(BindList[ParameterIndex].Value, I, ConSettings^.WriteFormatSettings);
               DecodeDateTimeToTimeStamp(DT, TS);
@@ -2010,13 +2060,6 @@ begin
 end;
 {$IF defined (RangeCheckEnabled) and defined(WITH_UINT64_C1118_ERROR)}{$R+}{$IFEND}
 
-{**
-  Sets the designated parameter to SQL <code>NULL</code>.
-  <P><B>Note:</B> You must specify the parameter's SQL type.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param sqlType the SQL type code defined in <code>java.sql.Types</code>
-}
 procedure TZAbstractOraclePreparedStatement.SetNull(Index: Integer;
   SQLType: TZSQLType);
 var
@@ -2051,7 +2094,9 @@ begin
   Bind := @FOraVariables[ParameterIndex];
   P := BindList[ParameterIndex].Value;
   for i := 0 to {%H-}PArrayLenInt({%H-}NativeUInt(Value) - ArrayLenOffSet)^{$IFNDEF FPC}-1{$ENDIF} do
-    Bind.indp[I] := -Ord(ZDbcUtils.IsNullFromArray(P, i));
+    if Bind.dty in [SQLT_CLOB, SQLT_BLOB]
+    then Bind.indp[I] := -Ord((PPOCIDescriptor(PAnsiChar(Bind.valuep)+SizeOf(Pointer)*I)^ = nil) or ZDbcUtils.IsNullFromArray(P, i))
+    else Bind.indp[I] := -Ord(ZDbcUtils.IsNullFromArray(P, i));
   {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
 
@@ -2090,8 +2135,9 @@ begin
   if Boolean(BindList[Index].ParamType) and Boolean(BindList[Index].SQLType)
   then SQLType := BindList[Index].SQLType
   else SQLType := stUnicodeString;
-  if SQLType = stString then
+  if (SQLType = stString) then
     SQLType := stUnicodeString;
+
   ByteSize := WLen shl 1;
   if (BindList[Index].SQLType <> SQLType) or (Bind.valuep = nil) or (Bind.curelen <> 1) or (Bind.value_sz < ByteSize +SizeOf(Integer) ) then
     InitBuffer(SQLType, Bind, Index, 1, ByteSize);
@@ -2478,8 +2524,12 @@ var
   Tokens: TZTokenList;
   Token: PZToken;
   tmp: RawByteString;
+  {$IFDEF UNICODE}
+  S: String;
+  {$ENDIF}
   SQLWriter, ParamWriter: TZRawSQLStringWriter;
   ComparePrefixTokens: TPreparablePrefixTokens;
+  NameLookUp: TStrings;
   procedure Add(const Value: RawByteString; const Param: Boolean);
   var H: Integer;
   begin
@@ -2498,6 +2548,7 @@ begin
     C := Length(SQL);
     SQLWriter := TZRawSQLStringWriter.Create(C);
     ParamWriter := TZRawSQLStringWriter.Create({$IFDEF UNICODE}16{$ELSE}C shr 4{$ENDIF});
+    NameLookUp := TStringList.Create;
     try
       ComparePrefixTokens := OraPreparableTokens;
       FTokenMatchIndex := -1;
@@ -2536,9 +2587,16 @@ begin
             FirstComposePos := i + 1;
           end else begin
             {$IFDEF UNICODE}
-            Tmp := UnicodeStringToAscii7(Token.P, Tokens[i+1].L+1);
+            System.SetString(S, Token.P, Tokens[i+1].L+1);
+            Tmp := UnicodeStringToAscii7(S);
+            if NameLookUp.IndexOf(S) <> -1
+            then Dec(ParamsCnt)
+            else NameLookUp.Add(S);
             {$ELSE}
             ZSetString(Token.P, Tokens[i+1].L+1, Tmp);
+            if NameLookUp.IndexOf(Tmp) <> -1
+            then Dec(ParamsCnt)
+            else NameLookUp.Add(Tmp);
             {$ENDIF}
             FirstComposePos := i + 2;
           end;
@@ -2562,6 +2620,7 @@ begin
       FreeAndNil(SQLWriter);
       FreeAndNil(ParamWriter);
       FreeAndNil(Tokens);
+      FreeAndNil(NameLookUp);
     end;
   end else
     Result := ASQL;
@@ -2635,8 +2694,10 @@ var
   tmp: UnicodeString;
   SQLWriter, ParamWriter: TZUnicodeSQLStringWriter;
   ComparePrefixTokens: TPreparablePrefixTokens;
+  NameLookUp: TStrings;
   {$IFNDEF UNICODE}
   W2A2WConversionCodePage: Word;
+  S: String;
   {$ENDIF}
   procedure Add(const Value: UnicodeString; const Param: Boolean);
   var H: Integer;
@@ -2650,12 +2711,16 @@ var
   end;
 begin
   if (Length(FCachedQueryUni) = 0) and (SQL <> '') then begin
+    {$IFNDEF UNICODE}
+    S := '';
+    {$ENDIF}
     Result := '';
     Tmp := '';
     Tokens := Connection.GetDriver.GetTokenizer.TokenizeBufferToList(SQL, [toSkipEOF]);
     C := Length(SQL);
     SQLWriter := TZUnicodeSQLStringWriter.Create(C);
     ParamWriter := TZUnicodeSQLStringWriter.Create({$IFDEF UNICODE}16{$ELSE}C shr 4{$ENDIF});
+    NameLookUp := TStringList.Create;
     try
       {$IFNDEF UNICODE}
       W2A2WConversionCodePage := GetW2A2WConversionCodePage(ConSettings);
@@ -2698,8 +2763,15 @@ begin
           end else begin
             {$IFDEF UNICODE}
             System.SetString(Tmp, Token.P, Tokens[i+1].L+1);
+            if NameLookUp.IndexOf(Tmp) <> -1
+            then Dec(ParamsCnt)
+            else NameLookUp.Add(Tmp);
             {$ELSE}
+            System.SetString(S, Token.P, Tokens[i+1].L+1);
             Tmp := Ascii7ToUnicodeString(Token.P, Tokens[i+1].L+1);
+            if NameLookUp.IndexOf(S) <> -1
+            then Dec(ParamsCnt)
+            else NameLookUp.Add(S);
             {$ENDIF}
             FirstComposePos := i + 2;
           end;
@@ -2723,6 +2795,7 @@ begin
       FreeAndNil(SQLWriter);
       FreeAndNil(ParamWriter);
       FreeAndNil(Tokens);
+      FreeAndNil(NameLookUp);
     end;
   end else
     Result := WSQL;
@@ -2736,6 +2809,8 @@ var
   i, j: Integer;
 begin
   CheckParameterIndex(ParameterIndex);
+  if SQLType = stString then
+    SQLType := stUnicodeString;
   inherited RegisterParameter(ParameterIndex, SQLType, ParamType, Name,
     PrecisionOrSize, Scale);
   {$R-}
@@ -2791,7 +2866,7 @@ function TZOracleCallableStatement_W.CreateExecutionStatement(
 var
   ProcSQL: UnicodeString;
   SQLWriter: TZUnicodeSQLStringWriter;
-  IC: IZIdentifierConvertor;
+  IC: IZIdentifierConverter;
 
   procedure AddArgs({$IFDEF AUTOREFCOUNT}const{$ENDIF}Params: TObjectList);
   var I: Integer;
@@ -2866,7 +2941,7 @@ var
     end;
   end;
 begin
-  IC := Connection.GetMetadata.GetIdentifierConvertor;
+  IC := Connection.GetMetadata.GetIdentifierConverter;
   SQLWriter := TZUnicodeSQLStringWriter.Create(1024);
   try
     if FProcDescriptor = nil then
@@ -2882,6 +2957,10 @@ begin
     end;
     ProcSQL := '';
     SQLWriter.AddText('BEGIN'#10, ProcSQL);
+    if FProcDescriptor.ObjType = OCI_PTYPE_UNK then begin
+      FreeAndNil(FProcDescriptor); //clean up! We re not prepared now
+      raise EZSQLException.Create(SFailedtoInitPrepStmt);
+    end;
     if FProcDescriptor.ObjType = OCI_PTYPE_PKG then
       BuildPackage(FProcDescriptor)
     else if FProcDescriptor.ObjType = OCI_PTYPE_PROC then
@@ -2937,10 +3016,10 @@ var Idx: Integer;
           else begin
             RegisterParameter(IDX,
               Descriptor.SQLType, OCIParamTypeMatrix[Descriptor.OrdPos = 0][Descriptor.IODirection], {$IFNDEF UNICODE}S{$ELSE}tmp{$ENDIF},
-                Max(LengthInt(Descriptor.DataSize), LengthInt(Descriptor.Precision)), Descriptor.Scale);
+                Descriptor.Precision, Descriptor.Scale);
             FExecStatement.RegisterParameter(IDX,
               Descriptor.SQLType, OCIParamTypeMatrix[Descriptor.OrdPos = 0][Descriptor.IODirection], {$IFNDEF UNICODE}S{$ELSE}tmp{$ENDIF},
-                Max(LengthInt(Descriptor.DataSize), LengthInt(Descriptor.Precision)), Descriptor.Scale);
+                Descriptor.Precision, Descriptor.Scale);
           end;
           Inc(IDX);
         end;

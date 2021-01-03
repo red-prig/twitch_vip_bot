@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -86,7 +86,7 @@ type
 
   { TZSQLAnywhereConnection }
 
-  TZSQLAnywhereConnection = class(TZAbstractSuccedaneousTxnConnection,
+  TZSQLAnywhereConnection = class(TZAbstractSingleTxnConnection,
     IZConnection, IZTransaction, IZSQLAnywhereConnection)
   private
     FSQLAnyPlainDriver: TZSQLAnywherePlainDriver;
@@ -94,8 +94,10 @@ type
     Fa_sqlany_interface_context: Pa_sqlany_interface_context;
     Fapi_version: Tsacapi_u32;
     FLastWarning: EZSQLWarning;
+    FClientLanguageCP: Word;
   private
     function DetermineASACharSet: String;
+    procedure DetermineClientLanguageCP;
   protected
     procedure InternalClose; override;
     procedure ExecuteImmediat(const SQL: RawByteString; LoggingCategory: TZLoggingCategory); override;
@@ -108,18 +110,108 @@ type
   public
     procedure AfterConstruction; override;
   public
+    /// <summary>Creates a <c>Statement</c> interface for sending SQL statements
+    ///  to the database. SQL statements without parameters are normally
+    ///  executed using Statement objects. If the same SQL statement
+    ///  is executed many times, it is more efficient to use a
+    ///  <c>PreparedStatement</c> object. Result sets created using the returned
+    ///  <c>Statement</c> interface will by default have forward-only type and
+    ///  read-only concurrency.</summary>
+    /// <param>Info a statement parameters.</param>
+    /// <returns>A new Statement interface</returns>
     function CreateStatementWithParams(Info: TStrings): IZStatement;
-    function PrepareCallWithParams(const Name: String; Info: TStrings):
+    /// <summary>Creates a <code>CallableStatement</code> object for calling
+    ///  database stored procedures. The <code>CallableStatement</code> object
+    ///  provides methods for setting up its IN and OUT parameters, and methods
+    ///  for executing the call to a stored procedure. Note: This method is
+    ///  optimized for handling stored procedure call statements. Some drivers
+    ///  may send the call statement to the database when the method
+    ///  <c>prepareCall</c> is done; others may wait until the
+    ///  <c>CallableStatement</c> object is executed. This has no direct effect
+    ///  on users; however, it does affect which method throws certain
+    ///  EZSQLExceptions. Result sets created using the returned
+    ///  IZCallableStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"Name" a procedure or function name.</param>
+    /// <param>"Params" a statement parameters list.</param>
+    /// <returns> a new IZCallableStatement interface containing the
+    ///  pre-compiled SQL statement </returns>
+    function PrepareCallWithParams(const Name: String; Params: TStrings):
       IZCallableStatement;
+    /// <summary>Creates a <c>PreparedStatement</c> interface for sending
+    ///  parameterized SQL statements to the database. A SQL statement with
+    ///  or without IN parameters can be pre-compiled and stored in a
+    ///  PreparedStatement object. This object can then be used to efficiently
+    ///  execute this statement multiple times.
+    ///  Note: This method is optimized for handling parametric SQL statements
+    ///  that benefit from precompilation. If the driver supports
+    ///  precompilation, the method <c>prepareStatement</c> will send the
+    ///  statement to the database for precompilation. Some drivers may not
+    ///  support precompilation. In this case, the statement may not be sent to
+    ///  the database until the <c>PreparedStatement</c> is executed. This has
+    ///  no direct effect on users; however, it does affect which method throws
+    ///  certain SQLExceptions. Result sets created using the returned
+    ///  PreparedStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"SQL" a SQL statement that may contain one or more '?' IN
+    ///  parameter placeholders.</param>
+    /// <param> Info a statement parameter list.</param>
+    /// <returns> a new PreparedStatement object containing the
+    ///  optional pre-compiled statement</returns>
     function PrepareStatementWithParams(const SQL: string; Info: TStrings):
       IZPreparedStatement;
     function GetWarnings: EZSQLWarning; override;
     procedure ClearWarnings; override;
-
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  released. Otherwise makes all changes made since the previous commit/
+    ///  rollback permanent and releases any database locks currently held by
+    ///  the Connection. This method should be used only when auto-commit mode
+    ///  has been disabled. See setAutoCommit.</summary>
     procedure Commit;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  rolled back. Otherwise drops all changes made since the previous
+    ///  commit/rollback and releases any database locks currently held by this
+    ///  Connection. This method should be used only when auto-commit has been
+    ///  disabled. See setAutoCommit.</summary>
     procedure Rollback;
+    /// <summary>Sets this connection's auto-commit mode. If a connection is in
+    ///  auto-commit mode, then all its SQL statements will be executed and
+    ///  committed as individual transactions. Otherwise, its SQL statements are
+    ///  grouped into transactions that are terminated by a call to either the
+    ///  method <c>commit</c> or the method <c>rollback</c>. By default, new
+    ///  connections are in auto-commit mode. The commit occurs when the
+    ///  statement completes or the next execute occurs, whichever comes first.
+    ///  In the case of statements returning a ResultSet, the statement
+    ///  completes when the last row of the ResultSet has been retrieved or the
+    ///  ResultSet has been closed. In advanced cases, a single statement may
+    ///  return multiple results as well as output parameter values. In these
+    ///  cases the commit occurs when all results and output parameter values
+    ///  have been retrieved. It is not recommented setting autoCommit to false
+    ///  because a call to either the method <c>commit</c> or the method
+    ///  <c>rollback</c> will restart the transaction. It's use full only if
+    ///  repeately many opertions are done and no startTransaction is intended
+    ///  to use. If you change mode to true the current Transaction and it's
+    ///  nested SavePoints are committed then.</summary>
+    /// <param>"Value" true enables auto-commit; false disables auto-commit.</param>
     procedure SetAutoCommit(Value: Boolean); override;
+    /// <summary>Attempts to change the transaction isolation level to the one
+    ///  given. The constants defined in the interface <c>Connection</c> are the
+    ///  possible transaction isolation levels. Note: This method cannot be
+    ///  called while in the middle of a transaction.
+    /// <param>"value" one of the TRANSACTION_* isolation values with the
+    ///  exception of TRANSACTION_NONE; some databases may not support other
+    ///  values. See DatabaseInfo.SupportsTransactionIsolationLevel</param>
     procedure SetTransactionIsolation(Level: TZTransactIsolationLevel); override;
+    /// <summary>Starts transaction support or saves the current transaction.
+    ///  If the connection is closed, the connection will be opened.
+    ///  If a transaction is underway a nested transaction or a savepoint will
+    ///  be spawned. While the tranaction(s) is/are underway the AutoCommit
+    ///  property is set to False. Ending up the transaction with a
+    ///  commit/rollback the autocommit property will be restored if changing
+    ///  the autocommit mode was triggered by a starttransaction call.</summary>
+    /// <returns>Returns the current txn-level. 1 means a expicit transaction
+    ///  was started. 2 means the transaction was saved. 3 means the previous
+    ///  savepoint got saved too and so on.</returns>
     function StartTransaction: Integer;
 
     procedure Open; override;
@@ -229,7 +321,6 @@ var err_len, st_len: Tsize_t;
   StateBuf: array[0..5] of Byte;
   AException: EZSQLThrowable;
   P: PAnsiChar;
-  msgCP: Word;
   {$IFNDEF UNICODE}
   errCP: Word;
   {$ENDIF}
@@ -247,21 +338,17 @@ begin
   err_len := ZFastCode.StrLen(P);
   st_len := FSQLAnyPlainDriver.sqlany_sqlstate(Fa_sqlany_connection, @StateBuf[0], SizeOf(StateBuf));
   Dec(st_len);
-  if ConSettings.ClientCodePage <> nil
-  then msgCP := ConSettings.ClientCodePage.CP
-  else msgCP := {$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}DefaultSystemCodePage{$ELSE}{$IFDEF LCL}zCP_UTF8{$ELSE}zOSCodePage{$ENDIF}{$ENDIF};
-
   {$IFDEF UNICODE}
   State := USASCII7ToUnicodeString(@StateBuf[0], st_Len);
-  ErrMsg := PRawToUnicode(P, err_Len, msgCP);
+  ErrMsg := PRawToUnicode(P, err_Len, FClientLanguageCP);
   {$ELSE}
   State := '';
   System.SetString(State, PAnsiChar(@StateBuf[0]), st_Len);
   ErrMsg := '';
   errCP := {$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}DefaultSystemCodePage{$ELSE}{$IFDEF LCL}zCP_UTF8{$ELSE}zOSCodePage{$ENDIF}{$ENDIF};
-  if errCP <> msgCP then begin
+  if errCP <> FClientLanguageCP then begin
     ErrMsg := '';
-    PRawToRawConvert(P, err_len, msgCP, errCP, RawByteString(ErrMsg));
+    PRawToRawConvert(P, err_len, FClientLanguageCP, errCP, RawByteString(ErrMsg));
   end else System.SetString(ErrMsg, P, err_Len);
   {$ENDIF}
   if DriverManager.HasLoggingListener then
@@ -302,11 +389,6 @@ const
     ('SET OPTION chained=''On''', 'SET OPTION chained=''Off'''),
     ('SET TEMPORARY OPTION AUTO_COMMIT=''Off''', 'SET TEMPORARY OPTION AUTO_COMMIT=''On'''));
 
-{**
-  Clears all warnings reported for this <code>Connection</code> object.
-  After a call to this method, the method <code>getWarnings</code>
-    returns null until a new warning is reported for this Connection.
-}
 procedure TZSQLAnywhereConnection.AfterConstruction;
 begin
   FSQLAnyPlainDriver := PlainDriver.GetInstance as TZSQLAnywherePlainDriver;
@@ -315,18 +397,16 @@ begin
   Fapi_version := SQLANY_API_VERSION_5;
 end;
 
+{**
+  Clears all warnings reported for this <code>Connection</code> object.
+  After a call to this method, the method <code>getWarnings</code>
+    returns null until a new warning is reported for this Connection.
+}
 procedure TZSQLAnywhereConnection.ClearWarnings;
 begin
   FreeAndNil(FLastWarning);
 end;
 
-{**
-  Makes all changes made since the previous
-  commit/rollback permanent and releases any database locks
-  currently held by the Connection. This method should be
-  used only when auto-commit mode has been disabled.
-  @see #setAutoCommit
-}
 procedure TZSQLAnywhereConnection.Commit;
 var S: RawByteString;
 begin
@@ -348,20 +428,6 @@ begin
   end;
 end;
 
-{**
-  Creates a <code>Statement</code> object for sending
-  SQL statements to the database.
-  SQL statements without parameters are normally
-  executed using Statement objects. If the same SQL statement
-  is executed many times, it is more efficient to use a
-  <code>PreparedStatement</code> object.
-  <P>
-  Result sets created using the returned <code>Statement</code>
-  object will by default have forward-only type and read-only concurrency.
-
-  @param Info a statement parameters.
-  @return a new Statement object
-}
 function TZSQLAnywhereConnection.CreateStatementWithParams(
   Info: TStrings): IZStatement;
 begin
@@ -384,6 +450,75 @@ begin
   RS := nil;
   Stmt.Close;
   Stmt := nil;
+end;
+
+procedure TZSQLAnywhereConnection.DetermineClientLanguageCP;
+var
+  Stmt: IZStatement;
+  RS: IZResultSet;
+  S: String;
+begin
+  Stmt := CreateStatementWithParams(Info);
+  RS := Stmt.ExecuteQuery('SELECT CONNECTION_PROPERTY(''Language'')');
+  if RS.Next
+  then S := RS.GetString(FirstDbcIndex)
+  else S := '';
+  RS := nil;
+  Stmt.Close;
+  Stmt := nil;
+  if S = 'arabic' then
+    FClientLanguageCP := zCP_WIN1256
+  else if S = 'czech' then
+    FClientLanguageCP := zCP_WIN1250
+  else if S = 'danish' then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'dutch' then
+    FClientLanguageCP := zCP_WIN1252
+  else if (S = 'us_english') or (S = 'english') then
+    FClientLanguageCP := zCP_us_ascii
+  else if S = 'finnish' then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'french' then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'german' then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'greek' then
+    FClientLanguageCP := zCP_WIN1253
+  else if S = 'hebrew' then
+    FClientLanguageCP := zCP_WIN1255
+  else if S = 'hungarian' then
+    FClientLanguageCP := zCP_WIN1250
+  else if S = 'italian' then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'japanese' then
+    FClientLanguageCP := zCP_SHIFTJS
+  else if S = 'korean' then
+    FClientLanguageCP := zCP_EUCKR
+  else if S = 'lithuanian' then
+    FClientLanguageCP := zCP_WIN1257
+  else if (S = 'norwegian') or (s = 'norweg') then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'polish' then
+    FClientLanguageCP := zCP_WIN1251
+  else if (S = 'portuguese') or (S = 'portugue') then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'russian' then
+    FClientLanguageCP := zCP_WIN1251
+  else if (S = 'chinese') or (S = 'simpchin') then
+    FClientLanguageCP := zCP_GB2312
+  else if S = 'spanish' then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'swedish' then
+    FClientLanguageCP := zCP_WIN1252
+  else if S = 'thai' then
+    FClientLanguageCP := zCP_WIN874
+  else if (S = 'tchinese') or (S = 'tradchin') then
+    FClientLanguageCP := zCP_Big5
+  else if S = 'turkish' then
+    FClientLanguageCP := zCP_WIN1254
+  else if S = 'ukrainian' then
+    FClientLanguageCP := zCP_WIN1251
+  else FClientLanguageCP := zOSCodePage;
 end;
 
 procedure TZSQLAnywhereConnection.ExecuteImmediat(const SQL: RawByteString;
@@ -458,6 +593,7 @@ label jmpInit;
 begin
   if not Closed then
     Exit;
+  FClientLanguageCP := ZOSCodePage; //init
   FLogMessage := Format(SConnect2AsUser, [URL.Database, URL.UserName]);
   R := '';
   S := Info.Values[ConnProps_AppName];
@@ -535,6 +671,7 @@ jmpInit:
     S := DetermineASACharSet;
     CheckCharEncoding(S);
   end;
+  DetermineClientLanguageCP;
   if Ord(TransactIsolationLevel) > Ord(tiReadUncommitted) then
     ExecuteImmediat(SQLAnyTIL[TransactIsolationLevel], lcTransaction);
   if AutoCommit
@@ -545,68 +682,14 @@ jmpInit:
   end;
 end;
 
-{**
-  Creates a <code>CallableStatement</code> object for calling
-  database stored procedures.
-  The <code>CallableStatement</code> object provides
-  methods for setting up its IN and OUT parameters, and
-  methods for executing the call to a stored procedure.
-
-  <P><B>Note:</B> This method is optimized for handling stored
-  procedure call statements. Some drivers may send the call
-  statement to the database when the method <code>prepareCall</code>
-  is done; others
-  may wait until the <code>CallableStatement</code> object
-  is executed. This has no
-  direct effect on users; however, it does affect which method
-  throws certain SQLExceptions.
-
-  Result sets created using the returned CallableStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param Name a procedure or function identifier
-    parameter placeholders. Typically this  statement is a JDBC
-    function call escape string.
-  @param Info a statement parameters.
-  @return a new CallableStatement object containing the
-    pre-compiled SQL statement
-}
 function TZSQLAnywhereConnection.PrepareCallWithParams(const Name: String;
-  Info: TStrings): IZCallableStatement;
+  Params: TStrings): IZCallableStatement;
 begin
   if Closed then
     Open;
-  Result := TZSQLAnywhereCallableStatement.Create(Self, Name, Info);
+  Result := TZSQLAnywhereCallableStatement.Create(Self, Name, Params);
 end;
 
-{**
-  Creates a <code>PreparedStatement</code> object for sending
-  parameterized SQL statements to the database.
-
-  A SQL statement with or without IN parameters can be
-  pre-compiled and stored in a PreparedStatement object. This
-  object can then be used to efficiently execute this statement
-  multiple times.
-
-  <P><B>Note:</B> This method is optimized for handling
-  parametric SQL statements that benefit from precompilation. If
-  the driver supports precompilation,
-  the method <code>prepareStatement</code> will send
-  the statement to the database for precompilation. Some drivers
-  may not support precompilation. In this case, the statement may
-  not be sent to the database until the <code>PreparedStatement</code> is
-  executed.  This has no direct effect on users; however, it does
-  affect which method throws certain SQLExceptions.
-
-  Result sets created using the returned PreparedStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param sql a SQL statement that may contain one or more '?' IN
-    parameter placeholders
-  @param Info a statement parameters.
-  @return a new PreparedStatement object containing the
-    pre-compiled statement
-}
 function TZSQLAnywhereConnection.PrepareStatementWithParams(const SQL: string;
   Info: TStrings): IZPreparedStatement;
 begin
@@ -626,13 +709,6 @@ begin
   Result := FLastWarning;
 end;
 
-{**
-  Drops all changes made since the previous
-  commit/rollback and releases any database locks currently held
-  by this Connection. This method should be used only when auto-
-  commit has been disabled.
-  @see #setAutoCommit
-}
 procedure TZSQLAnywhereConnection.Rollback;
 var S: RawByteString;
 begin
@@ -654,26 +730,6 @@ begin
   end;
 end;
 
-{**
-  Sets this connection's auto-commit mode.
-  If a connection is in auto-commit mode, then all its SQL
-  statements will be executed and committed as individual
-  transactions.  Otherwise, its SQL statements are grouped into
-  transactions that are terminated by a call to either
-  the method <code>commit</code> or the method <code>rollback</code>.
-  By default, new connections are in auto-commit mode.
-
-  The commit occurs when the statement completes or the next
-  execute occurs, whichever comes first. In the case of
-  statements returning a ResultSet, the statement completes when
-  the last row of the ResultSet has been retrieved or the
-  ResultSet has been closed. In advanced cases, a single
-  statement may return multiple results as well as output
-  parameter values. In these cases the commit occurs when all results and
-  output parameter values have been retrieved.
-
-  @param autoCommit true enables auto-commit; false disables auto-commit.
-}
 procedure TZSQLAnywhereConnection.SetAutoCommit(Value: Boolean);
 begin
   if Value <> AutoCommit then begin
@@ -689,18 +745,6 @@ begin
   end;
 end;
 
-{**
-  Attempts to change the transaction isolation level to the one given.
-  The constants defined in the interface <code>Connection</code>
-  are the possible transaction isolation levels.
-
-  <P><B>Note:</B> This method cannot be called while
-  in the middle of a transaction.
-
-  @param level one of the TRANSACTION_* isolation values with the
-    exception of TRANSACTION_NONE; some databases may not support other values
-  @see DatabaseMetaData#supportsTransactionIsolationLevel
-}
 procedure TZSQLAnywhereConnection.SetTransactionIsolation(
   Level: TZTransactIsolationLevel);
 begin
@@ -713,9 +757,6 @@ begin
   end;
 end;
 
-{**
-   Start transaction
-}
 function TZSQLAnywhereConnection.StartTransaction: Integer;
 var S: String;
 begin

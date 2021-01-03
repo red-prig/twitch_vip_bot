@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -134,7 +134,17 @@ type
 
     procedure Prepare; override;
     procedure Unprepare; override;
-
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
   end;
@@ -156,6 +166,13 @@ type
   public
     procedure ClearParameters; reintroduce;
 
+    /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
+    ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(Index: Integer; SQLType: TZSQLType);
     procedure SetBoolean(Index: Integer; Value: Boolean);
     procedure SetByte(Index: Integer; Value: Byte);
@@ -214,9 +231,9 @@ implementation
 {$IFNDEF ZEOS_DISABLE_POSTGRESQL} //if set we have an empty unit
 
 uses
-  {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings, {$ENDIF}
-  ZSysUtils, ZFastCode, ZMessages, ZDbcPostgreSqlResultSet, ZDbcPostgreSqlUtils,
-  ZEncoding, ZDbcProperties, ZTokenizer, Types, ZDbcResultSet
+  {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings, {$ENDIF}Types,
+  ZSysUtils, ZFastCode, ZMessages, ZEncoding, ZTokenizer, ZDbcCachedResultSet,
+  ZDbcPostgreSqlUtils, ZDbcProperties, ZDbcResultSet, ZDbcPostgreSqlResultSet
   {$IF defined(NO_INLINE_SIZE_CHECK) and not defined(UNICODE) and defined(MSWINDOWS)},Windows{$IFEND}
   {$IFDEF NO_INLINE_SIZE_CHECK}, Math{$ENDIF};
 
@@ -280,32 +297,35 @@ var
   procedure BindLobs;
   var J: Cardinal;
     N: Integer;
-    TempBlob: IZBlob;
+    Lob: IZlob;
+    CLob: IZCLob;
+    BLob: IZBlob;
     WriteTempBlob: IZPostgreSQLOidBlob;
     PA: Pointer;
     L: NativeUInt;
-    Label LenOfBuf;
   begin
     CP := ConSettings^.ClientCodePage.CP;
     N := 0;
     for J := 0 to DynArrayLen -1 do
-      if (TInterfaceDynArray(Dyn)[j] <> nil) and Supports(TInterfaceDynArray(Dyn)[j], IZBlob, TempBlob) and not TempBlob.IsEmpty then
-        if BindList.SQLTypes[Index] in [stUnicodeStream, stAsciiStream] then begin
-          if TempBlob.IsClob
-          then TempBlob.SetCodePageTo(FClientCP)
+      if (TInterfaceDynArray(Dyn)[j] <> nil) and Supports(TInterfaceDynArray(Dyn)[j], IZClob, Lob) and not Lob.IsEmpty then
+        if TZSQLType(Arr.VArrayType) in [stUnicodeStream, stAsciiStream] then begin
+          if Lob.QueryInterface(IZClob, CLob) = S_OK
+          then CLob.SetCodePageTo(FClientCP)
           else raise CreateConversionError(Index, stBinaryStream, stAsciiStream);
-          goto LenOfBuf;
-        end else if FOidAsBlob then begin
-          if not Supports(TempBlob, IZPostgreSQLOidBlob, WriteTempBlob) then begin
-            WriteTempBlob := TZPostgreSQLOidBlob.CreateFromBlob(TempBlob, FPostgreSQLConnection, FOpenLobStreams);
-            TInterfaceDynArray(Dyn)[j] := WriteTempBlob;
+          Clob.GetBuffer(FRawTemp, L);
+          N := N + Integer(L);
+        end else if Lob.QueryInterface(IZLob, BLob) = S_OK then begin
+          if FOidAsBlob then begin
+            if BLob.QueryInterface(IZPostgreSQLOidBlob, WriteTempBlob) <> S_OK then begin
+              WriteTempBlob := TZPostgreSQLOidBlob.CreateFromBlob(Blob, FPostgreSQLConnection, FOpenLobStreams);
+              TInterfaceDynArray(Dyn)[j] := WriteTempBlob;
+            end;
+            Inc(N, SizeOf(OID));
+          end else begin
+            Blob.GetBuffer(FRawTemp, L);
+            Inc(N, Integer(L));
           end;
-          Inc(N, SizeOf(OID));
-        end else begin
-LenOfBuf: PA := TempBlob.GetBuffer(FRawTemp, L);
-          if PA = nil then L := 0;
-          Inc(N, Integer(L));
-        end;
+        end else raise CreateConversionError(Index, stBinaryStream, stBinaryStream);
     AllocArray(Index, N+(DynArrayLen*SizeOf(int32)), A, P);
     if (BindList.SQLtypes[Index] = stBinaryStream) and FOidAsBlob then begin
       for j := 0 to DynArrayLen -1 do
@@ -321,11 +341,11 @@ LenOfBuf: PA := TempBlob.GetBuffer(FRawTemp, L);
     end else begin
       AllocArray(Index, N+(DynArrayLen*SizeOf(int32)), A, P);
       for J := 0 to DynArrayLen -1 do
-        if not ((TInterfaceDynArray(Dyn)[j] <> nil) and Supports(TInterfaceDynArray(Dyn)[j], IZBlob, TempBlob) and not TempBlob.IsEmpty) then begin
+        if (TInterfaceDynArray(Dyn)[j] = nil) or not Supports(TInterfaceDynArray(Dyn)[j], IZCLob, CLob) or CLob.IsEmpty then begin
           Integer2PG(-1, P);
           Inc(P,SizeOf(int32));
         end else begin
-          PA := TempBlob.GetBuffer(FRawTemp, L);
+          PA := CLob.GetBuffer(FRawTemp, L);
           N := L;
           Integer2PG(N, P);
           Move(PA^, (PAnsiChar(P)+SizeOf(int32))^, N);
@@ -691,8 +711,12 @@ begin
                           PD := @TZDateDynArray(Dyn)[j]
                         else begin
                           PD := @Dat;
-                          if (Arr.VArrayVariantType in [vtNull, vtDateTime])
-                          then  DecodeDateTimeToDate(TDateTimeDynArray(Dyn)[j], Dat)
+                          if Arr.VArrayVariantType = vtTimeStamp then
+                            DateFromTimeStamp(TZTimeStampDynArray(Dyn)[j], Dat)
+                          else if Arr.VArrayVariantType = vtTime then
+                            FillChar(Dat, SizeOf(TZDate), #0)
+                          else if (Arr.VArrayVariantType in [vtNull, vtDateTime])
+                          then DecodeDateTimeToDate(TDateTimeDynArray(Dyn)[j], Dat)
                           else begin
                             DT := ArrayValueToDate(Arr, J, ConSettings^.WriteFormatSettings);
                             DecodeDateTimeToDate(DT, Dat);
@@ -716,7 +740,11 @@ begin
                           PT := @TZTimeDynArray(Dyn)[J]
                         else begin
                           PT := @T;
-                          if (Arr.VArrayVariantType in [vtNull, vtDateTime])
+                          if (Arr.VArrayVariantType = vtTimeStamp) then
+                            TimeFromTimeStamp(TZTimestampDynArray(Dyn)[J], T)
+                          else if (Arr.VArrayVariantType = vtDate) then
+                            FillChar(T, SizeOf(TZTime), #0)
+                          else if (Arr.VArrayVariantType in [vtNull, vtDateTime])
                           then DecodeDateTimeToTime(TDateTimeDynArray(Dyn)[J], T)
                           else begin
                             DT := ArrayValueToTime(Arr, J, ConSettings^.WriteFormatSettings);
@@ -745,7 +773,11 @@ begin
                           PTS := @TZTimeStampDynArray(Dyn)[J]
                         else begin
                           PTS := @TS;
-                          if (Arr.VArrayVariantType in [vtNull, vtDateTime])
+                          if (Arr.VArrayVariantType = vtDate) then
+                            TimestampFromDate(TZDateDynArray(Dyn)[J], TS)
+                          else if (Arr.VArrayVariantType = vtTime) then
+                            TimestampFromTime(TZTimeDynArray(Dyn)[J], TS)
+                          else if (Arr.VArrayVariantType in [vtNull, vtDateTime])
                           then DecodeDateTimeToTimeStamp(TDateTimeDynArray(Dyn)[J], TS)
                           else begin
                             DT := ArrayValueToDatetime(Arr, J, ConSettings^.WriteFormatSettings);
@@ -914,7 +946,7 @@ function TZAbstractPostgreSQLPreparedStatementV3.CreateResultSet(
   ServerCursor: Boolean): IZResultSet;
 var
   NativeResultSet: TZPostgreSQLResultSet;
-  CachedResultSet: TZPostgresCachedResultSet;
+  CachedResultSet: TZCachedResultSet;
   Resolver: TZPostgreSQLCachedResolver;
   Metadata: IZResultSetMetadata;
   ServerMajorVersion: Integer;
@@ -931,7 +963,9 @@ begin
     else if ((ServerMajorVersion = 7) and (FPostgreSQLConnection.GetServerMinorVersion >= 4))
     then Resolver := TZPostgreSQLCachedResolverV74up.Create(Self, Metadata)
     else Resolver := TZPostgreSQLCachedResolver.Create(Self, Metadata);
-    CachedResultSet := TZPostgresCachedResultSet.Create(NativeResultSet, Self.SQL, Resolver, ConSettings);
+    if CachedLob
+    then CachedResultSet := TZCachedResultSet.Create(NativeResultSet, Self.SQL, Resolver, ConSettings)
+    else CachedResultSet := TZPostgresCachedResultSet.Create(NativeResultSet, Self.SQL, Resolver, ConSettings);
     if (GetResultSetConcurrency = rcUpdatable) then begin
       CachedResultSet.SetConcurrency(rcUpdatable);
       if ServerCursor then begin //pg is tabular streamed, break blocking for next queries
@@ -952,6 +986,7 @@ var
   function CreateBatchDMLStmt: TZPostgreSQLPreparedStatementV3;
   var I, OffSet, N: Cardinal;
     aOID: OID;
+    P, PEnd: PAnsiChar;
     SQL: RawByteString;
     SQLWriter: TZRawSQLStringWriter;
   begin
@@ -1045,10 +1080,25 @@ unnest(array[$1]::int8[])
     SQLWriter := TZRawSQLStringWriter.Create(Length(fASQL)+BindList.Count shl 4);
     N := 1;
     OffSet := 0;
+    if FTokenMatchIndex = Ord(dmlDelete) then begin
+      P := Pointer(FCachedQueryRaw[0]);
+      PEnd := P + Length(FCachedQueryRaw[0]);
+      //Take care the "=" oparater gets replaced by and "in" op if not in brackets already
+      while (PEnd > P) and (PByte(PEnd)^ <= Byte(' ')) do
+        Dec(PEnd);
+      if (PEnd > P) and (PByte(PEnd)^ = Byte('=')) then begin
+        SQLWriter.AddText(P, PEnd - P, SQL);
+        SQLWriter.AddText(' in ', SQL);
+      end else
+        SQLWriter.AddText(P, Length(FCachedQueryRaw[0]), SQL);
+    end;
     //first build up a new string with unnest($n)::xyz[] surrounded params
-    for I := 0 to high(FCachedQueryRaw) do
+    for I := Ord(FTokenMatchIndex = Ord(dmlDelete)) to high(FCachedQueryRaw) do
       if IsParamIndex[i] then begin
         if BindList[OffSet].BindType in [zbtArray, zbtRefArray] then begin
+
+          if FTokenMatchIndex = Ord(dmlDelete) then
+            SQLWriter.AddText('(select ', SQL);
           SQLWriter.AddText('unnest($', SQL);
           SQLWriter.AddOrd(N, SQL);
           SQLWriter.AddText('::', SQL);
@@ -1056,6 +1106,8 @@ unnest(array[$1]::int8[])
           fRawTemp := {$IFDEF UNICODE}ZSysUtils.UnicodeStringToASCII7{$ENDIF}(FPostgreSQLConnection.GetTypeNameByOid(aOID));
           SQLWriter.AddText(fRawTemp, SQL);
           SQLWriter.AddText('[])', SQL);
+          if FTokenMatchIndex = Ord(dmlDelete) then
+            SQLWriter.AddChar(AnsiChar(')'), SQL);
           Inc(OffSet);
         end else begin
           SQLWriter.AddChar(AnsiChar('$'), SQL);
@@ -1076,6 +1128,8 @@ unnest(array[$1]::int8[])
   ,unnest($5::timestamp[])
   ,unnest($6::int8[])
   ,unnest($7::int8[]))
+  or
+  delete from public.SampleRecord where ID in (select unnest($1::int8[]))
 
   This approach took me ages. No description somewhere, just two (not working) example on
   Stack overflow... The Array.h ported Macros -> Trash !
@@ -1251,7 +1305,8 @@ ExecWithParams:
           if Assigned(FPlainDriver.PQresultErrorField)
           then PError := FPlainDriver.PQresultErrorField(Result,Ord(PG_DIAG_SQLSTATE))
           else PError := FPLainDriver.PQerrorMessage(FconnAddress^);
-          if (PError <> nil) and (PError^ <> #0) then begin
+          if (PError <> nil) and (PError^ <> #0) and
+            FPostgreSQLConnection.GetAutoCommit {we can re-exec only if the txn isn't broken} then begin
             { check for indermine datatype error}
             if Assigned(FPlainDriver.PQresultErrorField) and CompareMem(PError, indeterminate_datatype, 5) then begin
               FPlainDriver.PQclear(Result);
@@ -1412,8 +1467,10 @@ var
   Tokens: TZTokenList;
   Token: PZToken;
   tmp: RawByteString;
+  {$IFDEF UNICODE}S: String;{$ENDIF}
   SQLWriter, ParamWriter: TZRawSQLStringWriter;
   ComparePrefixTokens: TPreparablePrefixTokens;
+  NameLookUp: TStrings;
   procedure Add(const Value: RawByteString; const Param: Boolean);
   var H: Integer;
   begin
@@ -1426,6 +1483,7 @@ var
   end;
 begin
   if (Length(FCachedQueryRaw) = 0) and (SQL <> '') then begin
+    NameLookUp := TStringList.Create;
     Result := '';
     Tmp := '';
     Tokens := Connection.GetDriver.GetTokenizer.TokenizeBufferToList(SQL, [toSkipEOF]);
@@ -1486,9 +1544,16 @@ begin
             FirstComposePos := i + 1;
           end else begin
             {$IFDEF UNICODE}
-            Tmp := UnicodeStringToAscii7(Token.P, Tokens[i+1].L+1);
+            System.SetString(S, Token.P, Tokens[i+1].L+1);
+            Tmp := UnicodeStringToAscii7(S);
+            if NameLookUp.IndexOf(S) <> -1
+            then Dec(ParamsCnt)
+            else NameLookUp.Add(S);
             {$ELSE}
             ZSetString(Token.P, Tokens[i+1].L+1, Tmp);
+            if NameLookUp.IndexOf(Tmp) <> -1
+            then Dec(ParamsCnt)
+            else NameLookUp.Add(Tmp);
             {$ENDIF}
             FirstComposePos := i + 2;
           end;
@@ -1505,12 +1570,13 @@ begin
         {$ENDIF}
         Add(Tmp, False);
       end;
-      SetBindCapacity(ParamsCnt);
+      SetParamCount(ParamsCnt);
     finally
       SQLWriter.Finalize(Result);
       FreeAndNil(SQLWriter);
       FreeAndNil(ParamWriter);
       FreeAndNil(Tokens);
+      FreeAndNil(NameLookUp);
     end;
   end else
     Result := ASQL;
@@ -1533,7 +1599,7 @@ begin
     SetLength(FPQParamOIDs, BindList.Capacity);
     SetLength(FParamNames, BindList.Capacity);
     { rebind since the realloc did change the addresses of the hooked values}
-    for i := 0 to Capacity -1 do
+    for i := 0 to BindList.Count -1 do
       if BindList.BindTypes[i] {$IFDEF CPU64}in [zbt4Byte, zbt8Byte]{$ELSE}= zbt4Byte{$ENDIF} then
         FPQparamValues[I] := @BindList[I].Value;
   end;
@@ -1993,10 +2059,10 @@ end;
 procedure TZPostgreSQLPreparedStatementV3.InternalBindInt(Index: Integer;
   SQLType: TZSQLType; Value: {$IFNDEF CPU64}Integer{$ELSE}Int64{$ENDIF});
 var PGSQLType: TZSQLType;
+    InParamIdx: Integer;
 { move the string conversions into a own proc -> no (U/L)StrClear}
-procedure SetAsRaw; begin BindRawStr(Index, IntToRaw(Value)); end;
-var InParamIdx: Integer;
- P: Pointer;
+procedure SetAsRaw; begin BindRawStr(InParamIdx, IntToRaw(Value)); end;
+var P: Pointer;
 begin
   InParamIdx := Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF};
   PGSQLType := OIDToSQLType(InParamIdx, SQLType);
@@ -2048,13 +2114,16 @@ var
     TS: TZTimeStamp;
     D: TZDate absolute TS;
     T: TZTime absolute TS;
+    OldSQLType: TZSQLType;
   begin
+    OldSQLType := BindList.SQLTypes[i];
     if NewSQLType in [stUnicodeString, stUnicodeStream]
     then NewSQLType := TZSQLType(Ord(NewSQLType) -1)
-    else if (NewSQLType = stBigDecimal) and (BindList.SQLTypes[i] = stCurrency)
+    else if (NewSQLType = stBigDecimal) and (OldSQLType = stCurrency)
       then NewSQLType := stCurrency;
-    if (NewSQLType <> BindList.SQLTypes[i]) and (FPQparamValues[I] <> nil) and ((oldoid <> newoid) and (Ord(NewSQLType) <= Ord(stTimestamp))) then
-      case BindList.SQLTypes[i] of
+    if (NewSQLType <> OldSQLType) and (FPQparamValues[I] <> nil) and ((oldoid <> newoid) and
+       ((Ord(NewSQLType) <= Ord(stTimestamp)) or ((Ord(OldSQLType) <= Ord(stTimestamp))))) then
+      case OldSQLType of
         stBoolean:  SetBoolean(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, Boolean(PByte(FPQparamValues[i])^));
         stSmall:    SetSmall(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PG2SmallInt(FPQparamValues[i]));
         stInteger:  SetInt(I{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PG2Integer(FPQparamValues[i]));
@@ -2100,7 +2169,7 @@ begin
       res := FPlainDriver.PQdescribePrepared(FconnAddress^, Pointer(FRawPlanname));
       boundOIDs := nil;
       try
-        BindList.SetCount(FplainDriver.PQnparams(res)+FOutParamCount);
+        BindList.Count := FplainDriver.PQnparams(res)+FOutParamCount;
         for i := 0 to BindList.Count-FOutParamCount-1 do begin
           pgOID := FplainDriver.PQparamtype(res, i);
           NewSQLType := PostgreSQLToSQLType(fOIDAsBlob, pgOID, -1);
@@ -2118,7 +2187,8 @@ begin
             end;
           tmpOID := FPQParamOIDs[i];
           FPQParamOIDs[i] := pgOID;
-          RebindIfRequired(i, NewSQLType, tmpOID, pgOID);
+          if tmpOID <> pgOID then
+            RebindIfRequired(i, NewSQLType, tmpOID, pgOID);
           if (tmpOID <> pgOID) and Assigned(FOpenResultSet) then
             IZResultSet(FOpenResultSet).Close;
         end;
@@ -2179,9 +2249,9 @@ end;
 }
 procedure TZPostgreSQLPreparedStatementV3.SetBigDecimal(Index: Integer;
   const Value: TBCD);
-var SQLType: TZSQLType;
-procedure SetAsRaw; begin BindRawStr(Index, BcdToSQLRaw(Value)); end;
 var Idx: Integer;
+    SQLType: TZSQLType;
+procedure SetAsRaw; begin BindRawStr(Idx, BcdToSQLRaw(Value)); end;
 begin
   Idx := Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF};
   SQLType := OIDToSQLType(Idx, stBigDecimal);
@@ -2284,8 +2354,8 @@ end;
 procedure TZPostgreSQLPreparedStatementV3.SetCurrency(Index: Integer;
   const Value: Currency);
 var SQLType: TZSQLType;
-procedure SetAsRaw; begin BindRawStr(Index, CurrToRaw(Value)); end;
-var Idx: Integer;
+    Idx: Integer;
+procedure SetAsRaw; begin BindRawStr(Idx, CurrToRaw(Value,'.')); end;
 begin
   Idx := Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF};
   SQLType := OIDToSQLType(Idx, stCurrency);
@@ -2505,8 +2575,8 @@ begin
 {$ELSE}
 { move the string conversions into a own proc -> no (U/L)StrClear}
 var PGSQLType: TZSQLType;
-procedure SetAsRaw; begin SetRawByteString(Index, IntToRaw(Value)); end;
-var Idx: Integer;
+    Idx: Integer;
+procedure SetAsRaw; begin SetRawByteString(Idx, IntToRaw(Value)); end;
 begin
   Idx := Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF};
   PGSQLType := OIDToSQLType(Idx, stLong);
@@ -2537,13 +2607,6 @@ begin
 {$ENDIF}
 end;
 
-{**
-  Sets the designated parameter to SQL <code>NULL</code>.
-  <P><B>Note:</B> You must specify the parameter's SQL type.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param sqlType the SQL type code defined in <code>java.sql.Types</code>
-}
 procedure TZPostgreSQLPreparedStatementV3.SetNull(Index: Integer;
   SQLType: TZSQLType);
 var InParamIdx: Integer;

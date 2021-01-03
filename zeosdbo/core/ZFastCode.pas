@@ -42,7 +42,7 @@
 {                 John O'Harrow                           }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -315,11 +315,11 @@ function IntToUnicode(Value: Integer): UnicodeString; overload;
 function IntToUnicode(const Value: Int64): UnicodeString; overload;
 function IntToUnicode(const Value: UInt64): UnicodeString; overload;
 
-procedure CurrToRaw(const Value: Currency; Buf: PAnsiChar; PEnd: PPAnsiChar = nil); overload;
-function CurrToRaw(const Value: Currency): RawByteString; overload;
+procedure CurrToRaw(const Value: Currency; DecimalSep: Char; Buf: PAnsiChar; PEnd: PPAnsiChar = nil); overload;
+function CurrToRaw(const Value: Currency; DecimalSep: Char): RawByteString; overload;
 
-procedure CurrToUnicode(const Value: Currency; Buf: PWideChar; PEnd: ZPPWideChar = nil); overload;
-function CurrToUnicode(const Value: Currency): UnicodeString; overload;
+procedure CurrToUnicode(const Value: Currency; DecimalSep: Char; Buf: PWideChar; PEnd: ZPPWideChar = nil); overload;
+function CurrToUnicode(const Value: Currency; DecimalSep: Char): UnicodeString; overload;
 
 function RawToInt(const Value: RawByteString): Integer; overload;
 function RawToInt(const Value: PAnsiChar): Integer; overload;
@@ -2659,19 +2659,14 @@ end; {PatchMove}
 {$ENDIF PatchSystemMove}
 {$IFEND} //set in Zeos.inc
 
-{$IFDEF FPC}
-  {$PUSH}
-  {$WARN 5093 off : Function result variable of a managed type does not seem to be initialized} //cpu 32
-  {$WARN 5094 off : Function result variable of a managed type does not seem to be initialized} //cpu 64
-{$ENDIF} // ZSetString does the job even if NOT required
 function IntToRaw(Value: Cardinal): RawByteString;
 var Digits: Byte;
 begin
   Digits := GetOrdinalDigits(Value);
+  {$IFDEF FPC}Result := '';{$ENDIF}
   ZSetString(nil, Digits, Result);
   IntToRaw(Value, Pointer(Result), Digits);
 end;
-{$IFDEF FPC} {$POP} {$ENDIF} // ZSetString does the job even if NOT required
 
 {$IF defined(Delphi) and defined(WIN32)}
 function IntToRaw(Value: Integer): RawByteString;
@@ -3028,11 +3023,6 @@ asm
   pop    ebx
 end;
 {$ELSE}
-{$IFDEF FPC}
-  {$PUSH}
-  {$WARN 5093 off : Function result variable of a managed type does not seem to be initialized} //cpu 32
-  {$WARN 5094 off : Function result variable of a managed type does not seem to be initialized} //cpu 64
-{$ENDIF} // ZSetString does the job even if NOT required
 function IntToRaw(Value: Integer): RawByteString;
 var C: Cardinal;
   Digits: Byte;
@@ -3040,19 +3030,14 @@ var C: Cardinal;
   P: PAnsiChar;
 begin
   Digits := GetOrdinalDigits(Value, C, Negative);
+  {$IFDEF FPC}Result := '';{$ENDIF}
   ZSetString(nil, Digits+Ord(Negative), Result);
   P := Pointer(Result);
   if Negative then
     PByte(P)^ := Ord('-');
   IntToRaw(C, P+Ord(Negative), Digits);
 end;
-{$IFDEF FPC} {$POP} {$ENDIF} // ZSetString does the job even if NOT required
 
-{$IFDEF FPC}
-  {$PUSH}
-  {$WARN 5093 off : Function result variable of a managed type does not seem to be initialized} //cpu 32
-  {$WARN 5094 off : Function result variable of a managed type does not seem to be initialized} //cpu 64
-{$ENDIF} // ZSetString does the job even if NOT required
 function IntToRaw(Value: Int64): RawByteString;
 var U: UInt64;
   Digits: Byte;
@@ -3060,13 +3045,13 @@ var U: UInt64;
   P: PAnsiChar;
 begin
   Digits := GetOrdinalDigits(Value, U, Negative);
+  {$IFDEF FPC}Result := '';{$ENDIF}
   ZSetString(nil, Digits+Ord(Negative), Result);
   P := Pointer(Result);
   if Negative then
     PByte(P)^ := Ord('-');
   IntToRaw(U, P+Ord(Negative), Digits);
 end;
-{$IFDEF FPC} {$POP} {$ENDIF} // ZSetString does the job even if NOT required
 {$IFEND}
 
 function IntToRaw(Value: Byte): RawByteString;
@@ -3222,20 +3207,16 @@ cardinal_range:
     PByte(Buf)^ := I32 or ord('0');
 end;
 
-{$IFDEF FPC} {$PUSH}
-  {$WARN 5094 off : Function result variable of a managed type does not seem to be initialized}
-  {$WARN 5093 off : Function result variable of a managed type does not seem to be initialized}
-{$ENDIF} // ZSetString does the job even if NOT required
 function IntToRaw(const Value: UInt64): RawByteString;
 var Digits: Byte;
 begin
   Digits := GetOrdinalDigits(Value);
+  {$IFDEF FPC}Result := '';{$ENDIF}
   ZSetString(nil, Digits, Result);
   IntToRaw(Value, Pointer(Result), Digits);
 end;
-{$IFDEF FPC} {$POP} {$ENDIF} // ZSetString does the job even if NOT required
 
-procedure CurrToRaw(const Value: Currency; Buf: PAnsiChar; PEnd: PPAnsiChar = nil);
+procedure CurrToRaw(const Value: Currency; DecimalSep: Char; Buf: PAnsiChar; PEnd: PPAnsiChar = nil);
 var
   I64: UInt64;
   I64Rec: Int64Rec absolute I64;
@@ -3262,7 +3243,7 @@ begin
       IntToRaw(i64, Buf, Digits);
       Inc(Buf, Digits);
       PCardinal(Buf-3)^ := PCardinal(Buf-4)^; //move trailing digits one pos forward;
-      PByte(Buf-4)^ := Ord('.');
+      PByte(Buf-4)^ := Ord(DecimalSep);
     end;
     //dec by trailing zeroes
     if PByte(Buf)^ = Ord('0') then begin
@@ -3280,21 +3261,17 @@ begin
   else PByte(Buf)^ := Ord(#0);
 end;
 
-{$IFDEF FPC}
-  {$PUSH}
-  {$WARN 5093 off : Function result variable of a managed type does not seem to be initialized} //cpu 32
-  {$WARN 5094 off : Function result variable of a managed type does not seem to be initialized} //cpu 64
-{$ENDIF} // ZSetString does the job even if NOT required
-function CurrToRaw(const Value: Currency): RawByteString;
+function CurrToRaw(const Value: Currency; DecimalSep: Char): RawByteString;
 var buf: array[0..31] of AnsiChar;
   P: PAnsiChar;
 begin
-  CurrToRaw(Value, @buf[0], @P);
+  CurrToRaw(Value, DecimalSep, @buf[0], @P);
+  {$IFDEF FPC}Result := '';{$ENDIF}
   ZSetString(PAnsiChar(@Buf[0]), P-PAnsiChar(@Buf[0]), Result);
 end;
-{$IFDEF FPC} {$POP} {$ENDIF}
 
-procedure CurrToUnicode(const Value: Currency; Buf: PWideChar; PEnd: ZPPWideChar = nil);
+procedure CurrToUnicode(const Value: Currency; DecimalSep: Char; Buf: PWideChar;
+  PEnd: ZPPWideChar = nil);
 var
   I64: UInt64;
   I64Rec: Int64Rec absolute I64;
@@ -3323,7 +3300,7 @@ begin
       Inc(Buf, Digits);
       I64 := PUInt64(Buf-4)^; //localize (CPU32 makes two cadinal moves and the value would be incorrect then)
       PUInt64(Buf-3)^ := i64; //move trailing digits one pos forward;
-      PWord(Buf-4)^ := Ord('.');
+      PWord(Buf-4)^ := Ord(DecimalSep);
     end;
     if PWord(Buf)^ = Ord('0') then begin
       if PWord(Buf-1)^ = Ord('0') then
@@ -3340,11 +3317,11 @@ begin
   else PWord(Buf)^ := Ord(#0);
 end;
 
-function CurrToUnicode(const Value: Currency): UnicodeString;
+function CurrToUnicode(const Value: Currency; DecimalSep: Char): UnicodeString;
 var buf: array[0..31] of WideChar;
   P: PWideChar;
 begin
-  CurrToUnicode(Value, @buf[0], @P);
+  CurrToUnicode(Value, DecimalSep, @buf[0], @P);
   System.SetString(Result, PWideChar(@Buf[0]), P-PWideChar(@Buf[0]));
 end;
 
@@ -5036,7 +5013,7 @@ function RawToUInt64(const Value: RawByteString) : UInt64;
 var
   E: Integer;
 begin
-  Result := ValUInt64_JOH_PAS_8_a_raw(Pointer(Value), E{%H-});
+    Result := ValUInt64_JOH_PAS_8_a_raw(Pointer(Value), E{%H-});
   if E <> 0 then
     raise EConvertError.CreateResFmt(@SInvalidInteger, [Value]);
 end;

@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -448,6 +448,16 @@ const
   DBCOLUMNFLAGS_ISROWID = $00000100;
   DBCOLUMNFLAGS_ISROWVER = $00000200;
   DBCOLUMNFLAGS_CACHEDEFERRED = $00001000;
+  DBCOLUMNFLAGS_ISCHAPTER = $00002000; //v1.5+
+  DBCOLUMNFLAGS_SCALEISNEGATIVE = $00004000; //v2.0+
+  DBCOLUMNFLAGS_RESERVED = $00008000; //v2.0+
+  DBCOLUMNFLAGS_ISROWURL = $00010000; //v2.1+
+  DBCOLUMNFLAGS_ISDEFAULTSTREAM = $00020000; //v2.1+
+  DBCOLUMNFLAGS_ISCOLLECTION = $00040000; //v2.1+
+  DBCOLUMNFLAGS_ISSTREAM = $00080000; //v2.6+
+  DBCOLUMNFLAGS_ISROWSET = $00100000; //v2.6+
+  DBCOLUMNFLAGS_ISROW = $00200000; //v2.6+
+  DBCOLUMNFLAGS_ROWSPECIFICCOLUMN = $00400000; //v2.6+
 
 // DBPROPTOPTIONS constants from msdacs.h
 type
@@ -1264,6 +1274,10 @@ const
 
 
   { errors from oledberr.h }
+  DB_S_STOPLIMITREACHED = HRESULT($00040ED6); //Execution stopped because a resource limit was reached. Results obtained so far were returned, but execution cannot resume.
+  DB_S_ENDOFROWSET = HRESULT($00040EC6); //Start or end of rowset or chapter was reached.
+  DB_S_ROWLIMITEXCEEDED = HRESULT($00040EC0); //Fetching requested number of rows will exceed total number of active rows supported by the rowset.
+
   DB_E_PARAMUNAVAILABLE = HRESULT($80040E51); //cannot derive parameter information and SetParameterInfo has not been called
   DB_E_ERRORSOCCURRED = HRESULT($80040E21); //Multiple-step OLE DB operation generated errors. Check each OLE DB status value, if available. No work was done.
   DB_E_ERRORSINCOMMAND = HRESULT($80040E14); //One or more errors occurred during processing of command.

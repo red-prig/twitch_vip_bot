@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -123,6 +123,17 @@ type
     constructor Create(const Connection: IZMySQLConnection;
       const SQL: string; Info: TStrings);
   public
+    /// <summary>Releases all driver handles and set the object in a closed
+    ///  Zombi mode waiting for destruction. Each known supplementary object,
+    ///  supporting this interface, gets called too. This may be a recursive
+    ///  call from parant to childs or vice vera. So finally all resources
+    ///  to the servers are released. This method is triggered by a connecton
+    ///  loss. Don't use it by hand except you know what you are doing.</summary>
+    /// <param>"Sender" the object that did notice the connection lost.</param>
+    /// <param>"AError" a reference to an EZSQLConnectionLost error.
+    ///  You may free and nil the error object so no Error is thrown by the
+    ///  generating method. So we start from the premisse you have your own
+    ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost); override;
     procedure RegisterParameter(ParameterIndex: Integer; SQLType: TZSQLType;
       ParamType: TZProcedureColumnType; const Name: String = ''; {%H-}PrecisionOrSize: LengthInt = 0;
@@ -156,24 +167,31 @@ type
     //a performance thing: direct dispatched methods for the interfaces :
     //https://stackoverflow.com/questions/36137977/are-interface-methods-always-virtual
     procedure SetBoolean(Index: Integer; Value: Boolean);
+    /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
+    ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(ParameterIndex: Integer; SQLType: TZSQLType);
     procedure SetByte(ParameterIndex: Integer; Value: Byte);
     procedure SetShort(ParameterIndex: Integer; Value: ShortInt);
-    procedure SetWord(ParameterIndex: Integer; Value: Word); reintroduce;
-    procedure SetSmall(ParameterIndex: Integer; Value: SmallInt); reintroduce;
-    procedure SetUInt(ParameterIndex: Integer; Value: Cardinal); reintroduce;
-    procedure SetInt(ParameterIndex: Integer; Value: Integer); reintroduce;
-    procedure SetULong(ParameterIndex: Integer; const Value: UInt64); reintroduce;
-    procedure SetLong(ParameterIndex: Integer; const Value: Int64); reintroduce;
+    procedure SetWord(ParameterIndex: Integer; Value: Word);
+    procedure SetSmall(ParameterIndex: Integer; Value: SmallInt);
+    procedure SetUInt(ParameterIndex: Integer; Value: Cardinal);
+    procedure SetInt(ParameterIndex: Integer; Value: Integer);
+    procedure SetULong(ParameterIndex: Integer; const Value: UInt64);
+    procedure SetLong(ParameterIndex: Integer; const Value: Int64);
 
-    procedure SetFloat(Index: Integer; Value: Single); reintroduce;
-    procedure SetDouble(Index: Integer; const Value: Double); reintroduce;
-    procedure SetCurrency(Index: Integer; const Value: Currency); reintroduce;
-    procedure SetBigDecimal(Index: Integer; const Value: TBCD); reintroduce;
+    procedure SetFloat(Index: Integer; Value: Single);
+    procedure SetDouble(Index: Integer; const Value: Double);
+    procedure SetCurrency(Index: Integer; const Value: Currency);
+    procedure SetBigDecimal(Index: Integer; const Value: TBCD);
 
-    procedure SetDate(Index: Integer; const Value: TZDate); reintroduce; overload;
-    procedure SetTime(Index: Integer; const Value: TZTime); reintroduce; overload;
-    procedure SetTimestamp(Index: Integer; const Value: TZTimeStamp); reintroduce; overload;
+    procedure SetDate(Index: Integer; const Value: TZDate); overload;
+    procedure SetTime(Index: Integer; const Value: TZTime); overload;
+    procedure SetTimestamp(Index: Integer; const Value: TZTimeStamp); overload;
     procedure SetBytes(Index: Integer; Value: PByte; Len: NativeUInt); reintroduce; overload;
 
     procedure SetDataArray(ParameterIndex: Integer; const Value; const SQLType: TZSQLType; const VariantType: TZVariantType = vtNull); override;
@@ -242,15 +260,14 @@ procedure TZAbstractMySQLPreparedStatement.CheckParameterIndex(var Value: Intege
 begin
   if ((FMYSQL_STMT <> nil) and (BindList.Count < Value+1)) or
      ((FMYSQL_STMT =  nil) and (BindList.Capacity < Value+1))
-  then begin
-    {$IFDEF UNICODE}FUniTemp{$ELSE}FRawTemp{$ENDIF} := Format(SBindVarOutOfRange, [Value]);
-    raise EZSQLException.Create({$IFDEF UNICODE}FUniTemp{$ELSE}FRawTemp{$ENDIF});
-  end else inherited CheckParameterIndex(Value);
+  then raise CreateBindVarOutOfRangeException(Value)
+  else inherited CheckParameterIndex(Value);
 end;
 
 function TZAbstractMySQLPreparedStatement.CheckPrepareSwitchMode: Boolean;
 begin
-  Result := ((not FInitial_emulate_prepare) or (BatchDMLArrayCount > 0 )) and (FMYSQL_STMT = nil) and (TokenMatchIndex <> -1) and
+  Result := ((not FInitial_emulate_prepare) or (BatchDMLArrayCount > 0 )) and
+     (FMYSQL_STMT = nil) and (TokenMatchIndex <> -1) and
      ((BatchDMLArrayCount > 0 ) or (FExecCount = FMinExecCount2Prepare) or
      ((TokenMatchIndex = Ord(myCall)) and ((FPLainDriver.IsMariaDBDriver and (FPLainDriver.mysql_get_client_version >= 100000)) or
      (not FPLainDriver.IsMariaDBDriver and (FPLainDriver.mysql_get_client_version >= 50608)))));
@@ -359,7 +376,7 @@ begin
   FUseResult := StrToBoolEx(DefineStatementParameter(Self, DSProps_UseResult, 'false'));
   if not FUseResult then
     ResultSetType := rtScrollInsensitive;
-  FUseDefaults := StrToBoolEx(DefineStatementParameter(Self, DSProps_Defaults, 'true'));
+  FUseDefaults := StrToBoolEx(DefineStatementParameter(Self, DSProps_MySQLUseDefaults, 'true'));
   FPrefetchRows := {$IFDEF UNICODE}UnicodeToIntDef{$ELSE}RawToIntDef{$ENDIF}(DefineStatementParameter(Self, DSProps_PrefetchRows, '1'),1);
   //JDBC prepares after 4th execution
   FMinExecCount2Prepare := {$IFDEF UNICODE}UnicodeToIntDef{$ELSE}RawToIntDef{$ENDIF}(DefineStatementParameter(Self, DSProps_MinExecCntBeforePrepare, '2'), 2);
@@ -1233,7 +1250,7 @@ begin
       FChunkedData := True;
       Bind^.Length[0] := 0;
     end;
-    Bind^.is_null_address^ := 0;
+    Bind^.is_null_address^ := STMT_INDICATOR_NONE;
   end;
 end;
 
@@ -1307,7 +1324,7 @@ begin
                           end;
       else raise CreateConversionError(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, stLongWord, SQLType);
     end;
-    Bind^.is_null_address^ := 0;
+    Bind^.is_null_address^ := STMT_INDICATOR_NONE;
   end;
 end;
 
@@ -1381,7 +1398,7 @@ begin
                           end;
       else raise CreateConversionError(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, stInteger, SQLType);
     end;
-    Bind^.is_null_address^ := 0;
+    Bind^.is_null_address^ := STMT_INDICATOR_NONE;
   end;
 end;
 
@@ -1394,7 +1411,10 @@ var
   OffSet, PieceSize: Cardinal;
   array_size: UInt;
 begin
-  if not FEmulatedParams and FBindAgain and (BindList.Count > 0) and (FMYSQL_STMT <> nil) then begin
+  if not FEmulatedParams and (FBindAgain or (FTokenMatchIndex = Ord(myCall)))//handle a MySQL bug:
+     // EH: on sp's we always need to rebind else we get an invalid input parameter error
+     // to veryfy just execute mysql_stmt_execute twice and the error pop's up!
+     and (BindList.Count > 0) and (FMYSQL_STMT <> nil) then begin
     if (BatchDMLArrayCount > 0) then begin
       //set array_size first: https://mariadb.com/kb/en/library/bulk-insert-column-wise-binding/
       array_size := BatchDMLArrayCount;
@@ -1456,7 +1476,7 @@ begin
     if (Bind^.buffer <> nil) or
       ((Bind^.buffer_type_address^ <> FIELD_TYPE_BLOB) and (Bind^.buffer_type_address^ <> FIELD_TYPE_STRING)) then
       InitBuffer(SQLType, Index, Bind, 0);
-    Bind^.is_null_address^ := 0;
+    Bind^.is_null_address^ := STMT_INDICATOR_NONE;
   end;
 end;
 
@@ -1484,11 +1504,11 @@ begin
     if (BindValue.ParamType = pctUnknown) or (BindValue.SQLType in [stBigDecimal, stCurrency, stString, stGUID]) then begin
       if (BindValue.SQLType <> SQLType) or (Bind.buffer_length_address^ < Cardinal(Len+1)) then
         InitBuffer(SQLType, Index, Bind, Len);
-      if Len = 0
-      then PByte(Bind^.buffer)^ := Ord(#0)
-      else {$IFDEF FAST_MOVE}ZFastCode{$ELSE}System{$ENDIF}.Move(Pointer(Value)^, Pointer(Bind^.buffer)^, Len+1);
+      if Len > 0 then
+        {$IFDEF FAST_MOVE}ZFastCode{$ELSE}System{$ENDIF}.Move(Pointer(Value)^, Pointer(Bind^.buffer)^, Len);
+      PByte(PAnsiChar(Bind^.buffer)+Len)^ := Ord(#0);
       Bind^.Length[0] := Len;
-      Bind^.is_null_address^ := 0;
+      Bind^.is_null_address^ := STMT_INDICATOR_NONE;
     end else
       BindRawStr(Index, Pointer(Value), Len);
   end;
@@ -1749,7 +1769,7 @@ var
   Bind: PMYSQL_aligned_BIND;
   PEnd: PAnsiChar;
   { move the string conversions into a own proc -> no (U/L)StrClear}
-  procedure EmulatedAsRaw; begin FEmulatedValues[Index] := CurrToRaw(Value) end;
+  procedure EmulatedAsRaw; begin FEmulatedValues[Index] := CurrToRaw(Value, '.') end;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index -1;{$ENDIF}
   CheckParameterIndex(Index);
@@ -1780,7 +1800,7 @@ begin
       FIELD_TYPE_DOUBLE:    PDouble(Bind^.buffer)^ := Value;
       FIELD_TYPE_NEWDECIMAL,
       FIELD_TYPE_STRING:  begin
-                            CurrToRaw(Value, Bind.buffer, @PEnd);
+                            CurrToRaw(Value, '.', Bind.buffer, @PEnd);
                             Bind^.Length[0] := PEnd-PAnsiChar(Bind.buffer);
                             PByte(PEnd)^ := 0;
                           end;
@@ -2008,7 +2028,7 @@ begin
           P := PAnsiChar(Bind^.buffer)+(SizeOf(Pointer)*BatchDMLArrayCount);
           for i := 0 to BatchDMLArrayCount -1 do begin
             PPointer(PAnsiChar(Bind.Buffer)+i*SizeOf(Pointer))^ := P;
-            CurrToRaw(TCurrencyDynArray(Value)[i], P, @PEnd);
+            CurrToRaw(TCurrencyDynArray(Value)[i], '.', P, @PEnd);
             Bind^.length[i] := PEnd-P;
             PByte(PEnd)^ := 0;
             Inc(P, Bind^.length[i]+1);
@@ -2044,7 +2064,7 @@ begin
               PD :=  @D;
             end else if VariantType = vtDate
               then PD :=  @TZDateDynArray(Value)[i]
-              else PTS := nil; //raise TypeMismatch
+              else raise CreateUnsupportedParameterTypeException(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, stDate);
             MySQLTime^.year := PD^.Year;
             MySQLTime^.month := PD^.Month;
             MySQLTime^.day := PD^.Day;
@@ -2061,7 +2081,7 @@ begin
               PT :=  @T;
             end else if VariantType = vtTime
               then PT :=  @TZTimeDynArray(Value)[i]
-              else PT := nil; //raise TypeMismatch
+              else raise CreateUnsupportedParameterTypeException(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, stTime);
             MySQLTime^.hour := PT.Hour;
             MySQLTime^.minute := PT.Minute;
             MySQLTime^.second := PT.Second;
@@ -2077,9 +2097,9 @@ begin
             if VariantType in [vtNull, vtDateTime] then begin
               ZSysUtils.DecodeDateTimeToTimeStamp(TDateTimeDynArray(Value)[i], TS);
               PTS :=  @TS;
-            end else if VariantType = vtTime
+            end else if VariantType = vtTimeStamp
               then PTS :=  @TZTimeStampDynArray(Value)[i]
-              else PTS := nil; //raise TypeMismatch
+              else raise CreateUnsupportedParameterTypeException(ParameterIndex{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, stTimeStamp);
             MySQLTime^.year := PTS^.Year;
             MySQLTime^.month := PTS^.Month;
             MySQLTime^.day := PTS^.Day;
@@ -2204,7 +2224,7 @@ begin
     P^.year := Value.Year;
     P^.month := Value.Month;
     P^.day := Value.Day;
-    Bind^.is_null_address^ := 0;
+    Bind^.is_null_address^ := STMT_INDICATOR_NONE;
   end;
 end;
 
@@ -2417,13 +2437,6 @@ begin
 {$ENDIF}
 end;
 
-{**
-  Sets the designated parameter to SQL <code>NULL</code>.
-  <P><B>Note:</B> You must specify the parameter's SQL type.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param sqlType the SQL type code defined in <code>java.sql.Types</code>
-}
 procedure TZMySQLPreparedStatement.SetNull(ParameterIndex: Integer;
   SQLType: TZSQLType);
 var
@@ -2479,7 +2492,7 @@ begin
   then FillChar(Bind^.indicators^, BatchDMLArrayCount, Char(MySQLNullIndicatorMatrix[False, FUseDefaults]))
   else for i := 0 to BatchDMLArrayCount -1 do
     {$R-}
-    Bind^.indicators[I] :=  MySQLNullIndicatorMatrix[IsNullFromArray(aArray, I), FUseDefaults];
+    Bind^.indicators[I] :=  MySQLNullIndicatorMatrix[(Bind^.indicators[i] = Ord(STMT_INDICATOR_NULL)) or IsNullFromArray(aArray, I), FUseDefaults];
     {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
 
@@ -2545,7 +2558,7 @@ begin
     P^.minute := Value.Minute;
     P^.second := Value.Second;
     P^.second_part := Value.Fractions div 1000;
-    Bind^.is_null_address^ := 0;
+    Bind^.is_null_address^ := STMT_INDICATOR_NONE;
   end;
 end;
 
@@ -2587,7 +2600,7 @@ begin
     P^.minute := Value.Minute;
     P^.second := Value.Second;
     P^.second_part := Value.Fractions div 1000;
-    Bind^.is_null_address^ := 0;
+    Bind^.is_null_address^ := STMT_INDICATOR_NONE;
   end;
 end;
 
@@ -2709,6 +2722,7 @@ begin
   {TZMySQLPreparedStatement(Result).FMinExecCount2Prepare := 0; //prepare immediately
   TZMySQLPreparedStatement(Result).InternalRealPrepare;}
   TZMySQLPreparedStatement(Result).Prepare;
+  FSupportsBidirectionalParamIO := True;
 end;
 
 { TZMySQLCallableStatement56down }

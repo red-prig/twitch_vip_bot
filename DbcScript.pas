@@ -250,6 +250,8 @@ type
 
 Const
  vtCursor=vtInterface;
+ FirstDbcIndex=ZDbcIntfs.FirstDbcIndex;
+ InvalidDbcIndex=ZDbcIntfs.InvalidDbcIndex;
 
 implementation
 
@@ -2372,7 +2374,7 @@ begin
  For i:=0 to High(FParams) do
  begin
   V:=FVariables.GetValue(FParams[i]);
-  Fstmt.SetValue(i+1,V);
+  Fstmt.SetValue(i+FirstDbcIndex,V);
  end;
 end;
 

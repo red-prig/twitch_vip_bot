@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -97,7 +97,6 @@ type
     property IndexFieldNames; {bangfauzan addition}
     property UpdateMode;
     property WhereMode;
-    property Options default [doCalcDefaults, doPreferPrepared];
     property Sequence;
     property SequenceField;
   end;
@@ -119,7 +118,6 @@ type
     property IndexFieldNames; {bangfauzan addition}
     property UpdateMode;
     property WhereMode;
-    property Options default [doCalcDefaults, doPreferPrepared];
     property Sequence;
     property SequenceField;
   end;

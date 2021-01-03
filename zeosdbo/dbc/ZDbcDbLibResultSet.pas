@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -127,6 +127,8 @@ type
     procedure SetColumnCodePageFromGetColumnsRS({$IFDEF AUTOREFCOUNT}const{$ENDIF}
       ColumnInfo: TZColumnInfo; const TableColumns: IZResultSet); override;
     procedure SetColumnPrecisionFromGetColumnsRS(
+      {$IFDEF AUTOREFCOUNT}const{$ENDIF}ColumnInfo: TZColumnInfo; const TableColumns: IZResultSet); override;
+    procedure SetColumnScaleFromGetColumnsRS(
       {$IFDEF AUTOREFCOUNT}const{$ENDIF}ColumnInfo: TZColumnInfo; const TableColumns: IZResultSet); override;
   end;
 
@@ -381,8 +383,11 @@ label AssignGeneric;
         Precision := 19;
         Currency := True;
       end else begin
-        Scale := 0;
         Precision := ColInfo.MaxLength;
+        if (TDSType in [tdsChar, tdsBigBinary, tdsBigChar, tdsBigNChar]) or
+           ((TDSType = tdsBinary) and not ColInfo.VarLength)
+        then Scale := Precision
+        else Scale := 0;
       end;
       ColumnType := ConvertTDSTypeToSqlType(TDSType, Precision, Scale);
       if ColumnType = stUnknown
@@ -394,8 +399,7 @@ label AssignGeneric;
       ReadOnly := not (ColInfo.Updatable = 1);
       Writable := ColInfo.Updatable = 1;
       AutoIncrement := ColInfo.Identity;
-      Signed := (ColumnInfo.ColumnType in [stShort, stSmall, stInteger, stLong, stFloat, stCurrency, stDouble, stBigDecimal]) or
-        ((TDSType = tdsBinary) and not ColInfo.VarLength);
+      Signed := (ColumnInfo.ColumnType in [stShort, stSmall, stInteger, stLong, stFloat, stCurrency, stDouble, stBigDecimal]);
     end;
   end;
   function ValueToString(P: PAnsiChar): String;
@@ -405,7 +409,7 @@ label AssignGeneric;
     {$IFDEF UNICODE}
     Result := PRawToUnicode(P, L, FClientCP);
     {$ELSE}
-    {$IFDEF FPC}Result := '';{$ENDIF}//done by ZSetString already
+    {$IFDEF FPC}Result := '';{$ENDIF}
     ZSetString(P, L, Result{$IFDEF WITH_RAWBYTESRING}, FClientCP{$ENDIF});
     {$ENDIF}
   end;
@@ -459,14 +463,12 @@ AssignGeneric:  {this is the old way we did determine the ColumnInformations}
       Currency := TDSType in [tdsMoney, tdsMoney4, tdsMoneyN];
       Signed := not (TDSType = tdsInt1);
     end;
-    if (ColumnInfo.ColumnType in [stString, stUnicodeString, stAsciiStream, stUnicodeStream]) then
-      if (FPlainDriver.DBLibraryVendorType <> lvtMS) then
-        ColumnInfo.ColumnCodePage := FClientCP
-      else if (ColumnInfo.ColumnType in [stAsciiStream, stUnicodeStream]) then
-        ColumnInfo.ColumnCodePage := FClientCP
-      else if (FUserEncoding = ceUTF8)
-        then ColumnInfo.ColumnCodePage := zCP_UTF8
-        else ColumnInfo.ColumnCodePage := zCP_NONE;
+    if (ColumnInfo.ColumnType in [stString, stUnicodeString, stAsciiStream, stUnicodeStream]) then begin
+      ColumnInfo.ColumnCodePage := FClientCP;
+      if (ColumnInfo.ColumnType in [stString, stUnicodeString])
+      then ColumnInfo.Precision := ColumnInfo.Precision div ConSettings.ClientCodePage.CharWidth
+      else ColumnInfo.Precision := -1;
+    end;
     ColumnsInfo.Add(ColumnInfo);
   end;
 
@@ -1171,6 +1173,13 @@ procedure TZDblibResultSetMetadata.SetColumnPrecisionFromGetColumnsRS(
 begin
   if (ColumnInfo.ColumnType = stString) or (ColumnInfo.ColumnType = stUnicodeString) then
     ColumnInfo.Precision := TableColumns.GetInt(TableColColumnSizeIndex);
+end;
+
+procedure TZDblibResultSetMetadata.SetColumnScaleFromGetColumnsRS(
+  {$IFDEF AUTOREFCOUNT}const{$ENDIF}ColumnInfo: TZColumnInfo; const TableColumns: IZResultSet);
+begin
+  if (ColumnInfo.ColumnType = stBytes) then
+    ColumnInfo.Scale := TableColumns.GetInt(TableColColumnDecimalDigitsIndex);
 end;
 
 {$ENDIF ZEOS_DISABLE_DBLIB} //if set we have an empty unit

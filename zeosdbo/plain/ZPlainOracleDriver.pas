@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -921,6 +921,11 @@ const
   { number }
   OCI_NUMBER_UNSIGNED = 0;                        // Unsigned type -- ubX
   OCI_NUMBER_SIGNED = 2;                          // Signed type -- sbX
+
+  // some connection issued errors:
+  ORA_03113_end_of_file_on_communication_channel = 3113;
+  ORA_03114_not_connected_to_ORACLE = 3114;
+  ORA_03135_connection_lost_contact= 3135;
 
 type
   {** Represents a generic interface to Oracle native API. }

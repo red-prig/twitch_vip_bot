@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -69,8 +69,11 @@ type
 //      const TypeNamePattern: string; const Types: TIntegerDynArray): IZResultSet; override;
   public
     // database/driver/server info:
+    /// <summary>What's the name of this database product?</summary>
+    /// <returns>database product name</returns>
     function GetDatabaseProductName: string; override;
-    function GetDatabaseProductVersion: string; override;
+    /// <summary>What's the name of this ZDBC driver?
+    /// <returns>ZDBC driver name</returns>
     function GetDriverName: string; override;
 //    function GetDriverVersion: string; override; -> Same as parent
     function GetDriverMajorVersion: Integer; override;
@@ -255,28 +258,11 @@ uses
 //----------------------------------------------------------------------
 // First, a variety of minor information about the target database.
 
-{**
-  What's the name of this database product?
-  @return database product name
-}
 function TZSQLiteDatabaseInfo.GetDatabaseProductName: string;
 begin
   Result := 'SQLite';
 end;
 
-{**
-  What's the version of this database product?
-  @return database version
-}
-function TZSQLiteDatabaseInfo.GetDatabaseProductVersion: string;
-begin
-  Result := '';
-end;
-
-{**
-  What's the name of this JDBC driver?
-  @return JDBC driver name
-}
 function TZSQLiteDatabaseInfo.GetDriverName: string;
 begin
   Result := 'Zeos Database Connectivity Driver for SQLite';
@@ -1343,7 +1329,7 @@ var
       aiIdx := ZFastCode.Pos('AUTOINCREMENT', CreateSQLUp);
       if (aiIdx > 0) then begin
         if IC.IsCaseSensitive(ColumnName) then
-          ColumnName := IC.Quote(ColumnName);
+          ColumnName := IC.Quote(ColumnName, iqColumn);
         colIdx := ZFastCode.Pos(ColumnName, CreateSQL);
         if (colIdx > 0) and (colIdx < aiIdx) then begin
           colIdx := PosEx('INTEGER', CreateSQLUp, colIdx);

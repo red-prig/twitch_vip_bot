@@ -38,7 +38,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -56,7 +56,7 @@ interface
 uses
   SysUtils, {Messages, }Classes, ZDbcIntfs, DB, {Forms,}
   ZCompatibility, ZAbstractConnection, ZSequence, //Dialogs,
-  ZConnectionGroup;// {$IFDEF FPC}, LMessages{$ENDIF};
+  ZConnectionGroup ;
 (*
 {$IFNDEF FPC}
  const  CM_ZCONNECTIONGROUPCHANGED = WM_USER + 100;

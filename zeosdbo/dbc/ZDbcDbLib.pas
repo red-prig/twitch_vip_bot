@@ -39,7 +39,7 @@
 {                                                         }
 {                                                         }
 { The project web site is located on:                     }
-{   http://zeos.firmos.at  (FORUM)                        }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
 {   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
 {   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
 {                                                         }
@@ -90,7 +90,7 @@ type
   end;
 
   {** Implements a generic DBLib Connection. }
-  TZDBLibConnection = class(TZAbstractSuccedaneousTxnConnection, IZConnection,
+  TZDBLibConnection = class(TZAbstractSingleTxnConnection, IZConnection,
     IZDBLibConnection, IZTransaction)
   private
     FSQLErrors: TZDBLibErrorList;
@@ -103,9 +103,11 @@ type
     FDBLibMessageHandler: IZDBLibMessageHandler;
     {$ENDIF TEST_CALLBACK}
     FLastWarning: EZSQLWarning;
+    fHostVersion: Integer;
     function GetProvider: TDBLibProvider;
     procedure InternalSetTransactionIsolation(Level: TZTransactIsolationLevel);
     procedure DetermineMSDateFormat;
+    procedure DetermineProductVersion;
     function DetermineMSServerCollation: String;
     //function DetermineMSServerCodePage(const Collation: String): Word;
     {$IFDEF TEST_CALLBACK}
@@ -128,29 +130,127 @@ type
     destructor Destroy; override;
   public
     function AbortOperation: Integer; override;
-
+    /// <summary>Creates a <c>Statement</c> interface for sending SQL statements
+    ///  to the database. SQL statements without parameters are normally
+    ///  executed using Statement objects. If the same SQL statement
+    ///  is executed many times, it is more efficient to use a
+    ///  <c>PreparedStatement</c> object. Result sets created using the returned
+    ///  <c>Statement</c> interface will by default have forward-only type and
+    ///  read-only concurrency.</summary>
+    /// <param>Info a statement parameters.</param>
+    /// <returns>A new Statement interface</returns>
     function CreateStatementWithParams(Info: TStrings): IZStatement;
+    /// <summary>Creates a <c>PreparedStatement</c> interface for sending
+    ///  parameterized SQL statements to the database. A SQL statement with
+    ///  or without IN parameters can be pre-compiled and stored in a
+    ///  PreparedStatement object. This object can then be used to efficiently
+    ///  execute this statement multiple times.
+    ///  Note: This method is optimized for handling parametric SQL statements
+    ///  that benefit from precompilation. If the driver supports
+    ///  precompilation, the method <c>prepareStatement</c> will send the
+    ///  statement to the database for precompilation. Some drivers may not
+    ///  support precompilation. In this case, the statement may not be sent to
+    ///  the database until the <c>PreparedStatement</c> is executed. This has
+    ///  no direct effect on users; however, it does affect which method throws
+    ///  certain SQLExceptions. Result sets created using the returned
+    ///  PreparedStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"SQL" a SQL statement that may contain one or more '?' IN
+    ///  parameter placeholders.</param>
+    /// <param> Info a statement parameter list.</param>
+    /// <returns> a new PreparedStatement object containing the
+    ///  optional pre-compiled statement</returns>
     function PrepareStatementWithParams(const SQL: string; Info: TStrings):
       IZPreparedStatement;
-    function PrepareCallWithParams(const Name: String; Info: TStrings):
+    /// <summary>Creates a <code>CallableStatement</code> object for calling
+    ///  database stored procedures. The <code>CallableStatement</code> object
+    ///  provides methods for setting up its IN and OUT parameters, and methods
+    ///  for executing the call to a stored procedure. Note: This method is
+    ///  optimized for handling stored procedure call statements. Some drivers
+    ///  may send the call statement to the database when the method
+    ///  <c>prepareCall</c> is done; others may wait until the
+    ///  <c>CallableStatement</c> object is executed. This has no direct effect
+    ///  on users; however, it does affect which method throws certain
+    ///  EZSQLExceptions. Result sets created using the returned
+    ///  IZCallableStatement will have forward-only type and read-only
+    ///  concurrency, by default.</summary>
+    /// <param>"Name" a procedure or function name.</param>
+    /// <param>"Params" a statement parameters list.</param>
+    /// <returns> a new IZCallableStatement interface containing the
+    ///  pre-compiled SQL statement <returns>
+    function PrepareCallWithParams(const Name: String; Params: TStrings):
       IZCallableStatement;
-
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  released. Otherwise makes all changes made since the previous commit/
+    ///  rollback permanent and releases any database locks currently held by
+    ///  the Connection. This method should be used only when auto-commit mode
+    ///  has been disabled. See setAutoCommit.</summary>
     procedure Commit;
+    /// <summary>If the current transaction is saved the current savepoint get's
+    ///  rolled back. Otherwise drops all changes made since the previous
+    ///  commit/rollback and releases any database locks currently held by this
+    ///  Connection. This method should be used only when auto-commit has been
+    ///  disabled. See setAutoCommit.</summary>
     procedure Rollback;
+    /// <summary>Sets this connection's auto-commit mode. If a connection is in
+    ///  auto-commit mode, then all its SQL statements will be executed and
+    ///  committed as individual transactions. Otherwise, its SQL statements are
+    ///  grouped into transactions that are terminated by a call to either the
+    ///  method <c>commit</c> or the method <c>rollback</c>. By default, new
+    ///  connections are in auto-commit mode. The commit occurs when the
+    ///  statement completes or the next execute occurs, whichever comes first.
+    ///  In the case of statements returning a ResultSet, the statement
+    ///  completes when the last row of the ResultSet has been retrieved or the
+    ///  ResultSet has been closed. In advanced cases, a single statement may
+    ///  return multiple results as well as output parameter values. In these
+    ///  cases the commit occurs when all results and output parameter values
+    ///  have been retrieved. It is not recommented setting autoCommit to false
+    ///  because a call to either the method <c>commit</c> or the method
+    ///  <c>rollback</c> will restart the transaction. It's use full only if
+    ///  repeately many opertions are done and no startTransaction is intended
+    ///  to use. If you change mode to true the current Transaction and it's
+    ///  nested SavePoints are committed then.</summary>
+    /// <param>"Value" true enables auto-commit; false disables auto-commit.</param>
     procedure SetAutoCommit(Value: Boolean); override;
+    /// <summary>Attempts to change the transaction isolation level to the one
+    ///  given. The constants defined in the interface <c>Connection</c> are the
+    ///  possible transaction isolation levels. Note: This method cannot be
+    ///  called while in the middle of a transaction.
+    /// <param>"value" one of the TRANSACTION_* isolation values with the
+    ///  exception of TRANSACTION_NONE; some databases may not support other
+    ///  values. See DatabaseInfo.SupportsTransactionIsolationLevel</param>
     procedure SetTransactionIsolation(Level: TZTransactIsolationLevel); override;
+    /// <summary>Starts transaction support or saves the current transaction.
+    ///  If the connection is closed, the connection will be opened.
+    ///  If a transaction is underway a nested transaction or a savepoint will
+    ///  be spawned. While the tranaction(s) is/are underway the AutoCommit
+    ///  property is set to False. Ending up the transaction with a
+    ///  commit/rollback the autocommit property will be restored if changing
+    ///  the autocommit mode was triggered by a starttransaction call.</summary>
+    /// <returns>Returns the current txn-level. 1 means a expicit transaction
+    ///  was started. 2 means the transaction was saved. 3 means the previous
+    ///  savepoint got saved too and so on.</returns>
     function StartTransaction: Integer;
 
     procedure Open; override;
 
+    /// <summary>Puts this connection in read-only mode as a hint to enable
+    ///  database optimizations. Note: This method cannot be called while in the
+    ///  middle of a transaction.</summary>
+    /// <param>"value" true enables read-only mode; false disables read-only
+    ///  mode.</param>
     procedure SetReadOnly(Value: Boolean); override;
-
+    /// <summary>Sets a catalog name in order to select a subspace of this
+    ///  Connection's database in which to work. If the driver does not support
+    ///  catalogs, it will silently ignore this request.</summary>
+    /// <param>"value" new catalog name to be used.</param>
     procedure SetCatalog(const Value: string); override;
     function GetCatalog: string; override;
 
     function GetWarnings: EZSQLWarning; override;
     procedure ClearWarnings; override;
 
+    function GetHostVersion: Integer; override;
   public
     function GetServerAnsiCodePage: Word;
     function GetPlainDriver: TZDBLIBPLainDriver;
@@ -379,6 +479,12 @@ begin
         FPlainDriver.dbSetLCharSet(LoginRec, PAnsiChar(RawTemp));
         CheckCharEncoding(Info.Values[ConnProps_CodePage]);
       end;
+    end else begin
+      lLogFile := UpperCase(Info.Values[ConnProps_CodePage]);
+      if (lLogFile = 'UTF-8') then begin
+        lLogFile := lLogFile+' invalid client characterset for ntwdblib.dll';
+        raise EZSQLException.Create(lLogFile);
+      end;
     end;
     CheckDBLibError(lcConnect, FLogMessage, IImmediatelyReleasable(FWeakImmediatRelPtr));
     {$IFDEF UNICODE}
@@ -420,6 +526,11 @@ begin
   Result := FHandle;
 end;
 
+function TZDBLibConnection.GetHostVersion: Integer;
+begin
+  Result := fHostVersion
+end;
+
 function TZDBLibConnection.GetPlainDriver: TZDBLIBPLainDriver;
 begin
   Result := FPlainDriver
@@ -455,7 +566,7 @@ begin
     FMetadata := nil;
   FLogMessage := Info.Values[ConnProps_CodePage];
   if (FPlainDriver.DBLibraryVendorType = lvtFreeTDS) and (FLogMessage = '') then
-    {$IF defined(UNICODE) or defined(LCL)}
+    {$IF defined(UNICODE) or defined(LCL) or not defined(MSWINDOWS)}
     Info.Values[ConnProps_CodePage] := 'UTF-8';
     {$ELSE}
     Info.Values[ConnProps_CodePage] := 'ISO-8859-1'; //this is the default CP of free-tds
@@ -533,7 +644,6 @@ begin
           SQLWriter.AddText('] : ', rException);
           SQLWriter.AddText(lErrorEntry^.OsErrStr, rException);
         end;
-        Dispose(lErrorEntry);
       end;
     end;
     SQLWriter.Finalize(rException);
@@ -562,7 +672,6 @@ begin
             SQLWriter.Finalize(rException);
           end;
         end;
-        Dispose(lMesageEntry);
       end;
     end;
     FSQLMessages.Count := 0; //clear the list
@@ -584,7 +693,7 @@ begin
     else FLogMessage := rException;
     {$ENDIF}
     rException := EmptyRaw;
-  end else begin
+  end else if rWarningOrInfo <> EmptyRaw then begin
     ExeptionClass := EZSQLWarning;
     {$IFDEF UNICODE}
     FLogMessage := ZRawToUnicode(rWarningOrInfo, msgCP);
@@ -596,7 +705,7 @@ begin
     else FLogMessage := rWarningOrInfo;
     {$ENDIF}
     rException := rWarningOrInfo;
-  end;
+  end else exit;
   {$IFDEF UNICODE}
   if DriverManager.HasLoggingListener then
     LogError(LoggingCategory, FirstError, Sender, LogMessage, FLogMessage);
@@ -687,8 +796,10 @@ begin
    Using DATE and DATETIME in ISO 8601 format is multi-language supported:
    DATE Un-separated
    DATETIME as YYYY-MM-DDTHH:NN:SS }
-  if (FProvider = dpMsSQL) then
+  if (FProvider = dpMsSQL) then begin
     DetermineMSDateFormat;
+    DetermineProductVersion;
+  end;
   ConSettings^.WriteFormatSettings.DateFormat := 'YYYYMMDD';
   ConSettings^.WriteFormatSettings.DateTimeFormat := 'YYYY-MM-DDTHH:NN:SS';
   SetDateTimeFormatProperties(False);
@@ -702,38 +813,12 @@ begin
   //ExecuteImmediat(RawByteString('SET NO_BROWSETABLE ON'), lcOther)
 end;
 
-{**
-  Creates a <code>CallableStatement</code> object for calling
-  database stored procedures.
-  The <code>CallableStatement</code> object provides
-  methods for setting up its IN and OUT parameters, and
-  methods for executing the call to a stored procedure.
-
-  <P><B>Note:</B> This method is optimized for handling stored
-  procedure call statements. Some drivers may send the call
-  statement to the database when the method <code>prepareCall</code>
-  is done; others
-  may wait until the <code>CallableStatement</code> object
-  is executed. This has no
-  direct effect on users; however, it does affect which method
-  throws certain SQLExceptions.
-
-  Result sets created using the returned CallableStatement will have
-  forward-only type and read-only concurrency, by default.
-
-  @param Name a procedure or function identifier
-    parameter placeholders. Typically this  statement is a JDBC
-    function call escape string.
-  @param Info a statement parameters.
-  @return a new CallableStatement object containing the
-    pre-compiled SQL statement
-}
 function TZDBLibConnection.PrepareCallWithParams(const Name: String;
-  Info: TStrings): IZCallableStatement;
+  Params: TStrings): IZCallableStatement;
 begin
   if IsClosed then
      Open;
-  Result := TZDBLibCallableStatement.Create(Self, Name, Info);
+  Result := TZDBLibCallableStatement.Create(Self, Name, Params);
 end;
 
 {**
@@ -772,20 +857,6 @@ begin
   Result := TZDBLibPreparedStatementEmulated.Create(Self, SQL, Info);
 end;
 
-{**
-  Creates a <code>Statement</code> object for sending
-  SQL statements to the database.
-  SQL statements without parameters are normally
-  executed using Statement objects. If the same SQL statement
-  is executed many times, it is more efficient to use a
-  <code>PreparedStatement</code> object.
-  <P>
-  Result sets created using the returned <code>Statement</code>
-  object will by default have forward-only type and read-only concurrency.
-
-  @param Info a statement parameters.
-  @return a new Statement object
-}
 function TZDBLibConnection.CreateStatementWithParams(
   Info: TStrings): IZStatement;
 begin
@@ -794,26 +865,6 @@ begin
   Result := TZDBLibStatement.Create(Self, Info);
 end;
 
-{**
-  Sets this connection's auto-commit mode.
-  If a connection is in auto-commit mode, then all its SQL
-  statements will be executed and committed as individual
-  transactions.  Otherwise, its SQL statements are grouped into
-  transactions that are terminated by a call to either
-  the method <code>commit</code> or the method <code>rollback</code>.
-  By default, new connections are in auto-commit mode.
-
-  The commit occurs when the statement completes or the next
-  execute occurs, whichever comes first. In the case of
-  statements returning a ResultSet, the statement completes when
-  the last row of the ResultSet has been retrieved or the
-  ResultSet has been closed. In advanced cases, a single
-  statement may return multiple results as well as output
-  parameter values. In these cases the commit occurs when all results and
-  output parameter values have been retrieved.
-
-  @param autoCommit true enables auto-commit; false disables auto-commit.
-}
 procedure TZDBLibConnection.SetAutoCommit(Value: Boolean);
 begin
   if Value <> AutoCommit then begin
@@ -896,6 +947,19 @@ begin
   finally
     FreeAndNil(FSQLErrors);
     FreeAndNil(FSQLMessages);
+  end;
+end;
+
+procedure TZDBLibConnection.DetermineProductVersion;
+var ProductVersion: String;
+begin
+  with CreateStatement.ExecuteQuery('select Cast(SERVERPROPERTY(''productversion'') as varchar(500))') do begin
+    if Next then begin
+      ProductVersion := GetString(FirstDbcIndex);
+      (Self.GetMetadata.GetDatabaseInfo as IZDbLibDatabaseInfo).SetProductVersion(ProductVersion);
+      fHostVersion := SQLServerProductToHostVersion(ProductVersion);
+    end;
+    Close;
   end;
 end;
 
@@ -1013,18 +1077,6 @@ begin
   end;
 end;*)
 
-{**
-  Attempts to change the transaction isolation level to the one given.
-  The constants defined in the interface <code>Connection</code>
-  are the possible transaction isolation levels.
-
-  <P><B>Note:</B> This method cannot be called while
-  in the middle of a transaction.
-
-  @param level one of the TRANSACTION_* isolation values with the
-    exception of TRANSACTION_NONE; some databases may not support other values
-  @see DatabaseMetaData#supportsTransactionIsolationLevel
-}
 procedure TZDBLibConnection.SetTransactionIsolation(
   Level: TZTransactIsolationLevel);
 begin
@@ -1050,19 +1102,12 @@ begin
     AutoCommit := False;
     Result := 1;
   end else begin
-    S := 'SP'+ZFastCode.IntToStr(NativeUint(Self))+'_'+ZFastCode.IntToStr(FSavePoints.Count);
+    S := '"SP'+ZFastCode.IntToStr(NativeUint(Self))+'_'+ZFastCode.IntToStr(FSavePoints.Count)+'"';
     ExecuteImmediat('SAVE TRANSACTION '+{$IFDEF UNICODE}UnicodeStringToAscii7{$ENDIF}(S), lcTransaction);
     Result := FSavePoints.Add(S)+2;
   end;
 end;
 
-{**
-  Makes all changes made since the previous
-  commit/rollback permanent and releases any database locks
-  currently held by the Connection. This method should be
-  used only when auto-commit mode has been disabled.
-  @see #setAutoCommit
-}
 procedure TZDBLibConnection.Commit;
 begin
   if Closed then
@@ -1080,13 +1125,6 @@ begin
     end
 end;
 
-{**
-  Drops all changes made since the previous
-  commit/rollback and releases any database locks currently held
-  by this Connection. This method should be used only when auto-
-  commit has been disabled.
-  @see #setAutoCommit
-}
 procedure TZDBLibConnection.Rollback;
 var S: RawByteString;
 begin
@@ -1165,12 +1203,6 @@ begin
     raise EZSQLException.Create(SUnsupportedOperation);
 end;
 
-{**
-  Sets a catalog name in order to select
-  a subspace of this Connection's database in which to work.
-  If the driver does not support catalogs, it will
-  silently ignore this request.
-}
 procedure TZDBLibConnection.SetCatalog(const Value: string);
 var
   RawCat: RawByteString;
