@@ -29,6 +29,8 @@ uses
   html_parse,
   fpURI,
 
+  AudioEngine,ytts,
+
   TaskManager,DbcEngine,
   ZDbcIntfs,
   ZDbcSqLite,
@@ -36,7 +38,7 @@ uses
 
 Const
  releases_url='https://github.com/red-prig/twitch_vip_bot/releases';
- current_version='1.3.9';
+ current_version='1.4.0';
 
 type
 
@@ -68,6 +70,17 @@ type
    subscriber_s:DWORD;
    Color:DWORD;
    PS:TPrivMsgStates;
+  end;
+
+  TStateSpeedButton=class(TCustomSpeedButton)
+   private
+    FCaptionState:SizeUInt;
+    Procedure SetCaptionState(S:SizeUInt);
+   public
+    Items:TStringList;
+    property    CaptionState:SizeUInt read FCaptionState write SetCaptionState;
+    constructor Create(TheOwner:TComponent); override;
+    destructor  Destroy; override;
   end;
 
   { TFrmMain }
@@ -110,6 +123,7 @@ type
     procedure OnPopupClickAutoEnter(Sender:TObject);
     procedure OnPopupClickUseTray(Sender:TObject);
     procedure OnPopupClickCheckUpdate(Sender:TObject);
+    procedure OnPopupClickYttsParam(Sender:TObject);
     procedure OnPopupClickVolParam(Sender:TObject);
     procedure OnPopupClickSubParam(Sender:TObject);
     procedure OnPopupClickVorRpgParam(Sender:TObject);
@@ -147,6 +161,8 @@ type
    BtnInfo :TSpeedButton;
    BtnClose:TSpeedButton;
 
+   BtnPlay:TStateSpeedButton;
+
    PopupView:TPopupMenu;
    PopupCfg :TPopupMenu;
 
@@ -162,11 +178,15 @@ type
 
    wait_vip_update:Boolean;
 
+   Procedure LazyInitAudioThread;
+   procedure OnBtnPlayClick(Sender:TObject);
   end;
 
 var
  pool:Tevpool;
  pool_config:Tevpool_config;
+
+ FAudioThread:TAudioConnection;
 
  FrmMain: TFrmMain;
 
@@ -292,6 +312,7 @@ uses
  DbcScriptUtils,
  ZTokenizer,
 
+ UFrmYtts,
  WinAudioSession,
  ufrmexportstory,
  ufrmvol,
@@ -311,7 +332,7 @@ uses
  //zeosdbo;zeosdbo\component;zeosdbo\core;zeosdbo\plain;zeosdbo\parsesql;zeosdbo\dbc
 
 var
- KCLOSE,KCLOSE_D,DIMAGE:TImageList;
+ KCLOSE,KCLOSE_D,DIMAGE,AIMAGE:TImageList;
 
 type
  PQNode_notice=^TQNode_notice;
@@ -1411,6 +1432,8 @@ begin
   FrmVorRpg.add_to_chat_cmd(PC,user,cmd,param);
  {$ENDIF}
 
+ FrmYtts.add_to_chat_cmd((pm_highlighted in PC.PS),cmd,param,msg);
+
  //DoCalc(user,msg);
 
  //DoCalc('','!calc 1.0/0.0');
@@ -1420,6 +1443,32 @@ begin
 
  //!calc 1.0/0.0
 
+end;
+
+Procedure TStateSpeedButton.SetCaptionState(S:SizeUInt);
+begin
+ FCaptionState:=S;
+ ImageIndex:=S;
+ if S<Items.Count then
+ begin
+  Caption:=Items[S];
+ end else
+ begin
+  Caption:='';
+ end;
+ //DoOnResize;
+end;
+
+constructor TStateSpeedButton.Create(TheOwner:TComponent);
+begin
+ inherited Create(TheOwner);
+ Items:=TStringList.Create;
+end;
+
+destructor  TStateSpeedButton.Destroy;
+begin
+ FreeAndNil(Items);
+ inherited;
 end;
 
 
@@ -1922,6 +1971,11 @@ begin
   SendReleasesRequest;
 end;
 
+procedure TFrmMain.OnPopupClickYttsParam(Sender:TObject);
+begin
+ FrmYtts.Open
+end;
+
 procedure TFrmMain.OnPopupClickVolParam(Sender:TObject);
 begin
  FrmVolParam.Open;
@@ -2057,6 +2111,38 @@ begin
  Result:=view_mask and f<>0;
 end;
 
+Procedure TFrmMain.LazyInitAudioThread;
+begin
+ if (FAudioThread=nil) then
+ begin
+  FAudioThread:=TAudioConnection.Create;
+  Case BtnPlay.CaptionState of
+   0:FAudioThread.Start;
+   1:FAudioThread.Pause;
+  end;
+ end;
+end;
+
+procedure TFrmMain.OnBtnPlayClick(Sender:TObject);
+begin
+ Case BtnPlay.CaptionState of
+  0:begin
+     BtnPlay.CaptionState:=1;
+     if (FAudioThread<>nil) then
+     begin
+      FAudioThread.Pause;
+     end;
+    end;
+  1:begin
+     BtnPlay.CaptionState:=0;
+     if (FAudioThread<>nil) then
+     begin
+      FAudioThread.Start;
+     end;
+    end;
+ end;
+end;
+
 procedure TFrmMain.FormCreate(Sender: TObject);
 Var
  Item:TMenuItem;
@@ -2094,6 +2180,8 @@ begin
 
    FrmVolParam.LoadCfg;
 
+   FrmYtts.LoadCfg;
+
   except
    on E:Exception do
    begin
@@ -2126,6 +2214,8 @@ begin
 
    FrmVolParam.InitCfg;
 
+   FrmYtts.InitCfg;
+
   except
    on E:Exception do
    begin
@@ -2138,6 +2228,7 @@ begin
 
  {$I DialogControl.lrs}
  {$I KPageControl.lrs}
+ {$I PlayControl.lrs}
 
  frmPanel:=TPanel.Create(FrmMain);
  frmPanel.Align:=alTop;
@@ -2206,15 +2297,21 @@ begin
  Item.OnClick:=@OnPopupClickSubParam;
  PopupCfg.Items.Add(Item);
 
+ //------
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='-';
+ PopupCfg.Items.Add(Item);
+
  //sound volume
  Item:=TMenuItem.Create(PopupCfg);
  Item.Caption:='Регулятор звука';
  Item.OnClick:=@OnPopupClickVolParam;
  PopupCfg.Items.Add(Item);
 
- //------
+ //ytts
  Item:=TMenuItem.Create(PopupCfg);
- Item.Caption:='-';
+ Item.Caption:='Яндекс TTS';
+ Item.OnClick:=@OnPopupClickYttsParam;
  PopupCfg.Items.Add(Item);
 
  //------
@@ -2296,12 +2393,36 @@ begin
  DIMAGE.AddLazarusResource('DGRAY');
  DIMAGE.AddLazarusResource('DGREEN');
 
- BtnView:=TButton.Create(RightBar);
+ AIMAGE:=TImageList.Create(FrmMain);
+ AIMAGE.Width:=28;
+ AIMAGE.Height:=28;
+ AIMAGE.AddLazarusResource('APAUSE');
+ AIMAGE.AddLazarusResource('APLAY');
+
+ BtnView:=TButton.Create(LeftBar);
  BtnView.Caption:='Вид';
  BtnView.AutoSize:=True;
  BtnView.Constraints.MinHeight:=32;
  BtnView.Height:=32;
  BtnView.Parent:=LeftBar;
+
+ BtnPlay:=TStateSpeedButton.Create(LeftBar);
+ BtnPlay.Items.Add('Остановить ');
+ BtnPlay.Items.Add('Возобновить ');
+
+ BtnPlay.Images:=AIMAGE;
+ BtnPlay.Layout:=blGlyphRight;
+ BtnPlay.Spacing:=0;
+ BtnPlay.Margin:=0;
+
+ BtnPlay.OnClick:=@OnBtnPlayClick;
+ BtnPlay.AutoSize:=False;
+ BtnPlay.Constraints.MinHeight:=32;
+ BtnPlay.Width:=110;
+ BtnPlay.Height:=32;
+ BtnPlay.Parent:=LeftBar;
+
+ BtnPlay.CaptionState:=0;
 
  PopupView:=TPopupMenu.Create(FrmMain);
  PopupView.AutoPopup:=False;
@@ -2336,6 +2457,7 @@ begin
 
  BtnView.OnClick:=@BtnToolPopupClick;
  BtnView.PopupMenu:=PopupView;
+
 
  BtnEnter:=TSpeedButton.Create(RightBar);
 
@@ -2471,6 +2593,9 @@ begin
 
  if Item_CheckUpdate.Checked then
   SendReleasesRequest;
+
+ ytts.Fpool:=@pool;
+ ytts.FAudioConnection:=@FAudioThread;
 end;
 
 procedure TFrmMain.SendReleasesRequest;
