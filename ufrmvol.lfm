@@ -1,7 +1,7 @@
 object FrmVolParam: TFrmVolParam
-  Left = 602
+  Left = 855
   Height = 287
-  Top = 151
+  Top = 86
   Width = 430
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры регулятора звука'
@@ -188,6 +188,7 @@ object FrmVolParam: TFrmVolParam
     Width = 412
     Anchors = [akTop, akLeft, akRight]
     ItemHeight = 15
+    OnKeyDown = FormKeyDown
     OnSelect = CMBDevicesSelect
     Style = csDropDownList
     TabOrder = 4

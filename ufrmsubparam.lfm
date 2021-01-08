@@ -1,5 +1,5 @@
 object FrmSubParam: TFrmSubParam
-  Left = 406
+  Left = 482
   Height = 309
   Top = 154
   Width = 353
@@ -146,7 +146,7 @@ object FrmSubParam: TFrmSubParam
       FF00FFFFFF00FFFFFF00
     }
     OnClick = BtnOkClick
-    TabOrder = 6
+    TabOrder = 8
   end
   object BtnCancel: TBitBtn
     Left = 251
@@ -222,7 +222,7 @@ object FrmSubParam: TFrmSubParam
     }
     OnClick = BtnCancelClick
     OnKeyDown = BtnCancelKeyDown
-    TabOrder = 7
+    TabOrder = 9
   end
   object EdtSub_max_inc: TLabeledEdit
     Left = 8
@@ -284,7 +284,7 @@ object FrmSubParam: TFrmSubParam
     Width = 128
     Anchors = [akTop, akRight]
     Caption = 'Тик отриц. таймера'
-    TabOrder = 8
+    TabOrder = 6
   end
   object CBSubDontLog: TCheckBox
     Left = 190
@@ -294,6 +294,6 @@ object FrmSubParam: TFrmSubParam
     Width = 151
     Anchors = [akTop, akRight]
     Caption = 'Не сохранять в истории'
-    TabOrder = 9
+    TabOrder = 7
   end
 end

@@ -286,7 +286,7 @@ object FrmVorRpg: TFrmVorRpg
         ParentFont = False
         ParentShowHint = False
         ShowHint = True
-        TabOrder = 1
+        TabOrder = 2
         OnExit = EdtDwExit
         OnKeyDown = FormKeyDown
         OnKeyPress = EdtDwKeyPress
@@ -308,7 +308,7 @@ object FrmVorRpg: TFrmVorRpg
         ParentFont = False
         ParentShowHint = False
         ShowHint = True
-        TabOrder = 2
+        TabOrder = 1
         OnExit = EdtDwExit
         OnKeyDown = FormKeyDown
         OnKeyPress = EdtDwKeyPress
@@ -335,7 +335,7 @@ object FrmVorRpg: TFrmVorRpg
         ParentFont = False
         ParentShowHint = False
         ShowHint = True
-        TabOrder = 0
+        TabOrder = 1
         OnExit = EdtPercMinusVipExit
         OnKeyDown = FormKeyDown
         OnKeyPress = EdtPercMinusVipKeyPress
@@ -357,7 +357,7 @@ object FrmVorRpg: TFrmVorRpg
         ParentFont = False
         ParentShowHint = False
         ShowHint = True
-        TabOrder = 1
+        TabOrder = 2
         OnExit = EdtDwExit
         OnKeyDown = FormKeyDown
         OnKeyPress = EdtDwKeyPress
@@ -379,7 +379,7 @@ object FrmVorRpg: TFrmVorRpg
         ParentFont = False
         ParentShowHint = False
         ShowHint = True
-        TabOrder = 2
+        TabOrder = 3
         OnExit = EdtDwExit
         OnKeyDown = FormKeyDown
         OnKeyPress = EdtDwKeyPress
@@ -392,7 +392,7 @@ object FrmVorRpg: TFrmVorRpg
         Anchors = [akTop, akRight]
         Caption = 'Включено'
         OnKeyDown = FormKeyDown
-        TabOrder = 3
+        TabOrder = 0
       end
     end
     object TabSheet4: TTabSheet

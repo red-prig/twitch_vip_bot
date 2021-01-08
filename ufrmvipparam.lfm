@@ -1,5 +1,5 @@
 object FrmVipParam: TFrmVipParam
-  Left = 348
+  Left = 391
   Height = 421
   Top = 141
   Width = 421
@@ -190,7 +190,7 @@ object FrmVipParam: TFrmVipParam
       ParentFont = False
       ParentShowHint = False
       ShowHint = True
-      TabOrder = 0
+      TabOrder = 2
       OnExit = EdtPercentExit
       OnKeyDown = FormKeyDown
       OnKeyPress = EdtPercentKeyPress
@@ -202,7 +202,7 @@ object FrmVipParam: TFrmVipParam
       Width = 77
       Anchors = [akTop, akRight]
       Caption = 'Включено'
-      TabOrder = 1
+      TabOrder = 0
     end
     object EdtTitle: TLabeledEdit
       Left = 8
@@ -221,7 +221,7 @@ object FrmVipParam: TFrmVipParam
       ParentFont = False
       ParentShowHint = False
       ShowHint = True
-      TabOrder = 2
+      TabOrder = 1
       OnKeyDown = FormKeyDown
     end
   end
@@ -251,7 +251,7 @@ object FrmVipParam: TFrmVipParam
       ParentFont = False
       ParentShowHint = False
       ShowHint = True
-      TabOrder = 0
+      TabOrder = 2
       OnExit = EdtPercentExit
       OnKeyDown = FormKeyDown
       OnKeyPress = EdtPercentKeyPress
@@ -283,7 +283,7 @@ object FrmVipParam: TFrmVipParam
       Width = 77
       Anchors = [akTop, akRight]
       Caption = 'Включено'
-      TabOrder = 2
+      TabOrder = 0
     end
   end
   object GBList: TGroupBox
@@ -312,7 +312,7 @@ object FrmVipParam: TFrmVipParam
       ParentFont = False
       ParentShowHint = False
       ShowHint = True
-      TabOrder = 0
+      TabOrder = 2
       OnExit = EdtVipDaysExit
       OnKeyDown = FormKeyDown
       OnKeyPress = EdtVipDaysKeyPress
@@ -349,7 +349,7 @@ object FrmVipParam: TFrmVipParam
       Caption = 'Авто проверка истечения'
       ParentShowHint = False
       ShowHint = True
-      TabOrder = 2
+      TabOrder = 0
     end
   end
 end
