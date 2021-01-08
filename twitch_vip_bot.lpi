@@ -34,7 +34,7 @@
         <PackageName Value="LCL"/>
       </Item2>
     </RequiredPackages>
-    <Units Count="13">
+    <Units Count="17">
       <Unit0>
         <Filename Value="twitch_vip_bot.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -83,43 +83,66 @@
         <UnitName Value="UFrmAbout"/>
       </Unit7>
       <Unit8>
+        <Filename Value="ufrmpred.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="FrmPred"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+      </Unit8>
+      <Unit9>
         <Filename Value="ufrmvipparam.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrmVipParam"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="UFrmVipParam"/>
-      </Unit8>
-      <Unit9>
+      </Unit9>
+      <Unit10>
         <Filename Value="ufrmsubparam.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrmSubParam"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="UFrmSubParam"/>
-      </Unit9>
-      <Unit10>
+      </Unit10>
+      <Unit11>
         <Filename Value="ufrmvol.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrmVolParam"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-      </Unit10>
-      <Unit11>
+      </Unit11>
+      <Unit12>
         <Filename Value="ufrmvorrpg.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrmVorRpg"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="UFrmVorRpg"/>
-      </Unit11>
-      <Unit12>
+      </Unit12>
+      <Unit13>
         <Filename Value="ufrmexportstory.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrmExportStory"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
-      </Unit12>
+      </Unit13>
+      <Unit14>
+        <Filename Value="fpcookie_parse.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit14>
+      <Unit15>
+        <Filename Value="libaudio_static.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit15>
+      <Unit16>
+        <Filename Value="ufrmytts.pas"/>
+        <IsPartOfProject Value="True"/>
+        <ComponentName Value="FrmYtts"/>
+        <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
+        <UnitName Value="UFrmYtts"/>
+      </Unit16>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -130,13 +153,14 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
-      <Libraries Value="netlibs\static\$(TargetCPU)-$(TargetOS)"/>
-      <OtherUnitFiles Value="KControls;zeosdbo\component;zeosdbo\core;zeosdbo\plain;zeosdbo\parsesql;zeosdbo\dbc;utils_libs;uniqueinstance\uniqueinstance;netlibs;netlibs\xpath;FastMM4-AVX;fpspreadsheet\common"/>
+      <Libraries Value="netlibs\static\$(TargetCPU)-$(TargetOS);audio_libs\static\$(TargetCPU)-$(TargetOS)"/>
+      <OtherUnitFiles Value="KControls;zeosdbo\component;zeosdbo\core;zeosdbo\plain;zeosdbo\parsesql;zeosdbo\dbc;utils_libs;uniqueinstance\uniqueinstance;netlibs;netlibs\xpath;FastMM4-AVX;fpspreadsheet\common;audio_libs"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <CodeGeneration>
       <SmartLinkUnit Value="True"/>
       <RelocatableUnit Value="True"/>
+      <TargetCPU Value="x86_64"/>
       <Optimizations>
         <OptimizationLevel Value="3"/>
       </Optimizations>
@@ -146,15 +170,51 @@
         <GenerateDebugInfo Value="False"/>
       </Debugging>
       <LinkSmart Value="True"/>
-      <Options>
-        <Win32>
-          <GraphicApplication Value="True"/>
-        </Win32>
-      </Options>
     </Linking>
     <Other>
-      <CustomOptions Value="-dDisableMemoryLeakReporting
--dUSE_STATIC_NGHTTP2"/>
+      <CustomOptions Value="-OoLOOPUNROLL
+-dDisableMemoryLeakReporting
+-dUSE_STATIC_NGHTTP2
+-dUSE_STATIC_PORTAUDIO
+-dUSE_STATIC_SNDFILE
+-dUSE_STATIC_MPG123
+-dLS_NOT_chkstk_ms
+-dLS_NOT_assert
+-dLS_NOT_memset
+-dLS_NOT_memcpy
+-dLS_NOT_strlen
+-dLS_NOT_CMEM
+-dLS_NOT_qsort
+-dLS_NOT_abort
+-dLS_NOT_fprintf
+-dLS_NOT_memmove
+-dLS_NOT_memcmp
+-dLS_NOT_fputc
+-dLS_NOT_udivdi3
+-dLS_NOT_umoddi3
+-dLS_NOT_imp___iob"/>
+      <OtherDefines Count="20">
+        <Define0 Value="DisableMemoryLeakReporting"/>
+        <Define1 Value="USE_STATIC_NGHTTP2"/>
+        <Define2 Value="USE_STATIC_PORTAUDIO"/>
+        <Define3 Value="USE_STATIC_SNDFILE"/>
+        <Define4 Value="LS_NOT_chkstk_ms"/>
+        <Define5 Value="LS_NOT_assert"/>
+        <Define6 Value="LS_NOT_memset"/>
+        <Define7 Value="LS_NOT_memcpy"/>
+        <Define8 Value="LS_NOT_strlen"/>
+        <Define9 Value="LS_NOT_CMEM"/>
+        <Define10 Value="LS_NOT_qsort"/>
+        <Define11 Value="LS_NOT_abort"/>
+        <Define12 Value="LS_NOT_fprintf"/>
+        <Define13 Value="LS_NOT_memmove"/>
+        <Define14 Value="LS_NOT_memcmp"/>
+        <Define15 Value="LS_NOT_fputc"/>
+        <Define16 Value="LS_NOT_udivdi3"/>
+        <Define17 Value="LS_NOT_umoddi3"/>
+        <Define18 Value="LS_NOT_imp___iob"/>
+        <Define19 Value="USE_STATIC_MPG123"/>
+      </OtherDefines>
     </Other>
   </CompilerOptions>
   <Debugging>
