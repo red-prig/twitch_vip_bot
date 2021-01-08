@@ -17,7 +17,7 @@ object FrmAbout: TFrmAbout
     Width = 461
     Align = alClient
     Alignment = taCenter
-    Caption = 'Copyright (C) 2020 Red_prig VDPasha@mail.ru'#13#10#13#10'Бот для выдачи випок за награды поинтов.'#13#10
+    Caption = 'Copyright (C) 2021 Red_prig VDPasha@mail.ru'#13#10#13#10'Бот для выдачи випок за награды поинтов.'#13#10
     Font.Height = -27
     Layout = tlCenter
     ParentColor = False
