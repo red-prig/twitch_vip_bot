@@ -631,10 +631,10 @@ begin
   begin
    UnVip(L[i]);
   end;
-  push_irc_msg(vip_rnd.vip_list_cmd);
-  Frmmain.wait_vip_update:=True;
  end;
 
+ push_irc_msg(vip_rnd.vip_list_cmd);
+ Frmmain.wait_vip_update:=True;
 end;
 
 procedure TFrmVipParam.OnBtnDeleteVipClick(Sender:TObject);
