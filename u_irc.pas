@@ -114,6 +114,8 @@ procedure reply_irc_Connect(const login,oAuth,chat:RawByteString);
 procedure reply_irc_Disconnect;
 procedure reply_irc_msg(const msg:RawByteString);
 procedure reply_irc_reconnect;
+procedure reply_irc_Connect2(const login,oAuth,chat:RawByteString);
+procedure reply_irc_msg2(const msg:RawByteString);
 
 implementation
 
@@ -127,6 +129,7 @@ var
  wss_ctx:PSSL_CTX;
  https_ctx:PSSL_CTX;
  msg_send_buf:Pevbuffer;
+ msg_send_buf2:Pevbuffer;
 
  http1_callbacks,http2_callbacks:pnghttp2_session_callbacks;
 
@@ -280,7 +283,13 @@ type
    function    session_reconnect(sec:SizeUInt):Boolean;virtual;
  end;
 
+ Pws_irc=^Tws_irc;
+
  Tws_irc=class(TWebsocketData)
+  msg_send_buf:Pevbuffer;
+  itself:Pws_irc;
+  reply_pub:Boolean;
+  recv_msg_chat:Boolean;
   reconnect:Boolean;
   msg_timer:Ptimer;
   not_slow:Boolean;
@@ -292,6 +301,10 @@ type
   function    session_reconnect(sec:SizeUInt):Boolean;override;
   procedure   Clear;   override;
   Destructor  Destroy; override;
+ end;
+
+ Tws_irc2=class(Tws_irc)
+  function session_reconnect(sec:SizeUInt):Boolean; override;
  end;
 
  Tws_pub=class(TWebsocketData)
@@ -310,9 +323,11 @@ type
 var
  ws_irc:Tws_irc;
  ws_pub:Tws_pub;
+ ws_irc2:Tws_irc;
 
  ws_irc_rt:Ptimer;
  ws_pub_rt:Ptimer;
+ ws_irc2_rt:Ptimer;
 
 function create_ssl(ssl_ctx:Pssl_ctx):PSSL;
 begin
@@ -681,6 +696,9 @@ begin
  if ws_irc=nil then
  begin
   ws_irc:=Tws_irc.Create;
+  ws_irc.itself:=@ws_irc;
+  ws_irc.recv_msg_chat:=True;
+  ws_irc.reply_pub:=True;
  end;
  ws_irc.Init(ctx);
 
@@ -695,6 +713,55 @@ begin
   begin
    ws_irc.reconnect:=true;
    if not ws_irc.session_reconnect(10) then FreeAndNil(ws_irc);
+  end;
+ end;
+
+end;
+
+procedure replyConnect_irc2(const login,oAuth,chat:RawByteString;rep:Boolean);
+Const
+ Path='wss://irc-ws-r.chat.twitch.tv/';
+Var
+ URI:TURI;
+ ctx:PSSL_CTX;
+ port:Word;
+begin
+ URI:=parse_uri(Path);
+ ctx:=nil;
+ port:=URI.GetPort;
+ Case LowerCase(URI.getProtocol()) of
+  '',
+   'ws':begin
+         if port=0 then port:=80;
+        end;
+  'wss':begin
+         if port=0 then port:=443;
+         if wss_ctx=nil then wss_ctx:=create_ssl_ctx(false);
+         ctx:=wss_ctx;
+        end;
+ end;
+ Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
+
+ if ws_irc2=nil then
+ begin
+  ws_irc2:=Tws_irc.Create;
+  ws_irc2.itself:=@ws_irc2;
+  ws_irc2.recv_msg_chat:=False;
+  ws_irc2.reply_pub:=False;
+ end;
+ ws_irc2.Init(ctx);
+
+ ws_irc2.url  :=Path;
+ ws_irc2.login:=login;
+ ws_irc2.oAuth:=oAuth;
+ ws_irc2.chat :=chat;
+
+ if not ws_irc2.connect_hostname(AF_INET,PAnsiChar(URI.GetHost),port) then
+ begin
+  if rep then
+  begin
+   ws_irc2.reconnect:=true;
+   if not ws_irc2.session_reconnect(10) then FreeAndNil(ws_irc2);
   end;
  end;
 
@@ -727,7 +794,10 @@ begin
 end;
 
 Procedure _ws_irc_rt_cb(ev:Ptimer;arg:pointer);
+var
+ ws_irc:Tws_irc;
 begin
+ ws_irc:=Tws_irc(arg);
  if ws_irc<>nil then
  begin
   replyConnect_irc(ws_irc.login,ws_irc.oAuth,ws_irc.chat,true);
@@ -741,7 +811,7 @@ begin
  Result:=False;
  if reconnect then
  begin
-  evtimer_reuse(ws_irc_rt,@pool,@_ws_irc_rt_cb,nil);
+  evtimer_reuse(ws_irc_rt,@pool,@_ws_irc_rt_cb,Pointer(Self));
   evtimer_add  (ws_irc_rt,sec*1000000);
   Result:=True;
  end;
@@ -760,8 +830,30 @@ end;
 
 Destructor Tws_irc.Destroy;
 begin
- if Self=ws_irc then ws_irc:=nil;
+ if (itself<>nil) and (itself^=self) then itself^:=nil;
  inherited;
+end;
+
+Procedure _ws_irc2_rt_cb(ev:Ptimer;arg:pointer);
+begin
+ ws_irc:=Tws_irc(arg);
+ if ws_irc<>nil then
+ begin
+  replyConnect_irc2(ws_irc.login,ws_irc.oAuth,ws_irc.chat,true);
+ end;
+ evtimer_del(ws_irc2_rt);
+ ws_irc2_rt:=nil;
+end;
+
+function Tws_irc2.session_reconnect(sec:SizeUInt):Boolean;
+begin
+ Result:=False;
+ if reconnect then
+ begin
+  evtimer_reuse(ws_irc2_rt,@pool,@_ws_irc2_rt_cb,Pointer(Self));
+  evtimer_add  (ws_irc2_rt,sec*1000000);
+  Result:=True;
+ end;
 end;
 
 Const
@@ -882,11 +974,16 @@ Procedure _submit_tm(ev:Ptimer;arg:pointer);
 Const
  max_msg_size=500;
 var
+ ws_irc:Tws_irc;
+ msg_send_buf:Pevbuffer;
+
  v:Piovec;
  Len:SizeInt;
 
  PC:TPrivMsgCfg;
 begin
+ ws_irc:=Tws_irc(arg);
+ msg_send_buf:=ws_irc.msg_send_buf;
  v:=evbuffer_peek(msg_send_buf);
  if (v<>nil) then
  begin
@@ -910,10 +1007,13 @@ begin
 
   Log(irc_log,0,['<',GetStr(iovec_getdata(v),iovec_getlen(v))]);
 
-  PC:=Default(TPrivMsgCfg);
-  PC.PS:=[pm_self];
-  PC.Color:=ws_irc.color;
-  main.push_chat(PC,ws_irc.login,ws_irc.display_name,GetStr(iovec_getdata(v),iovec_getlen(v)));
+  if ws_irc.recv_msg_chat then
+  begin
+   PC:=Default(TPrivMsgCfg);
+   PC.PS:=[pm_self];
+   PC.Color:=ws_irc.color;
+   main.push_chat(PC,ws_irc.login,ws_irc.display_name,GetStr(iovec_getdata(v),iovec_getlen(v)));
+  end;
 
   //Writeln(GetStr(iovec_getdata(v),iovec_getlen(v)));
   fpWebsocket_session_submit_msg_vec(ws_irc.ws_session,v,Length(ws_irc.chat));
@@ -937,7 +1037,7 @@ end;
 
 function _gen_nonce:RawByteString; forward;
 
-procedure _submit_msg(const msg:RawByteString);
+procedure _submit_msg(const msg:RawByteString;var msg_send_buf:Pevbuffer;var ws_irc:Tws_irc);
 //var
 // S:RawByteString;
 begin
@@ -948,13 +1048,15 @@ begin
 
  if (msg='') or (ws_irc=nil) then Exit;
 
+ ws_irc.msg_send_buf:=msg_send_buf;
+
  //S:={'@client-nonce='+_gen_nonce+' '+}'PRIVMSG #'+ws_irc.chat+' :'+msg;
 
  evbuffer_add(msg_send_buf,PAnsiChar(msg),Length(msg));
 
  if ws_irc.msg_timer=nil then
  begin
-  _submit_tm(ws_irc.msg_timer,ws_irc.ws_session);
+  _submit_tm(ws_irc.msg_timer,ws_irc);
  end else
  begin
   evtimer_add(ws_irc.msg_timer,ws_irc.time_kd);
@@ -1301,15 +1403,18 @@ begin
                    begin
                     main.push_notice('room-id','Ошибка подключения к событиям!');
                    end else
+                   if ws_irc.reply_pub then
                    begin
                     replyConnect_pub(ws_irc.oAuth,ws_irc.room_id,false);
                    end;
                   end;
 
-                  push_room_states(msg_parse.RS);
+                  if ws_irc.recv_msg_chat then
+                   push_room_states(msg_parse.RS);
                  end;
 
-     '001':begin
+     '001':if ws_irc.recv_msg_chat then
+           begin
             main.push_notice('001','Добро пожаловать в чат!');
             main.push_login;
            end;
@@ -1323,11 +1428,13 @@ begin
                 end;
                end;
               end;
-     'PRIVMSG':begin
+     'PRIVMSG':if ws_irc.recv_msg_chat then
+               begin
                 main.push_chat(msg_parse.PC,msg_parse.user,msg_parse.display_name,msg_parse.msg);
                end;
 
-     'WHISPER':begin
+     'WHISPER':if ws_irc.recv_msg_chat then
+               begin
                 msg_parse.PC.PS:=msg_parse.PC.PS+[pm_whisper];
                 main.push_chat(msg_parse.PC,msg_parse.user,msg_parse.display_name,msg_parse.msg);
                end;
@@ -1462,13 +1569,15 @@ begin
     end;
   1:begin
      evbuffer_clear(msg_send_buf);
+     evbuffer_clear(msg_send_buf2);
      FreeAndNil(ws_irc);
      FreeAndNil(ws_pub);
+     FreeAndNil(ws_irc2);
     end;
   2:begin
      if ws_irc<>nil then
      begin
-      _submit_msg(GetStr(param2,StrLen(param2)));
+      _submit_msg(GetStr(param2,StrLen(param2)),msg_send_buf,ws_irc);
      end;
      FreeMem(param2);
     end;
@@ -1478,6 +1587,21 @@ begin
       ws_pub.reconnect:=true;
       bufferevent_openssl_shutdown(ws_pub.bev);
      end;
+    end;
+  4:begin
+     FreeAndNil(ws_irc2);
+     With Pirc_Connect(param2)^ do
+     begin
+      replyConnect_irc2(GetStr(login,StrLen(login)),GetStr(oAuth,StrLen(oAuth)),GetStr(chat,StrLen(chat)),false);
+     end;
+     Free_pirc_Connect(Pirc_Connect(param2));
+    end;
+  5:begin
+     if ws_irc2<>nil then
+     begin
+      _submit_msg(GetStr(param2,StrLen(param2)),msg_send_buf2,ws_irc2);
+     end;
+     FreeMem(param2);
     end;
  end;
 end;
@@ -1506,6 +1630,22 @@ end;
 procedure reply_irc_reconnect;
 begin
  evpool_post(@pool,@_irc_Connect_post,3,nil);
+end;
+
+procedure reply_irc_Connect2(const login,oAuth,chat:RawByteString);
+var
+ P:Pirc_Connect;
+begin
+ P:=GetMem(SizeOf(Tirc_Connect));
+ P^.login  :=CopyPchar(PAnsiChar(login)  ,Length(login));
+ P^.oAuth  :=CopyPchar(PAnsiChar(oAuth)  ,Length(oAuth));
+ P^.chat   :=CopyPchar(PAnsiChar(chat)   ,Length(chat));
+ evpool_post(@pool,@_irc_Connect_post,4,P);
+end;
+
+procedure reply_irc_msg2(const msg:RawByteString);
+begin
+ evpool_post(@pool,@_irc_Connect_post,5,CopyPchar(PAnsiChar(msg),Length(msg)));
 end;
 
 Const

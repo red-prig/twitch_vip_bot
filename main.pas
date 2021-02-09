@@ -220,6 +220,9 @@ var
  base:record
   chat:RawByteString;
   login:RawByteString;
+  login2:RawByteString;
+  useLogin2:Boolean;
+  useLoginState:Byte;
  end;
 
  view_mask:Byte;
@@ -488,16 +491,21 @@ end;
 //const
 // permission='You don''t have permission to perform that action.';
 
-//var
-// last_cmd:RawByteString;
-
 procedure push_irc_msg(const msg:RawByteString);
 begin
- {if (msg<>'') and (msg[1]='/') then
+ if (base.useLoginState=2) then
  begin
-  last_cmd:=msg;
- end;}
- reply_irc_msg(msg);
+  if (msg<>'') and (msg[1]='/') then
+  begin
+   reply_irc_msg(msg);
+  end else
+  begin
+   reply_irc_msg2(msg);
+  end;
+ end else
+ begin
+  reply_irc_msg(msg);
+ end;
 end;
 
 function _get_first_cmd(L:TStringList):RawByteString;
@@ -530,6 +538,9 @@ begin
          BtnInfo.Left:=0;
 
          push_irc_msg(vip_rnd.login_msg);
+
+         if base.useLoginState=1 then
+            base.useLoginState:=2;
 
          {
          add_reward(
@@ -579,6 +590,7 @@ begin
          BtnEnter.Visible:=True;
          BtnInfo .Visible:=False;
          BtnClose.Visible:=False;
+         base.useLoginState:=0;
         end;
  end;
 end;
@@ -1019,7 +1031,7 @@ begin
  Case msg of
   'Login authentication failed':
    begin
-    BtnEnter.Enabled:=True;
+    SetLognBtn(False);
     PC:=Default(TPrivMsgCfg);
     PC.Color:=$383838;  //Gray
     add_to_chat(PC,'','','Ошибка аутентификации');
@@ -2047,6 +2059,16 @@ begin
      frmLogin.EdtPassword.Text,
      base.chat
    );
+
+  if base.useLogin2 then
+  begin
+   reply_irc_Connect2(
+     base.login2,
+     Config.ReadString('base','oAuth2',''),
+     base.chat
+   );
+   base.useLoginState:=1;
+  end;
 
   frmLogin.EdtPassword.Text:='';
 

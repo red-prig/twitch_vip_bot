@@ -1,7 +1,7 @@
 object frmLogin: TfrmLogin
-  Left = 840
+  Left = 816
   Height = 151
-  Top = 138
+  Top = 122
   Width = 330
   BorderIcons = [biSystemMenu]
   Caption = 'Введите логин/пароль'

@@ -15,16 +15,21 @@ type
   TFrmParam = class(TForm)
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
+    CBLoginMsg: TCheckBox;
     EdtLogin: TLabeledEdit;
     EdtChat: TLabeledEdit;
+    EdtLogin2: TLabeledEdit;
     EdtPassword: TLabeledEdit;
+    EdtPassword2: TLabeledEdit;
     TBView: TToggleBox;
+    TBView2: TToggleBox;
     procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;
       Shift: TShiftState);
     procedure EdtKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure EdtUTF8KeyPress(Sender:TObject;var UTF8Key:TUTF8Char);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure TBViewChange(Sender:TObject);
+    procedure TBViewChange2(Sender:TObject);
     procedure EdtNumKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
     procedure BtnOkClick(Sender:TObject);
     procedure BtnCancelClick(Sender:TObject);
@@ -57,16 +62,21 @@ end;
 
 Procedure TFrmParam.LoadCfg;
 begin
- base.chat   :=Trim(Config.ReadString('base','chat'   ,base.chat));
- base.login  :=Trim(Config.ReadString('base','login'  ,base.login));
+ base.chat     :=Trim(Config.ReadString('base','chat'   ,base.chat));
+ base.login    :=Trim(Config.ReadString('base','login'  ,base.login));
+ base.login2   :=Trim(Config.ReadString('base','login2' ,base.login2));
+ base.useLogin2:=Trim(Config.ReadString('base','useLogin2','0'))='1';
 end;
 
 Procedure TFrmParam.Open;
 begin
  try
-  EdtLogin.Text   :=base.login;
-  EdtPassword.Text:=Config.ReadString('base','oAuth','');
-  EdtChat.Text    :=base.chat;
+  EdtLogin.Text     :=base.login;
+  EdtPassword.Text  :=Config.ReadString('base','oAuth','');
+  EdtChat.Text      :=base.chat;
+  EdtLogin2.Text    :=base.login2;
+  EdtPassword2.Text :=Config.ReadString('base','oAuth2','');
+  CBLoginMsg.Checked:=base.useLogin2;
  except
   on E:Exception do
   begin
@@ -76,13 +86,23 @@ begin
 
  if ShowModal=1 then
  begin
-  base.chat   :=EdtChat.Text;
-  base.login  :=EdtLogin.Text;
+  base.chat     :=EdtChat.Text;
+  base.login    :=EdtLogin.Text;
+  base.login2   :=EdtLogin2.Text;
+  base.useLogin2:=CBLoginMsg.Checked;
 
   try
    Config.WriteString('base','login'   ,base.login);
    Config.WriteString('base','oAuth'   ,EdtPassword.Text);
    Config.WriteString('base','chat'    ,base.chat);
+   Config.WriteString('base','login2'  ,base.login2);
+   Config.WriteString('base','oAuth2'  ,EdtPassword2.Text);
+
+   case base.useLogin2 of
+    True :Config.WriteString('base','useLogin2','1');
+    False:Config.WriteString('base','useLogin2','0');
+   end;
+
   except
    on E:Exception do
    begin
@@ -92,6 +112,7 @@ begin
  end;
 
  EdtPassword.Text:='';
+ EdtPassword2.Text:='';
 end;
 
 procedure TFrmParam.EdtKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
@@ -143,6 +164,18 @@ begin
  Case TToggleBox(Sender).Checked of
   True :EdtPassword.EchoMode:=emNormal;
   False:EdtPassword.EchoMode:=emPassword;
+ end;
+ Case TToggleBox(Sender).Checked of
+  True :TToggleBox(Sender).Caption:='*';
+  False:TToggleBox(Sender).Caption:='a';
+ end;
+end;
+
+procedure TFrmParam.TBViewChange2(Sender:TObject);
+begin
+ Case TToggleBox(Sender).Checked of
+  True :EdtPassword2.EchoMode:=emNormal;
+  False:EdtPassword2.EchoMode:=emPassword;
  end;
  Case TToggleBox(Sender).Checked of
   True :TToggleBox(Sender).Caption:='*';
