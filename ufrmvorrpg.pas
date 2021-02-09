@@ -186,7 +186,7 @@ var
 
   FrmVorRpg: TFrmVorRpg;
 
-  FGetRpgAll:TSQLScript;
+  FGetRpgTop:TSQLScript;
 
   FGetRpgUser1:TSQLScript;
   FGetRpgUser2:TSQLScript;
@@ -529,6 +529,7 @@ var
  FDbcScript:TDbcStatementScript;
  ms:TRawByteStringStream;
  d1:RawByteString;
+ LVL1,EXP1:Int64;
 begin
 
  ms:=TRawByteStringStream.Create;
@@ -543,6 +544,10 @@ begin
  FDbcScript.ExecuteScript;
  FDbcScript.Params.SetRawByteString('user1',user1);
  FDbcScript.Params.SetRawByteString('data1',d1);
+ LVL1:=data1.Path['points.LVL'].AsInt64(0);
+ EXP1:=data1.Path['points.EXP'].AsInt64(0);
+ FDbcScript.Params.SetInt64('lvl1',LVL1);
+ FDbcScript.Params.SetInt64('exp1',EXP1);
  FDbcScript.Start;
  FDbcScript.Release;
 end;
@@ -552,6 +557,7 @@ var
  FDbcScript:TDbcStatementScript;
  ms:TRawByteStringStream;
  d1,d2:RawByteString;
+ LVL1,EXP1,LVL2,EXP2:Int64;
 begin
 
  ms:=TRawByteStringStream.Create;
@@ -571,6 +577,14 @@ begin
  FDbcScript.Params.SetRawByteString('data1',d1);
  FDbcScript.Params.SetRawByteString('user2',user2);
  FDbcScript.Params.SetRawByteString('data2',d2);
+ LVL1:=data1.Path['points.LVL'].AsInt64(0);
+ EXP1:=data1.Path['points.EXP'].AsInt64(0);
+ FDbcScript.Params.SetInt64('lvl1',LVL1);
+ FDbcScript.Params.SetInt64('exp1',EXP1);
+ LVL2:=data2.Path['points.LVL'].AsInt64(0);
+ EXP2:=data2.Path['points.EXP'].AsInt64(0);
+ FDbcScript.Params.SetInt64('lvl2',LVL2);
+ FDbcScript.Params.SetInt64('exp2',EXP2);
  FDbcScript.Start;
  FDbcScript.Release;
 end;
@@ -1292,159 +1306,61 @@ type
   LVL,EXP:Int64;
  end;
 
- TDbcGetUsersTop=class(TDbcQueryTask)
+ TDbcGetUsersTop=class(TDbcStatementScript)
   top:array[0..2] of TTopRec;
-  FScript:TSQLScript;
   user:RawByteString;
-  Procedure   OnAdd(var T:TTopRec);
-  Constructor Create; override;
-  Procedure   OnQuery;
-  Procedure   OnFin(Sender:TBaseTask);
+  Procedure OnAdd(const _user:RawByteString;_LVL,_EXP:Int64);
+  Procedure OnFin(Sender:TBaseTask);
  end;
 
-Function CompareTopRec(var T1,T2:TTopRec):Integer;
-begin
- if T1.LVL>T2.LVL then
- begin
-  Result:=1;
- end else
- if T1.LVL<T2.LVL then
- begin
-  Result:=-1;
- end else
- begin
-  if T1.EXP>T2.EXP then
-  begin
-   Result:=1;
-  end else
-  if T1.EXP<T2.EXP then
-  begin
-   Result:=-1;
-  end else
-  begin
-   Result:=0;
-  end;
- end;
-end;
-
-Procedure TDbcGetUsersTop.OnAdd(var T:TTopRec);
+Procedure TDbcGetUsersTop.OnAdd(const _user:RawByteString;_LVL,_EXP:Int64);
 var
  i:SizeUint;
-
- procedure ShiftDown(p:SizeUint);
- var
-  i:SizeUint;
- begin
-  i:=High(top);
-  While (i>p) do
-  begin
-   top[i]:=top[i-1];
-   Dec(i);
-  end;
- end;
-
 begin
  For i:=Low(top) to High(top) do
+ if (top[i].user='') then
  begin
-  if (top[i].user='') then
-  begin
-   ShiftDown(i);
-   top[i]:=T;
-   Exit;
-  end;
-  if CompareTopRec(top[i],T)<0 then
-  begin
-   ShiftDown(i);
-   top[i]:=T;
-   Exit;
-  end;
- end;
-end;
-
-Constructor TDbcGetUsersTop.Create;
-begin
- inherited;
- FHandle.OnDbcProc:=@OnQuery;
-end;
-
-Procedure DoPrint(Const S:RawByteString);
-begin
- //Writeln(S);
-end;
-
-Procedure TDbcGetUsersTop.OnQuery;
-Var
- FContext:TSQLContext;
- FGlobal:IZResultSet;
- I:TSQLScriptIterator;
- ii:SizeUint;
- user_f,data_f:SizeInt;
- d:RawByteString;
- ms:TStream;
- data:TJson;
- Points:TUserPoints;
- T:TTopRec;
-begin
- FContext:=Default(TSQLContext);
- FContext.FConnection:=ZConnection;
-
- if Assigned(FHandle) then
-  if Assigned(FHandle.DbcConnection) then
-   FContext.FGlobalCache:=FHandle.DbcConnection.GetPreparedCache;
-
- I:=FScript.Excecute(FContext);
- I.FOnPrintCb:=@DoPrint;
- While (I.Next) do
- begin
-  if FHandle.isCancel then
-  begin
-   FContext.FGlobal:=nil;
-   I.Close(false);
-   Break;
-  end;
- end;
- I.Close(true);
-
- FGlobal:=FContext.FGlobal;
- FContext.ClearCursors;
-
- For ii:=Low(top) to High(top) do top[ii]:=Default(TTopRec);
- if Assigned(FGlobal) then
- begin
-  user_f:=FGlobal.FindColumn('user');
-  data_f:=FGlobal.FindColumn('data');
-  if (user_f<>-1) and (data_f<>-1) then
-   While FGlobal.Next and (not FHandle.isCancel) do
-   begin
-    d:=FGlobal.GetRawByteString(data_f);
-    ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
-    data:=Default(TJson);
-    try
-     data:=TJson.New(ms);
-    except
-     on E:Exception do
-     begin
-      DumpExceptionCallStack(E);
-     end;
-    end;
-    FreeAndNil(ms);
-    Points.Load(data);
-    Points.CheckNewLvl;
-    Points.CheckMaxPts;
-    data.Free;
-    T.user:=FGlobal.GetRawByteString(user_f);
-    T.LVL:=Points.LVL;
-    T.EXP:=Points.EXP;
-    OnAdd(T);
-   end;
+  top[i].user:=_user;
+  top[i].LVL:=_LVL;
+  top[i].EXP:=_EXP;
+  Exit;
  end;
 end;
 
 Procedure TDbcGetUsersTop.OnFin(Sender:TBaseTask);
 var
- i:SizeInt;
+ i,c:SizeInt;
+ user_f,lvl_f,exp_f:SizeInt;
+ u:RawByteString;
+
+ LVL,EXP:Int64;
+
  list:RawByteString;
 begin
+
+ if ResultSet<>nil then
+ begin
+  c:=0;
+  if ResultSet.Last then
+  begin
+   c:=ResultSet.GetRow;
+  end;
+  if c>0 then
+  begin
+   user_f:=ResultSet.FindColumn('user');
+    lvl_f:=ResultSet.FindColumn('LVL');
+    exp_f:=ResultSet.FindColumn('EXP');
+   For i:=1 to c do
+   begin
+    ResultSet.MoveAbsolute(i);
+    u:=ResultSet.GetRawByteString(user_f);
+    LVL:=ResultSet.GetLong(lvl_f);
+    EXP:=ResultSet.GetLong(exp_f);
+    OnAdd(u,LVL,EXP);
+   end;
+  end;
+ end;
+
  if vor_rpg.stat_msg.top_msg1='' then
  begin
   vor_rpg.stat_msg.top_msg1:='%s)%s|LVL:%s|EXP:%s';
@@ -1470,7 +1386,8 @@ begin
  FDbcScript:=TDbcGetUsersTop.Create;
  FDbcScript.Handle.DbcConnection:=DbcThread;
  FDbcScript.Notify.Add(T_FIN,@FDbcScript.OnFin);
- FDbcScript.FScript:=FGetRpgAll;
+ FDbcScript.SetSctipt(FGetRpgTop);
+ FDbcScript.ExecuteScript;
  FDbcScript.user:=user;
  FDbcScript.Start;
  FDbcScript.Release;
@@ -3145,8 +3062,7 @@ begin
      'help':begin
              push_irc_msg(Format(vor_rpg.stat_msg.help_msg3,[user]));
             end;
-      'top':if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-            begin
+      'top':begin
              GetDBRpgUserTop(user);
             end;
 

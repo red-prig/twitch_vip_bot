@@ -119,6 +119,7 @@ type
    Procedure  SetRawByteString(Const FName,FValue:RawByteString);
    Procedure  SetAsDateTime(Const FName:RawByteString;FValue:TDateTime);
    Procedure  SetAsNull(Const FName:RawByteString);
+   Procedure  SetInt64(Const FName:RawByteString;FValue:Int64);
    property   ZValues[const FName:RawByteString]:TZVariant read GetValue write SetValue;
  end;
 
@@ -532,6 +533,11 @@ end;
 Procedure TSQLVariables.SetAsNull(Const FName:RawByteString);
 begin
  SetValue(FName,EncodeNull);
+end;
+
+Procedure TSQLVariables.SetInt64(Const FName:RawByteString;FValue:Int64);
+begin
+ SetValue(FName,EncodeInteger(FValue));
 end;
 
 procedure TSQLVariables.Clear;

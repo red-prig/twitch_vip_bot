@@ -3890,9 +3890,9 @@ begin
     Node.Push(TLoadSQL_Func,@FDeleteVipsScript);
    end;
   {$IFDEF VOR_RPG}
-  'get_rpg_all':
+  'get_rpg_top':
    begin
-    Node.Push(TLoadSQL_Func,@FGetRpgAll);
+    Node.Push(TLoadSQL_Func,@FGetRpgTop);
    end;
   'get_rpg_user1':
    begin

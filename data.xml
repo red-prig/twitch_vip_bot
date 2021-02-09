@@ -384,8 +384,14 @@
   CREATE INDEX IF NOT EXISTS vips_datetime ON vips (datetime ASC);
   CREATE UNIQUE INDEX IF NOT EXISTS vips_user ON vips (user ASC);
 
-  CREATE TABLE IF NOT EXISTS rpg (user TEXT,data TEXT);
+  CREATE TABLE IF NOT EXISTS rpg (user TEXT,data TEXT,LVL INTEGER,EXP INTEGER);
   CREATE UNIQUE INDEX IF NOT EXISTS rpg_user ON rpg (user ASC);
+  INSERT OR IGNORE INTO params ( name,value ) VALUES('rev','4');
+
+  if (SELECT value FROM params WHERE (name='rev'))='4'
+  begin
+   CREATE INDEX IF NOT EXISTS top_user ON rpg (LVL DESC,EXP DESC);
+  end;
 
   DROP TABLE IF EXISTS temp_table;
 
@@ -474,6 +480,32 @@
     COMMIT TRANSACTION;
   end;
 
+  if (SELECT value FROM params WHERE (name='rev'))='3'
+  begin
+   BEGIN TRANSACTION;
+
+   CREATE TABLE temp_table AS SELECT * FROM rpg;
+
+   DROP TABLE rpg;
+   
+   CREATE TABLE rpg (user TEXT,data TEXT,LVL INTEGER,EXP INTEGER);
+   
+   INSERT INTO rpg (user, data) SELECT user,data FROM temp_table;
+   
+   DELETE FROM temp_table WHERE (data IS NULL) OR (TRIM(data)='');
+
+   UPDATE rpg SET LVL=(SELECT json_extract(rpg.data, '$.points.LVL') FROM temp_table WHERE rpg.user=temp_table.user);
+   UPDATE rpg SET EXP=(SELECT json_extract(rpg.data, '$.points.EXP') FROM temp_table WHERE rpg.user=temp_table.user);
+
+   DROP TABLE temp_table;
+
+   CREATE UNIQUE INDEX rpg_user ON rpg (user ASC);
+   CREATE INDEX top_user ON rpg (LVL DESC,EXP DESC);
+
+   INSERT OR REPLACE INTO params ( name,value  ) VALUES('rev','4');
+   COMMIT TRANSACTION;
+  end;
+
   VACUUM
  </create>
 
@@ -521,9 +553,9 @@
   DELETE FROM vips WHERE user=@user;
  </delete_vips>
 
- <get_rpg_all>
-  SELECT * FROM rpg;
- </get_rpg_all>
+ <get_rpg_top>
+  SELECT * FROM rpg ORDER BY LVL DESC,EXP DESC LIMIT 3;
+ </get_rpg_top>
 
  <get_rpg_user1>
   SELECT * FROM rpg WHERE user=@user1;
@@ -538,13 +570,13 @@
  </get_rnd_user1>
 
  <set_rpg_user1>
-  INSERT OR REPLACE INTO rpg ( user,data  ) VALUES(@user1,@data1);
+  INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user1,@data1,@lvl1,@exp1);
  </set_rpg_user1>
 
  <set_rpg_user2>
   BEGIN TRANSACTION;
-   INSERT OR REPLACE INTO rpg ( user,data  ) VALUES(@user1,@data1);
-   INSERT OR REPLACE INTO rpg ( user,data  ) VALUES(@user2,@data2);
+   INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user1,@data1,@lvl1,@exp1);
+   INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user2,@data2,@lvl2,@exp2);
   COMMIT TRANSACTION;
  </set_rpg_user2>
 
