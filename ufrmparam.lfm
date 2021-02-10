@@ -128,7 +128,7 @@ object FrmParam: TFrmParam
     }
     OnClick = BtnOkClick
     OnKeyDown = FormKeyDown
-    TabOrder = 5
+    TabOrder = 8
   end
   object BtnCancel: TBitBtn
     Left = 323
@@ -204,7 +204,7 @@ object FrmParam: TFrmParam
     }
     OnClick = BtnCancelClick
     OnKeyDown = BtnCancelKeyDown
-    TabOrder = 6
+    TabOrder = 9
   end
   object TBView: TToggleBox
     Left = 395
@@ -219,7 +219,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 3
+    TabOrder = 2
     TabStop = False
   end
   object EdtChat: TLabeledEdit
@@ -239,7 +239,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 4
+    TabOrder = 3
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
@@ -249,7 +249,7 @@ object FrmParam: TFrmParam
     Top = 168
     Width = 194
     Caption = 'Учётная запись для сообщений'
-    TabOrder = 7
+    TabOrder = 4
   end
   object EdtLogin2: TLabeledEdit
     Left = 6
@@ -268,7 +268,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 8
+    TabOrder = 5
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
@@ -291,7 +291,7 @@ object FrmParam: TFrmParam
     ParentShowHint = False
     PasswordChar = '*'
     ShowHint = True
-    TabOrder = 9
+    TabOrder = 6
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
@@ -308,7 +308,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 2
+    TabOrder = 7
     TabStop = False
   end
 end

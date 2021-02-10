@@ -535,7 +535,7 @@ begin
          BtnInfo.Caption:=base.login;
          BtnInfo .Visible:=True;
          BtnClose.Visible:=True;
-         BtnInfo.Left:=0;
+         BtnClose.Left:=0;
 
          push_irc_msg(vip_rnd.login_msg);
 
