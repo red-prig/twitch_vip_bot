@@ -372,33 +372,36 @@ begin
     u:=ResultSet.GetRawByteString(user_f);
     d:=ResultSet.GetRawByteString(data_f);
 
-    if user[0]=u then
+    if (Trim(u)<>'') then
     begin
-     ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
-     data[0]:=Default(TJson);
-     try
-      data[0]:=TJson.New(ms);
-     except
-      on E:Exception do
-      begin
-       DumpExceptionCallStack(E);
+     if (user[0]=u) then
+     begin
+      ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
+      data[0]:=Default(TJson);
+      try
+       data[0]:=TJson.New(ms);
+      except
+       on E:Exception do
+       begin
+        DumpExceptionCallStack(E);
+       end;
       end;
-     end;
-     FreeAndNil(ms);
-    end else
-    if user[1]=u then
-    begin
-     ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
-     data[1]:=Default(TJson);
-     try
-      data[1]:=TJson.New(ms);
-     except
-      on E:Exception do
-      begin
-       DumpExceptionCallStack(E);
+      FreeAndNil(ms);
+     end else
+     if (user[1]=u) then
+     begin
+      ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
+      data[1]:=Default(TJson);
+      try
+       data[1]:=TJson.New(ms);
+      except
+       on E:Exception do
+       begin
+        DumpExceptionCallStack(E);
+       end;
       end;
+      FreeAndNil(ms);
      end;
-     FreeAndNil(ms);
     end;
 
    end;
@@ -467,7 +470,7 @@ begin
     u:=ResultSet.GetRawByteString(user_f);
     d:=ResultSet.GetRawByteString(data_f);
 
-    if user=u then
+    if (Trim(u)<>'') and (user=u) then
     begin
      ms:=TPCharStream.Create(PAnsiChar(d),Length(d));
      data:=Default(TJson);
@@ -532,6 +535,12 @@ var
  LVL1,EXP1:Int64;
 begin
 
+ if (Trim(user1)='') then
+ begin
+  if Assigned(N) then N(nil);
+  Exit;
+ end;
+
  ms:=TRawByteStringStream.Create;
  data1.Dump(ms);
  d1:=ms.DataString;
@@ -559,6 +568,23 @@ var
  d1,d2:RawByteString;
  LVL1,EXP1,LVL2,EXP2:Int64;
 begin
+
+ if (Trim(user1)='') then
+ begin
+  if (Trim(user2)='') then
+  begin
+   if Assigned(N) then N(nil);
+  end else
+  begin
+   SetDBRpgUser1(user2,data2,N);
+  end;
+  Exit;
+ end else
+ if (Trim(user2)='') then
+ begin
+  SetDBRpgUser1(user1,data1,N);
+  Exit;
+ end;
 
  ms:=TRawByteStringStream.Create;
  data1.Dump(ms);
