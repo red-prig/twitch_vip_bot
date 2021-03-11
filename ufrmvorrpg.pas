@@ -182,6 +182,15 @@ var
     go_esc:TStringList;
    end;
 
+   rst:record
+    tax:DWORD;
+    kd:DWORD;
+    rst_msg,
+    tax_msg,
+    not_msg,
+    info_msg:RawByteString;
+   end;
+
   end;
 
   FrmVorRpg: TFrmVorRpg;
@@ -683,6 +692,8 @@ type
   Function  GetAGLPercent:Int64;
   Function  GetTime:Int64;
   procedure IncEXP(val:Int64);
+  Function  NeedReset:Boolean;
+  Function  Reset(is_mod:Boolean):Boolean;
   procedure Load(J:TJson);
   procedure Save(var J:TJson);
  end;
@@ -950,6 +961,42 @@ procedure TPlayer.IncEXP(val:Int64);
 begin
  Points.EXP:=Points.EXP+val;
  Points.CheckNewLvl;
+end;
+
+Function TPlayer.NeedReset:Boolean;
+begin
+ Result:=(Points.STR+
+          Points.LUK+
+          Points.DEF+
+          Points.CHR+
+          Points.AGL)>0;
+end;
+
+Function TPlayer.Reset(is_mod:Boolean):Boolean;
+var
+ i,tax:SizeInt;
+begin
+ Result:=True;
+ if not is_mod then
+ begin
+  tax:=(Points.GetExpToLvl*vor_rpg.rst.tax) div 100;
+  if (tax=0) then tax:=1;
+  For i:=0 to tax-1 do
+   if not Points.TryDecExp then Exit(False);
+ end;
+
+ Points.PTS:=Points.PTS+
+             Points.STR+
+             Points.LUK+
+             Points.DEF+
+             Points.CHR+
+             Points.AGL;
+
+ Points.STR:=0;
+ Points.LUK:=0;
+ Points.DEF:=0;
+ Points.CHR:=0;
+ Points.AGL:=0;
 end;
 
 var
@@ -1716,8 +1763,95 @@ var
   end;
  end;
 
+ procedure DoRst;
+ var
+  now,time:Int64;
+  _is_rst_time:Boolean;
+
+  procedure _rst_time; inline;
+  begin
+   Save40nul(data,'rst.time',0);
+   if (data.Path['rst'].Count=0) then
+   begin
+    data.Delete('rst');
+   end;
+  end;
+
+  procedure _not_msg; inline;
+  begin
+   if (vor_rpg.rst.not_msg='') then
+   begin
+    vor_rpg.rst.not_msg:='@%s not need to reset!';
+   end;
+   _rst_time;
+   SetDBRpgUser1(user,data,@OnUnlock);
+   push_irc_msg(Format(vor_rpg.rst.not_msg,[src]));
+  end;
+
+ begin
+  _is_rst_time:=True;
+  now:=DateTimeToUnix(sysutils.Now,False);
+  time:=data.Path['rst.time'].AsInt(0);
+  if (time=0) or ((time+vor_rpg.rst.kd)<=Now) then
+  begin
+   _rst_time;
+   _is_rst_time:=False;
+  end;
+
+  if _is_rst_time or is_mod then
+  begin
+   if not Points1.NeedReset then
+   begin
+    _not_msg;
+   end else
+   if Points1.Reset(is_mod) then
+   begin
+    if (vor_rpg.rst.rst_msg='') then
+    begin
+     vor_rpg.rst.rst_msg:='@%s skill points is reset!';
+    end;
+    Points1.Save(data);
+    SetDBRpgUser1(user,data,@OnUnlock);
+    push_irc_msg(Format(vor_rpg.rst.rst_msg,[user]));
+   end else
+   begin
+    if (vor_rpg.rst.tax_msg='') then
+    begin
+     vor_rpg.rst.tax_msg:='@%s need tax to reset!';
+    end;
+    _rst_time;
+    SetDBRpgUser1(user,data,@OnUnlock);
+    push_irc_msg(Format(vor_rpg.rst.tax_msg,[user]));
+   end;
+  end else
+  begin
+   if not Points1.NeedReset then
+   begin
+    _not_msg;
+   end else
+   begin
+    if (vor_rpg.rst.info_msg='') then
+    begin
+     vor_rpg.rst.info_msg:='@%s re-enter the text !vor rst';
+    end;
+    Points1.Save(data);
+    data.Values['rst.time']:=Now;
+    SetDBRpgUser1(user,data,@OnUnlock);
+    push_irc_msg(Format(vor_rpg.rst.info_msg,[src,IntToStr(vor_rpg.rst.tax)]));
+   end;
+  end;
+
+ end;
+
 begin
  Points1.Load(data);
+
+ Case cmd of
+  'rst':begin
+         DoRst;
+         Exit;
+        end;
+ end;
 
  if is_mod then
   Case cmd of
@@ -3003,7 +3137,7 @@ begin
         'stat':
         begin
          F:=LowerCase(Extract_nick(FetchAny(F)));
-         if F<>'' then
+         if (F<>'') then
           GetDBRpgUserInfo(user,F,v);
         end;
         'add':
@@ -3027,6 +3161,12 @@ begin
             push_irc_msg(Format('@%s !vor mod add [pts,lvl,exp,luk,def,chr,agl,str] "nick"',[user]));
           end;
          end;
+        'reset',
+        'rst':begin
+               F:=LowerCase(Extract_nick(FetchAny(F)));
+               if (F<>'') then
+                add_pts(user,F,'rst',true);
+              end;
 
         'sub':
          begin
@@ -3051,7 +3191,7 @@ begin
          end;
 
         else
-         push_irc_msg(Format('@%s !vor mod [base,kick,xchg,duel,dbf,lvl,pts,stat,add [prm],sub [prm]] "nick"',[user]));
+         push_irc_msg(Format('@%s !vor mod [rst,base,kick,xchg,duel,dbf,lvl,pts,stat,add [prm],sub [prm]] "nick"',[user]));
        end;
       end;
      'dbf',
@@ -3083,6 +3223,10 @@ begin
              else
               push_irc_msg(Format(vor_rpg.stat_msg.help_msg2,[user]));
             end;
+           end;
+     'reset',
+     'rst':begin
+            add_pts(user,user,'rst',false);
            end;
      'hlp',
      'help':begin
@@ -3392,6 +3536,7 @@ initialization
  xchgSet:=TxchgNodeSet.Create;
  duelSet:=TxchgNodeSet.Create;
  vor_rpg.time_kd:=8;
+ vor_rpg.rst.kd:=1800;
 
 end.
 

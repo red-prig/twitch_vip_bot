@@ -109,6 +109,14 @@
 
  </duel>
 
+ <rst>
+  <tax>20</tax>
+  <kd>1800</kd>
+  <rst_msg>Очки навыка @%s сброшены!</rst_msg>
+  <tax_msg>@%s недостаточно средств для выплаты налога на сброс!</tax_msg>
+  <not_msg>@%s нет вкаченных очков навыка!</not_msg>
+  <info_msg>@%s Для сброса очков навыка повторно введите !vor rst (налог:%s%% от опыта на текущем уровне)</info_msg>
+ </rst>
 
  <timeout_cmd>/timeout %s %s</timeout_cmd>
 
@@ -192,7 +200,7 @@
   <add_msg>   @%s навык вкачен в %s                                         </add_msg>
   <not_msg>   @%s нет свободных очков навыка                                </not_msg>
   <max_msg>   @%s максимум очков навыка в %s                                </max_msg>
-  <help_msg1> @%s команды вора: !vor [hlp,top,dbf,lvl,pts,stat,add [парам.]]</help_msg1>
+  <help_msg1> @%s команды вора: !vor [rst,hlp,top,dbf,lvl,pts,stat,add [парам.]]</help_msg1>
   <help_msg2> @%s для прокачки: !vor add [luk,def,chr,agl,str]              </help_msg2>
   <on_debuf>  @%s наложен дебаф: (%s)                                       </on_debuf>
   <debuf_pr>  @%s &lt; %s &gt;                                              </debuf_pr>

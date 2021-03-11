@@ -3139,6 +3139,10 @@ type
   class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
  end;
 
+ TVorRpg_rst_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
  {$ENDIF}
 
  TOpenSub_Func=class(TNodeFunc)
@@ -3447,6 +3451,10 @@ begin
   'duel':
    begin
     Node.Push(TVorRpg_duel_Func,nil);
+   end;
+  'rst':
+   begin
+    Node.Push(TVorRpg_rst_Func,nil);
    end;
  end;
 end;
@@ -3788,6 +3796,36 @@ begin
   'win_msg':
    begin
     Node.Push(TLoadList_Func,@vor_rpg.duel.win_msg);
+   end;
+ end;
+end;
+
+class procedure TVorRpg_rst_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'tax':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.rst.tax);
+   end;
+  'kd':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.rst.kd);
+   end;
+  'rst_msg':
+   begin
+    Node.Push(TLoadStr_Func  ,@vor_rpg.rst.rst_msg);
+   end;
+  'tax_msg':
+   begin
+    Node.Push(TLoadStr_Func  ,@vor_rpg.rst.tax_msg);
+   end;
+  'not_msg':
+   begin
+    Node.Push(TLoadStr_Func  ,@vor_rpg.rst.not_msg);
+   end;
+  'info_msg':
+   begin
+    Node.Push(TLoadStr_Func  ,@vor_rpg.rst.info_msg);
    end;
  end;
 end;
