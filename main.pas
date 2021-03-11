@@ -490,12 +490,22 @@ end;
 
 //const
 // permission='You don''t have permission to perform that action.';
+//This room is in slow mode and you are sending messages too quickly. You will be able to talk again in 0 seconds.
+
+Function _IsCmd(const msg:RawByteString):Boolean;
+begin
+ Result:=(msg<>'') and (msg[1]='/');
+ if Result and (Length(msg)>=3) then
+ begin
+  Result:=(PDWORD(PChar(Msg))^ and $FFFFFF)<>$656D2F; //msg<>'/me'
+ end;
+end;
 
 procedure push_irc_msg(const msg:RawByteString);
 begin
  if (base.useLoginState=2) then
  begin
-  if (msg<>'') and (msg[1]='/') then
+  if _IsCmd(msg) then
   begin
    reply_irc_msg(msg);
   end else
@@ -537,10 +547,10 @@ begin
          BtnClose.Visible:=True;
          BtnClose.Left:=0;
 
-         push_irc_msg(vip_rnd.login_msg);
-
          if base.useLoginState=1 then
             base.useLoginState:=2;
+
+         push_irc_msg(vip_rnd.login_msg);
 
          {
          add_reward(
