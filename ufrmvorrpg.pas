@@ -1670,11 +1670,13 @@ begin
   begin
    if vor_rpg.stat_msg.stat_msg='' then
    begin
-    vor_rpg.stat_msg.stat_msg:='@%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s';
+    vor_rpg.stat_msg.stat_msg:='@%s LUK%%:%s |DEF%%:%s |STR%%:%s |AGL%%:%s |ESC%%:%s |-TIME:%s';
    end;
    push_irc_msg(Format(vor_rpg.stat_msg.stat_msg,[src,
                                       IntToStr(Points.GetLUKPercent),
                                       IntToStr(Points.GetDEFPercent),
+                                      IntToStr(Points.GetSTRPercent),
+                                      IntToStr(Points.GetAGLPercent),
                                       IntToStr(Points.GetESCPercent),
                                       IntToStr(Points.GetTime)]));
   end;

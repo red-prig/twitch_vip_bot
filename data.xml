@@ -196,7 +196,7 @@
  <stat_msg>
   <lvl_msg>   @%s LVL:%s [%s/%s] </lvl_msg>
   <pts_msg>   @%s LUK:%s |DEF:%s |CHR:%s |AGL:%s |STR:%s |PTS:%s            </pts_msg>
-  <stat_msg>  @%s LUK%%:%s |DEF%%:%s |ESC%%:%s |-TIME:%s                    </stat_msg>
+  <stat_msg>  @%s LUK%%:%s |DEF%%:%s |STR%%:%s |AGL%%:%s |ESC%%:%s |-TIME:%s</stat_msg>
   <add_msg>   @%s навык вкачен в %s                                         </add_msg>
   <not_msg>   @%s нет свободных очков навыка                                </not_msg>
   <max_msg>   @%s максимум очков навыка в %s                                </max_msg>
