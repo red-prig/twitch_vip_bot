@@ -1761,6 +1761,15 @@ var
   begin
    data.Delete('kick');
   end;
+  time:=data.Path['rst.time'].AsInt(0);
+  if (time=0) or ((time+vor_rpg.rst.kd)<=Now) then
+  begin
+   Save40nul(data,'rst.time',0);
+  end;
+  if (data.Path['rst'].Count=0) then
+  begin
+   data.Delete('rst');
+  end;
  end;
 
  procedure DoRst;
