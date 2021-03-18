@@ -1136,8 +1136,9 @@ end;
 Function MMP(i:Int64):Int64;
 begin
  if (i<0) then
-  i:=0
- else
+ begin
+  i:=Random(RCT,2);
+ end else
  if (i>100) then
   i:=100;
  Result:=i;
