@@ -1141,7 +1141,7 @@ begin
  end else
  if (i<0) then
  begin
-  i:=Random(RCT,4);
+  i:=Random(RCT,4) div 2;
  end else
  if (i>100) then
   i:=100;
