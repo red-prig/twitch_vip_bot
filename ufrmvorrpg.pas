@@ -1894,7 +1894,7 @@ begin
           Exit;
          end;
    'pts':begin
-          Dec(Points1.Points.PTS);
+          Inc(Points1.Points.PTS);
           pts_msg;
           Points1.Save(data);
           SetDBRpgUser1(user,data,@OnUnlock);
@@ -1977,40 +1977,46 @@ var
                       IntToStr(Points1.Points.PTS)]));
  end;
 
+ procedure dec_fix_min(var i:Int64); inline;
+ begin
+  Dec(i);
+  if (i<0) then i:=0;
+ end;
+
 begin
  Points1.Load(data);
 
  Case cmd of
   'exp':begin
-         Points1.IncEXP(-1);
+         Points1.Points.TryDecExp;
          lvl_msg;
         end;
   'lvl':begin
-         Dec(Points1.Points.LVL);
+         dec_fix_min(Points1.Points.LVL);
          lvl_msg;
         end;
   'pts':begin
-         Dec(Points1.Points.PTS);
+         dec_fix_min(Points1.Points.PTS);
          pts_msg;
         end;
   'luk':begin
-         Dec(Points1.Points.LUK);
+         dec_fix_min(Points1.Points.LUK);
          pts_msg;
         end;
   'def':begin
-         Dec(Points1.Points.DEF);
+         dec_fix_min(Points1.Points.DEF);
          pts_msg;
         end;
   'chr':begin
-         Dec(Points1.Points.CHR);
+         dec_fix_min(Points1.Points.CHR);
          pts_msg;
         end;
   'agl':begin
-         Dec(Points1.Points.AGL);
+         dec_fix_min(Points1.Points.AGL);
          pts_msg;
         end;
   'str':begin
-         Dec(Points1.Points.STR);
+         dec_fix_min(Points1.Points.STR);
          pts_msg;
         end;
  end;
