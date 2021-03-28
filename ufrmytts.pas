@@ -15,25 +15,40 @@ type
   TFrmYtts = class(TForm)
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
-    CMBDevices: TComboBox;
-    CMBVoice: TComboBox;
-    CMBEmotion: TComboBox;
+    CMBDevicesY: TComboBox;
+    CMBDevicesS: TComboBox;
+    CMBEmotionY: TComboBox;
     CMBMode: TComboBox;
-    LDevices: TLabel;
-    LSpeed: TLabel;
-    LVolume: TLabel;
-    LVoice: TLabel;
-    LEmotion: TLabel;
+    CMBIntf: TComboBox;
+    CMBVoiceY: TComboBox;
+    CMBVoiceS: TComboBox;
+    LDevicesY: TLabel;
+    LDevicesS: TLabel;
+    LEmotionY: TLabel;
     LMode: TLabel;
-    TBSpeed: TTrackBar;
-    TBVolume: TTrackBar;
+    LIntf: TLabel;
+    LSpeedY: TLabel;
+    LSpeedS: TLabel;
+    LVoiceY: TLabel;
+    LVoiceS: TLabel;
+    LVolumeY: TLabel;
+    LVolumeS: TLabel;
+    PageControlTts: TPageControl;
+    TBSpeedY: TTrackBar;
+    TBSpeedS: TTrackBar;
+    TBVolumeY: TTrackBar;
+    TBVolumeS: TTrackBar;
+    TSYtts: TTabSheet;
+    TSSAPI: TTabSheet;
     procedure FormCreate(Sender: TObject);
     procedure BtnOkClick(Sender:TObject);
     procedure BtnCancelKeyDown(Sender: TObject; var Key: Word;Shift: TShiftState);
     procedure BtnCancelClick(Sender:TObject);
     procedure FormKeyDown(Sender:TObject;var Key:Word;Shift:TShiftState);
-    procedure TBSpeedChange(Sender: TObject);
-    procedure TBVolumeChange(Sender: TObject);
+    procedure TBSpeedSChange(Sender: TObject);
+    procedure TBSpeedYChange(Sender: TObject);
+    procedure TBVolumeSChange(Sender: TObject);
+    procedure TBVolumeYChange(Sender: TObject);
   private
 
   public
@@ -42,19 +57,28 @@ type
     Procedure YttsSetParam;
     Procedure LazyInitYtts;
 
-    procedure OnEnumDevice(Index:PaDeviceIndex;Const _name:RawByteString);
+    procedure OnEnumDeviceY(Index:PaDeviceIndex;Const _name:RawByteString);
+    procedure OnEnumDeviceS(const _name:RawByteString;Voice:ISpeechObjectToken);
+    procedure OnEnumVoicesS(const _name:RawByteString;Voice:ISpeechObjectToken);
     Procedure InitCfg;
     Procedure LoadCfg;
     Procedure Open;
-    procedure SetDevice(Index:PaDeviceIndex);
-    function  GetDevice:PaDeviceIndex;
-    procedure LoadDevice;
+    procedure SetDeviceY(Index:PaDeviceIndex);
+    function  GetDeviceY:PaDeviceIndex;
+    procedure LoadDeviceY;
+    procedure LoadDeviceS;
+    procedure LoadVoicesS;
+    procedure SetDeviceS(const _name:RawByteString);
+    procedure SetVoicesS(const _name:RawByteString);
     function  GetTBSpeed:Currency;
     procedure SetTBSpeed(FSpeed:Currency);
-    function  GetTBVolume:Single;
-    procedure SetTBVolume(FVolume:Single);
+    function  GetTBVolumeY:Single;
+    procedure SetTBVolumeY(FVolume:Single);
+    procedure SetTBVolumeS(FVolume:Integer);
+    function  GetTBVolumeS:Integer;
     procedure OnStartPlay(Sender:TObject);
     procedure OnStopPlay(Sender:TObject);
+    procedure push_msg(msg:RawByteString);
     procedure add_to_chat_cmd(highlighted:Boolean;const cmd,param,msg:RawByteString);
   end;
 
@@ -63,13 +87,22 @@ var
 
  Fytts:Tytts;
 
+ tts_mode:Integer;
+ tts_intf:Integer;
+
  ytts_param:record
-  Fmode:Integer;
   FIndex:PaDeviceIndex;
   FVolume:Single;
   FVoice:TyVoice;
   FEmotion:TyEmotion;
   FSpeed:Currency;
+ end;
+
+ sapi_param:record
+  FRate:Integer;
+  FVolume:Integer;
+  FVoiceName:RawByteString;
+  FAudioOutputName:RawByteString;
  end;
 
 implementation
@@ -106,38 +139,80 @@ begin
  end;
 end;
 
-procedure TFrmYtts.SetDevice(Index:PaDeviceIndex);
+procedure TFrmYtts.SetDeviceY(Index:PaDeviceIndex);
 var
  i:Integer;
 begin
- if CMBDevices.Items.Count>0 then
- For i:=0 to CMBDevices.Items.Count-1 do
-  if (PtrInt(Index)=PtrInt(CMBDevices.Items.Objects[i])) then
+ if CMBDevicesY.Items.Count>0 then
+ For i:=0 to CMBDevicesY.Items.Count-1 do
+  if (PtrInt(Index)=PtrInt(CMBDevicesY.Items.Objects[i])) then
   begin
-   CMBDevices.ItemIndex:=i;
+   CMBDevicesY.ItemIndex:=i;
    Exit;
   end;
- CMBDevices.ItemIndex:=0;
+ CMBDevicesY.ItemIndex:=0;
 end;
 
-function TFrmYtts.GetDevice:PaDeviceIndex;
+function TFrmYtts.GetDeviceY:PaDeviceIndex;
 begin
  Result:=-1;
- if (CMBDevices.ItemIndex<>-1) then
- if (CMBDevices.Items.Count<>0) then
-  Result:=PaDeviceIndex(PtrInt(CMBDevices.Items.Objects[CMBDevices.ItemIndex]));
+ if (CMBDevicesY.ItemIndex<>-1) then
+ if (CMBDevicesY.Items.Count<>0) then
+  Result:=PaDeviceIndex(PtrInt(CMBDevicesY.Items.Objects[CMBDevicesY.ItemIndex]));
 end;
 
-procedure TFrmYtts.OnEnumDevice(Index:PaDeviceIndex;Const _name:RawByteString);
+procedure TFrmYtts.OnEnumDeviceY(Index:PaDeviceIndex;Const _name:RawByteString);
 begin
- CMBDevices.AddItem(_name,TObject(Pointer(Index)));
+ CMBDevicesY.AddItem(_name,TObject(Pointer(Index)));
 end;
 
-procedure TFrmYtts.LoadDevice;
+procedure TFrmYtts.LoadDeviceY;
 begin
- CMBDevices.Clear;
- CMBDevices.AddItem('По умолчанию',TObject(Pointer(-1)));
- EnumOutputDevice(@OnEnumDevice);
+ CMBDevicesY.Clear;
+ CMBDevicesY.AddItem('По умолчанию',TObject(Pointer(-1)));
+ EnumOutputDevice(@OnEnumDeviceY);
+end;
+
+procedure TFrmYtts.OnEnumDeviceS(const _name:RawByteString;Voice:ISpeechObjectToken);
+begin
+ CMBDevicesS.AddItem(_name,TObject(1));
+end;
+
+procedure TFrmYtts.LoadDeviceS;
+begin
+ CMBDevicesS.Clear;
+ CMBDevicesS.AddItem('По умолчанию',nil);
+ CMBDevicesS.ItemIndex:=0;
+ EnumSAPIAudioOutputs(@OnEnumDeviceS);
+end;
+
+procedure TFrmYtts.OnEnumVoicesS(const _name:RawByteString;Voice:ISpeechObjectToken);
+begin
+ CMBVoiceS.AddItem(_name,TObject(1));
+end;
+
+procedure TFrmYtts.LoadVoicesS;
+begin
+ CMBVoiceS.Clear;
+ CMBVoiceS.AddItem('По умолчанию',nil);
+ CMBVoiceS.ItemIndex:=0;
+ EnumSAPIVoices(@OnEnumVoicesS);
+end;
+
+procedure TFrmYtts.SetDeviceS(const _name:RawByteString);
+var
+ i:Integer;
+begin
+ i:=CMBDevicesS.Items.IndexOf(_name);
+ if (i<>-1) then CMBDevicesS.ItemIndex:=i;
+end;
+
+procedure TFrmYtts.SetVoicesS(const _name:RawByteString);
+var
+ i:Integer;
+begin
+ i:=CMBVoiceS.Items.IndexOf(_name);
+ if (i<>-1) then CMBVoiceS.ItemIndex:=i;
 end;
 
 procedure TFrmYtts.FormCreate(Sender: TObject);
@@ -147,21 +222,21 @@ var
 begin
  For _Voice:=Low(TyVoice) to High(TyVoice) do
   Case _Voice of
-   alyss :CMBVoice.AddItem('Элиc'  ,nil);
-   jane  :CMBVoice.AddItem('Джейн' ,nil);
-   oksana:CMBVoice.AddItem('Оксана',nil);
-   omazh :CMBVoice.AddItem('Омаж'  ,nil);
-   zahar :CMBVoice.AddItem('Захар' ,nil);
-   ermil :CMBVoice.AddItem('Ермил' ,nil);
-   alena :CMBVoice.AddItem('Алёна' ,nil);
-   filipp:CMBVoice.AddItem('Филипп',nil);
+   alyss :CMBVoiceY.AddItem('Элиc'  ,nil);
+   jane  :CMBVoiceY.AddItem('Джейн' ,nil);
+   oksana:CMBVoiceY.AddItem('Оксана',nil);
+   omazh :CMBVoiceY.AddItem('Омаж'  ,nil);
+   zahar :CMBVoiceY.AddItem('Захар' ,nil);
+   ermil :CMBVoiceY.AddItem('Ермил' ,nil);
+   alena :CMBVoiceY.AddItem('Алёна' ,nil);
+   filipp:CMBVoiceY.AddItem('Филипп',nil);
   end;
 
  For _Emotion:=Low(TyEmotion) to High(TyEmotion) do
   Case _Emotion of
-   good   :CMBEmotion.AddItem('Радостный'   ,nil);
-   evil   :CMBEmotion.AddItem('Раздражённый',nil);
-   neutral:CMBEmotion.AddItem('Нейтральный' ,nil);
+   good   :CMBEmotionY.AddItem('Радостный'   ,nil);
+   evil   :CMBEmotionY.AddItem('Раздражённый',nil);
+   neutral:CMBEmotionY.AddItem('Нейтральный' ,nil);
   end;
  FPlayRef:=0;
 end;
@@ -239,21 +314,33 @@ end;
 
 Procedure TFrmYtts.InitCfg;
 begin
- ytts_param.Fmode   :=0;
+ tts_mode:=0;
+ tts_intf:=0;
+
  ytts_param.FIndex  :=-1;
  ytts_param.FVolume :=0.5;
  ytts_param.FVoice  :=filipp;
  ytts_param.FEmotion:=neutral;
  ytts_param.FSpeed  :=1;
+
+ sapi_param.FRate:=0;
+ sapi_param.FVolume:=100;
+ sapi_param.FVoiceName:='';
+ sapi_param.FAudioOutputName:='';
+
 end;
 
 Procedure TFrmYtts.LoadCfg;
 begin
  InitCfg;
 
- ytts_param.Fmode:=StrToIntDef(Config.ReadString('ytts','mode',IntToStr(ytts_param.Fmode)),ytts_param.Fmode);
- if ytts_param.Fmode<0 then ytts_param.Fmode:=0;
- if ytts_param.Fmode>3 then ytts_param.Fmode:=0;
+ tts_mode:=StrToIntDef(Config.ReadString('ytts','mode',IntToStr(tts_mode)),tts_mode);
+ if tts_mode<0 then tts_mode:=0;
+ if tts_mode>3 then tts_mode:=0;
+
+ tts_intf:=StrToIntDef(Config.ReadString('ytts','intf',IntToStr(tts_intf)),tts_intf);
+ if tts_intf<0 then tts_intf:=0;
+ if tts_intf>1 then tts_intf:=1;
 
  ytts_param.FIndex :=StrToIntDef  (Config.ReadString('ytts','device',IntToStr  (ytts_param.FIndex)) ,ytts_param.FIndex);
  ytts_param.FVolume:=StrToFloatDef(Config.ReadString('ytts','volume',FloatToStrF(ytts_param.FVolume,ffFixed,2,2)),ytts_param.FVolume);
@@ -263,35 +350,85 @@ begin
 
  ytts_param.FSpeed:=StrToCurrDef(Config.ReadString('ytts','speed',CurrToStr(ytts_param.FSpeed)),ytts_param.FSpeed);
 
+ sapi_param.FRate:=StrToIntDef(Config.ReadString('sapi','rate',IntToStr(sapi_param.FRate)),sapi_param.FRate);
+ if sapi_param.FRate<-10 then sapi_param.FRate:=-10;
+ if sapi_param.FRate>10  then sapi_param.FRate:=10;
+
+ sapi_param.FVolume:=StrToIntDef(Config.ReadString('sapi','volume',IntToStr(sapi_param.FVolume)),sapi_param.FVolume);
+ if sapi_param.FVolume<0   then sapi_param.FVolume:=0;
+ if sapi_param.FVolume>100 then sapi_param.FVolume:=100;
+
+ sapi_param.FVoiceName      :=Config.ReadString('sapi','voicename','');
+ sapi_param.FAudioOutputName:=Config.ReadString('sapi','audiooutputname','');
+
 end;
 
 Procedure TFrmYtts.Open;
 begin
- LoadDevice;
- SetDevice(ytts_param.FIndex);
- CMBMode   .ItemIndex:=ytts_param.Fmode;
- CMBVoice  .ItemIndex:=Ord(ytts_param.FVoice);
- CMBEmotion.ItemIndex:=Ord(ytts_param.FEmotion);
+
+ CMBMode.ItemIndex:=tts_mode;
+ CMBIntf.ItemIndex:=tts_intf;
+
+ LoadDeviceS;
+ LoadVoicesS;
+
+ SetDeviceS(sapi_param.FAudioOutputName);
+ SetVoicesS(sapi_param.FVoiceName);
+
+ TBSpeedS.Position:=sapi_param.FRate;
+ TBSpeedSChange(nil);
+
+ SetTBVolumeS(sapi_param.FVolume);
+
+ LoadDeviceY;
+ SetDeviceY(ytts_param.FIndex);
+ CMBVoiceY  .ItemIndex:=Ord(ytts_param.FVoice);
+ CMBEmotionY.ItemIndex:=Ord(ytts_param.FEmotion);
  SetTBSpeed (ytts_param.FSpeed);
- SetTBVolume(ytts_param.FVolume);
+ SetTBVolumeY(ytts_param.FVolume);
 
  if ShowModal=1 then
  begin
-  ytts_param.FIndex  :=GetDevice;
-  ytts_param.Fmode   :=CMBMode.ItemIndex;
-  ytts_param.FVoice  :=TyVoice(CMBVoice.ItemIndex);
-  ytts_param.FEmotion:=TyEmotion(CMBEmotion.ItemIndex);
+  tts_mode:=CMBMode.ItemIndex;
+  tts_intf:=CMBIntf.ItemIndex;
+
+  ytts_param.FIndex  :=GetDeviceY;
+  ytts_param.FVoice  :=TyVoice(CMBVoiceY.ItemIndex);
+  ytts_param.FEmotion:=TyEmotion(CMBEmotionY.ItemIndex);
   ytts_param.FSpeed  :=GetTBSpeed;
-  ytts_param.FVolume :=GetTBVolume;
+  ytts_param.FVolume :=GetTBVolumeY;
   YttsSetParam;
 
+  sapi_param.FRate:=TBSpeedS.Position;
+  sapi_param.FVolume:=GetTBVolumeS;
+
+  sapi_param.FAudioOutputName:='';
+  if (CMBDevicesS.ItemIndex>0) then
+  begin
+   sapi_param.FAudioOutputName:=CMBDevicesS.Items[CMBDevicesS.ItemIndex]
+  end;
+
+  sapi_param.FVoiceName:='';
+  if (CMBVoiceS.ItemIndex>0) then
+  begin
+   sapi_param.FVoiceName:=CMBVoiceS.Items[CMBVoiceS.ItemIndex]
+  end;
+
   try
-   Config.WriteString('ytts','mode'   ,IntToStr  (ytts_param.Fmode));
+   Config.WriteString('ytts','mode'   ,IntToStr  (tts_mode));
+   Config.WriteString('ytts','intf'   ,IntToStr  (tts_intf));
+
    Config.WriteString('ytts','device' ,IntToStr  (ytts_param.FIndex));
    Config.WriteString('ytts','volume' ,FloatToStrF(ytts_param.FVolume,ffFixed,2,2));
    Config.WriteString('ytts','voice'  ,SaveVoice);
    Config.WriteString('ytts','emotion',SaveEmotion);
    Config.WriteString('ytts','speed'  ,CurrToStr(ytts_param.FSpeed));
+
+   Config.WriteString('sapi','rate'           ,IntToStr(sapi_param.FRate));
+   Config.WriteString('sapi','volume'         ,IntToStr(sapi_param.FVolume));
+   Config.WriteString('sapi','voicename'      ,sapi_param.FVoiceName);
+   Config.WriteString('sapi','audiooutputname',sapi_param.FAudioOutputName);
+
   except
    on E:Exception do
    begin
@@ -304,7 +441,7 @@ end;
 
 function TFrmYtts.GetTBSpeed:Currency;
 begin
- Result:=0.5+(TBSpeed.Position/10);
+ Result:=0.5+(TBSpeedY.Position/10);
 end;
 
 
@@ -312,29 +449,51 @@ procedure TFrmYtts.SetTBSpeed(FSpeed:Currency);
 begin
  if FSpeed<0.5 then FSpeed:=0.5;
  if FSpeed>3.0 then FSpeed:=3.0;
- TBSpeed.Position:=Round((FSpeed-0.5)*10);
+ TBSpeedY.Position:=Round((FSpeed-0.5)*10);
 end;
 
-procedure TFrmYtts.TBSpeedChange(Sender: TObject);
+procedure TFrmYtts.TBSpeedYChange(Sender: TObject);
 begin
- LSpeed.Caption:='Скорость: '+CurrToStr(GetTBSpeed);
+ LSpeedY.Caption:='Скорость: '+CurrToStr(GetTBSpeed);
 end;
 
-function TFrmYtts.GetTBVolume:Single;
+procedure TFrmYtts.TBSpeedSChange(Sender: TObject);
 begin
- Result:=TBVolume.Position/50;
+ LSpeedS.Caption:='Скорость: '+IntToStr(TBSpeedS.Position);
 end;
 
-procedure TFrmYtts.SetTBVolume(FVolume:Single);
+function TFrmYtts.GetTBVolumeY:Single;
+begin
+ Result:=TBVolumeY.Position/50;
+end;
+
+procedure TFrmYtts.SetTBVolumeY(FVolume:Single);
 begin
  if FVolume<0 then FVolume:=0;
  if FVolume>1 then FVolume:=1;
- TBVolume.Position:=Round(FVolume*50);
+ TBVolumeY.Position:=Round(FVolume*50);
 end;
 
-procedure TFrmYtts.TBVolumeChange(Sender: TObject);
+procedure TFrmYtts.TBVolumeYChange(Sender: TObject);
 begin
- LVolume.Caption:='Громкость: '+FloatToStrF(GetTBVolume,ffFixed,2,2);
+ LVolumeY.Caption:='Громкость: '+FloatToStrF(GetTBVolumeY,ffFixed,2,2);
+end;
+
+procedure TFrmYtts.SetTBVolumeS(FVolume:Integer);
+begin
+ if FVolume<0   then FVolume:=0;
+ if FVolume>100 then FVolume:=100;
+ TBVolumeS.Position:=FVolume div 2;
+end;
+
+function TFrmYtts.GetTBVolumeS:Integer;
+begin
+ Result:=TBVolumeS.Position*2;
+end;
+
+procedure TFrmYtts.TBVolumeSChange(Sender: TObject);
+begin
+ LVolumeS.Caption:='Громкость: '+IntToStr(GetTBVolumeS);
 end;
 
 procedure TFrmYtts.OnStartPlay(Sender:TObject);
@@ -347,18 +506,55 @@ begin
  Dec(FPlayRef);
 end;
 
+type
+ TSAPIHandle2=class(TSAPIHandle)
+   function OnFinishSAPI:SizeInt;
+ end;
+
+function TSAPIHandle2.OnFinishSAPI:SizeInt;
+begin
+ Result:=0;
+ Free;
+ FrmYtts.OnStopPlay(nil);
+end;
+
+procedure TFrmYtts.push_msg(msg:RawByteString);
+var
+ H:TSAPIHandle2;
+begin
+ case tts_intf of
+  0:begin
+     LazyInitYtts;
+     Fytts.push_msg(msg);
+    end;
+  1:begin
+     frmMain.LazyInitAudioThread;
+
+     H:=TSAPIHandle2.Create;
+     H.OnFinish:=@H.OnFinishSAPI;
+     H.AudioConnection:=FAudioThread;
+
+     H.Text           :=msg;
+     H.Rate           :=sapi_param.FRate;
+     H.Volume         :=sapi_param.FVolume;
+     H.VoiceName      :=sapi_param.FVoiceName;
+     H.AudioOutputName:=sapi_param.FAudioOutputName;
+     H.Send;
+    end;
+ end;
+end;
+
 procedure TFrmYtts.add_to_chat_cmd(highlighted:Boolean;const cmd,param,msg:RawByteString);
 Const
  maxqueue=2;
 begin
  if frmMain.BtnPlay.CaptionState<>0 then Exit;
- Case ytts_param.Fmode of
+ Case tts_mode of
   1:begin
      if (cmd<>'') and (cmd[1]<>'!') then
       if (FPlayRef<=maxqueue) or highlighted then
       begin
-       LazyInitYtts;
-       Fytts.push_msg(msg);
+       push_msg(msg);
       end;
     end;
   2:begin
@@ -366,16 +562,14 @@ begin
       if (param<>'') then
        if (FPlayRef<=maxqueue) or highlighted then
        begin
-        LazyInitYtts;
-        Fytts.push_msg(param);
+        push_msg(param);
        end;
     end;
   3:begin
      if highlighted then
       if (msg<>'') then
       begin
-       LazyInitYtts;
-       Fytts.push_msg(msg);
+       push_msg(msg);
       end;
     end;
  end;

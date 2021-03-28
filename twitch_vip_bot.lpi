@@ -191,6 +191,28 @@
 -dLS_NOT_udivdi3
 -dLS_NOT_umoddi3
 -dLS_NOT_imp___iob"/>
+      <OtherDefines Count="20">
+        <Define0 Value="DisableMemoryLeakReporting"/>
+        <Define1 Value="USE_STATIC_NGHTTP2"/>
+        <Define2 Value="USE_STATIC_PORTAUDIO"/>
+        <Define3 Value="USE_STATIC_SNDFILE"/>
+        <Define4 Value="LS_NOT_chkstk_ms"/>
+        <Define5 Value="LS_NOT_assert"/>
+        <Define6 Value="LS_NOT_memset"/>
+        <Define7 Value="LS_NOT_memcpy"/>
+        <Define8 Value="LS_NOT_strlen"/>
+        <Define9 Value="LS_NOT_CMEM"/>
+        <Define10 Value="LS_NOT_qsort"/>
+        <Define11 Value="LS_NOT_abort"/>
+        <Define12 Value="LS_NOT_fprintf"/>
+        <Define13 Value="LS_NOT_memmove"/>
+        <Define14 Value="LS_NOT_memcmp"/>
+        <Define15 Value="LS_NOT_fputc"/>
+        <Define16 Value="LS_NOT_udivdi3"/>
+        <Define17 Value="LS_NOT_umoddi3"/>
+        <Define18 Value="LS_NOT_imp___iob"/>
+        <Define19 Value="USE_STATIC_MPG123"/>
+      </OtherDefines>
     </Other>
   </CompilerOptions>
   <Debugging>

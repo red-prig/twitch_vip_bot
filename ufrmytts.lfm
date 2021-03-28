@@ -1,40 +1,19 @@
 object FrmYtts: TFrmYtts
-  Left = 597
-  Height = 397
-  Top = 119
-  Width = 389
+  Left = 546
+  Height = 490
+  Top = 117
+  Width = 392
   BorderIcons = [biSystemMenu]
-  Caption = 'Яндекс TTS'
-  ClientHeight = 397
-  ClientWidth = 389
+  Caption = 'Настройки TTS'
+  ClientHeight = 490
+  ClientWidth = 392
   OnCreate = FormCreate
   Position = poMainFormCenter
   LCLVersion = '2.0.10.0'
-  object CMBDevices: TComboBox
-    Left = 8
-    Height = 23
-    Top = 32
-    Width = 368
-    Anchors = [akTop, akLeft, akRight]
-    ItemHeight = 15
-    OnKeyDown = FormKeyDown
-    Style = csDropDownList
-    TabOrder = 0
-  end
-  object LDevices: TLabel
-    Left = 8
-    Height = 17
-    Top = 8
-    Width = 179
-    Caption = 'Устройства воспроизведения:'
-    Font.Height = -13
-    ParentColor = False
-    ParentFont = False
-  end
   object BtnCancel: TBitBtn
-    Left = 285
+    Left = 288
     Height = 30
-    Top = 356
+    Top = 449
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -105,12 +84,12 @@ object FrmYtts: TFrmYtts
     }
     OnClick = BtnCancelClick
     OnKeyDown = BtnCancelKeyDown
-    TabOrder = 7
+    TabOrder = 3
   end
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 356
+    Top = 449
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -181,54 +160,12 @@ object FrmYtts: TFrmYtts
     }
     OnClick = BtnOkClick
     OnKeyDown = FormKeyDown
-    TabOrder = 6
-  end
-  object CMBVoice: TComboBox
-    Left = 8
-    Height = 23
-    Top = 144
-    Width = 368
-    Anchors = [akTop, akLeft, akRight]
-    ItemHeight = 15
-    OnKeyDown = FormKeyDown
-    Style = csDropDownList
     TabOrder = 2
-  end
-  object LVoice: TLabel
-    Left = 8
-    Height = 17
-    Top = 120
-    Width = 38
-    Caption = 'Голос:'
-    Font.Height = -13
-    ParentColor = False
-    ParentFont = False
-  end
-  object CMBEmotion: TComboBox
-    Left = 8
-    Height = 23
-    Top = 200
-    Width = 368
-    Anchors = [akTop, akLeft, akRight]
-    ItemHeight = 15
-    OnKeyDown = FormKeyDown
-    Style = csDropDownList
-    TabOrder = 3
-  end
-  object LEmotion: TLabel
-    Left = 8
-    Height = 17
-    Top = 176
-    Width = 49
-    Caption = 'Эмоция:'
-    Font.Height = -13
-    ParentColor = False
-    ParentFont = False
   end
   object LMode: TLabel
     Left = 8
     Height = 17
-    Top = 64
+    Top = 8
     Width = 91
     Caption = 'Режим работы:'
     Font.Height = -13
@@ -238,8 +175,8 @@ object FrmYtts: TFrmYtts
   object CMBMode: TComboBox
     Left = 8
     Height = 23
-    Top = 88
-    Width = 368
+    Top = 32
+    Width = 371
     Anchors = [akTop, akLeft, akRight]
     ItemHeight = 15
     Items.Strings = (
@@ -250,50 +187,246 @@ object FrmYtts: TFrmYtts
     )
     OnKeyDown = FormKeyDown
     Style = csDropDownList
-    TabOrder = 1
+    TabOrder = 0
   end
-  object TBSpeed: TTrackBar
+  object PageControlTts: TPageControl
     Left = 8
-    Height = 25
-    Top = 256
-    Width = 371
-    Max = 25
-    OnChange = TBSpeedChange
-    PageSize = 5
-    Position = 0
-    ShowSelRange = False
-    TabOrder = 4
-  end
-  object LSpeed: TLabel
-    Left = 8
-    Height = 17
-    Top = 232
-    Width = 59
-    Caption = 'Скорость:'
-    Font.Height = -13
-    ParentColor = False
-    ParentFont = False
-  end
-  object TBVolume: TTrackBar
-    Left = 8
-    Height = 25
-    Top = 320
+    Height = 320
+    Top = 120
     Width = 368
-    Max = 50
-    OnChange = TBVolumeChange
-    PageSize = 1
-    Position = 0
-    ShowSelRange = False
-    TabOrder = 5
+    ActivePage = TSYtts
+    Anchors = [akTop, akLeft, akRight, akBottom]
+    TabIndex = 0
+    TabOrder = 4
+    object TSYtts: TTabSheet
+      Caption = 'Яндекс TTS'
+      ClientHeight = 292
+      ClientWidth = 360
+      object LDevicesY: TLabel
+        Left = 8
+        Height = 17
+        Top = 8
+        Width = 179
+        Caption = 'Устройства воспроизведения:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+      object CMBDevicesY: TComboBox
+        Left = 8
+        Height = 23
+        Top = 32
+        Width = 344
+        Anchors = [akTop, akLeft, akRight]
+        ItemHeight = 15
+        OnKeyDown = FormKeyDown
+        Style = csDropDownList
+        TabOrder = 0
+      end
+      object LVoiceY: TLabel
+        Left = 8
+        Height = 17
+        Top = 64
+        Width = 38
+        Caption = 'Голос:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+      object CMBVoiceY: TComboBox
+        Left = 8
+        Height = 23
+        Top = 88
+        Width = 344
+        Anchors = [akTop, akLeft, akRight]
+        ItemHeight = 15
+        OnKeyDown = FormKeyDown
+        Style = csDropDownList
+        TabOrder = 1
+      end
+      object LEmotionY: TLabel
+        Left = 8
+        Height = 17
+        Top = 120
+        Width = 49
+        Caption = 'Эмоция:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+      object CMBEmotionY: TComboBox
+        Left = 8
+        Height = 23
+        Top = 144
+        Width = 344
+        Anchors = [akTop, akLeft, akRight]
+        ItemHeight = 15
+        OnKeyDown = FormKeyDown
+        Style = csDropDownList
+        TabOrder = 2
+      end
+      object LSpeedY: TLabel
+        Left = 8
+        Height = 17
+        Top = 176
+        Width = 59
+        Caption = 'Скорость:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+      object TBSpeedY: TTrackBar
+        Left = 8
+        Height = 25
+        Top = 200
+        Width = 344
+        Max = 25
+        OnChange = TBSpeedYChange
+        PageSize = 5
+        Position = 0
+        ShowSelRange = False
+        TabOrder = 3
+      end
+      object TBVolumeY: TTrackBar
+        Left = 8
+        Height = 25
+        Top = 256
+        Width = 344
+        Max = 50
+        OnChange = TBVolumeYChange
+        PageSize = 1
+        Position = 0
+        ShowSelRange = False
+        TabOrder = 4
+      end
+      object LVolumeY: TLabel
+        Left = 8
+        Height = 17
+        Top = 232
+        Width = 66
+        Caption = 'Громкость:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+    end
+    object TSSAPI: TTabSheet
+      Caption = 'SAPI TTS'
+      ClientHeight = 292
+      ClientWidth = 360
+      object LDevicesS: TLabel
+        Left = 8
+        Height = 17
+        Top = 8
+        Width = 179
+        Caption = 'Устройства воспроизведения:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+      object CMBDevicesS: TComboBox
+        Left = 8
+        Height = 23
+        Top = 32
+        Width = 344
+        Anchors = [akTop, akLeft, akRight]
+        ItemHeight = 15
+        OnKeyDown = FormKeyDown
+        Style = csDropDownList
+        TabOrder = 0
+      end
+      object LVoiceS: TLabel
+        Left = 8
+        Height = 17
+        Top = 64
+        Width = 38
+        Caption = 'Голос:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+      object CMBVoiceS: TComboBox
+        Left = 8
+        Height = 23
+        Top = 88
+        Width = 344
+        Anchors = [akTop, akLeft, akRight]
+        ItemHeight = 15
+        OnKeyDown = FormKeyDown
+        Style = csDropDownList
+        TabOrder = 1
+      end
+      object LSpeedS: TLabel
+        Left = 8
+        Height = 17
+        Top = 120
+        Width = 59
+        Caption = 'Скорость:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+      object TBSpeedS: TTrackBar
+        Left = 8
+        Height = 25
+        Top = 144
+        Width = 344
+        Min = -10
+        OnChange = TBSpeedSChange
+        PageSize = 5
+        Position = 0
+        ShowSelRange = False
+        TabOrder = 2
+      end
+      object LVolumeS: TLabel
+        Left = 8
+        Height = 17
+        Top = 176
+        Width = 66
+        Caption = 'Громкость:'
+        Font.Height = -13
+        ParentColor = False
+        ParentFont = False
+      end
+      object TBVolumeS: TTrackBar
+        Left = 8
+        Height = 25
+        Top = 200
+        Width = 344
+        Max = 50
+        OnChange = TBVolumeSChange
+        PageSize = 1
+        Position = 0
+        ShowSelRange = False
+        TabOrder = 3
+      end
+    end
   end
-  object LVolume: TLabel
+  object LIntf: TLabel
     Left = 8
     Height = 17
-    Top = 296
-    Width = 66
-    Caption = 'Громкость:'
+    Top = 64
+    Width = 69
+    Caption = 'Интерфейс:'
     Font.Height = -13
     ParentColor = False
     ParentFont = False
+  end
+  object CMBIntf: TComboBox
+    Left = 8
+    Height = 23
+    Top = 88
+    Width = 371
+    Anchors = [akTop, akLeft, akRight]
+    ItemHeight = 15
+    ItemIndex = 0
+    Items.Strings = (
+      'Яндекс TTS'
+      'SAPI'
+    )
+    OnKeyDown = FormKeyDown
+    Style = csDropDownList
+    TabOrder = 1
+    Text = 'Яндекс TTS'
   end
 end

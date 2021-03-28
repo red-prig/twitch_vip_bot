@@ -311,9 +311,9 @@ type
 implementation
 
 uses
- DbcScriptExp,
- DbcScriptUtils,
- ZTokenizer,
+ //DbcScriptExp,
+ //DbcScriptUtils,
+ //ZTokenizer,
 
  UFrmYtts,
  WinAudioSession,
@@ -1749,6 +1749,7 @@ begin
  FreeAndNil(DbcThread);
  evpool_stop(@pool);
  FreeAndNil(Config);
+ FreeAndNil(FAudioThread);
 end;
 
 procedure TFrmMain.SetShowChat(V:Boolean);
@@ -2342,7 +2343,7 @@ begin
 
  //ytts
  Item:=TMenuItem.Create(PopupCfg);
- Item.Caption:='Яндекс TTS';
+ Item.Caption:='Настройки TTS';
  Item.OnClick:=@OnPopupClickYttsParam;
  PopupCfg.Items.Add(Item);
 

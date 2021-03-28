@@ -33,6 +33,8 @@ interface
 uses
  {$IFDEF WINDOWS}
  Windows,
+ ActiveX,
+ SpeechLib_TLB,
  {$ENDIF}
  ctypes,
  SysUtils,
@@ -54,14 +56,30 @@ type
  PQNode=^TQNode;
  TQNode=object(UAsyncQueue.TQFrom2Node)
   public
+   Ftype:SizeUInt;
+ end;
+
+ PQNodeStream=^TQNodeStream;
+ TQNodeStream=object(TQNode)
+  public
    FStream:TStream;
    FVolume:Single;
    FIndex:PaDeviceIndex;
-   FIsMpg:Boolean;
+ end;
+
+ PQNodeSAPI=^TQNodeSAPI;
+ TQNodeSAPI=object(TQNode)
+  public
+   FRate:Integer;
+   FVolume:Integer;
+   FText:RawByteString;
+   FVoiceName:RawByteString;
+   FAudioOutputName:RawByteString;
  end;
 
  TAudioThread=class(TCustomAsyncThread)
   private
+   hVoice:ISpeechVoice;
    FCanPlay:Boolean;
   protected
    Procedure   InherBegin;  override;
@@ -70,6 +88,7 @@ type
    function    OpenStream(FIndex:PaDeviceIndex;Channels:Integer;sampleRate:Double):PaStream;
    Procedure   OnPlay_sndfile(FStream:TStream;FVolume:Single;FIndex:PaDeviceIndex);
    Procedure   OnPlay_mpgfile(FStream:TStream;FVolume:Single;FIndex:PaDeviceIndex);
+   Procedure   OnPlay_sapi(FRate,FVolume:Integer;Const FText,FVoiceName,FAudioOutputName:RawByteString);
   public
    Constructor Create;
   published
@@ -93,7 +112,7 @@ type
  TAudioHandle=class
   protected
    FAudioCon:TAudioConnection;
-   Node:TQNode;
+   Node:TQNodeStream;
    FState:Boolean;
   public
    Var
@@ -103,13 +122,42 @@ type
    Procedure   SetStream(S:TStream);
    Procedure   BreakSend;
    Procedure   Finish;
+   Procedure   SetIsMpg(b:Boolean);
+   function    GetIsMpg:Boolean;
   published
    property    AudioConnection:TAudioConnection read FAudioCon write SetConnection;
    property    State:Boolean  read FState;
    property    Stream:TStream read Node.FStream write SetStream;
    property    Volume:Single  read Node.FVolume write Node.FVolume;
    property    DeviceIndex:PaDeviceIndex read Node.FIndex write Node.FIndex;
-   property    IsMpg:Boolean read Node.FIsMpg write Node.FIsMpg;
+   property    IsMpg:Boolean read GetIsMpg write SetIsMpg;
+  public
+   Procedure   Clear;
+   Constructor Create;
+   Destructor  Destroy; override;
+   Procedure   Send;
+ end;
+
+ TSAPIHandle=class
+  protected
+   FAudioCon:TAudioConnection;
+   Node:TQNodeSAPI;
+   FState:Boolean;
+  public
+   Var
+    OnFinish:TFuncEvent;
+  protected
+   Procedure   SetConnection(C:TAudioConnection);
+   Procedure   BreakSend;
+   Procedure   Finish;
+  published
+   property    AudioConnection:TAudioConnection read FAudioCon write SetConnection;
+   property    State:Boolean                 read FState;
+   property    Rate:Integer                  read Node.FRate write Node.FRate;
+   property    Volume:Integer                read Node.FVolume write Node.FVolume;
+   property    Text:RawByteString            read Node.FText write Node.FText;
+   property    VoiceName:RawByteString       read Node.FVoiceName write Node.FVoiceName;
+   property    AudioOutputName:RawByteString read Node.FAudioOutputName write Node.FAudioOutputName;
   public
    Procedure   Clear;
    Constructor Create;
@@ -123,6 +171,13 @@ type
 Procedure EnumOutputDevice(cb:TEnumDevice);
 
 function sf_open_stream(S:TStream;mode:Integer;var sfinfo:TSF_INFO):TSNDFILE_HANDLE;
+
+type
+ ISpeechObjectToken=SpeechLib_TLB.ISpeechObjectToken;
+ TEnumSAPIVoiceCb=procedure(const name:RawByteString;Voice:ISpeechObjectToken) of object;
+
+Procedure EnumSAPIVoices(cb:TEnumSAPIVoiceCb);
+Procedure EnumSAPIAudioOutputs(cb:TEnumSAPIVoiceCb);
 
 implementation
 
@@ -320,7 +375,7 @@ end;
 
 Procedure TAudioThread.InherBegin;
 begin
-
+ hVoice:=nil;
 end;
 
 Procedure TAudioThread.InherEnd;
@@ -332,6 +387,7 @@ begin
  begin
   SendFrom(Node);
  end;
+ hVoice:=nil;
 end;
 
 function TAudioThread.OpenStream(FIndex:PaDeviceIndex;Channels:Integer;sampleRate:Double):PaStream;
@@ -568,6 +624,141 @@ begin
  sf_close(sndFile);
 end;
 
+Procedure TAudioThread.OnPlay_sapi(FRate,FVolume:Integer;Const FText,FVoiceName,FAudioOutputName:RawByteString);
+
+ procedure SetVoiceName(const name:RawByteString);
+ var
+  i,c:Integer;
+  FVoices:ISpeechObjectTokens;
+  FVoice:ISpeechObjectToken;
+  W:WideString;
+ begin
+  if (Trim(name)='') then Exit;
+
+  W:=UTF8Decode(Trim(name));
+  //FVoice:=hVoice.Get_Voice;
+  //if (FVoice<>nil) then
+  // if (Trim(FVoice.GetDescription(0))=W) then Exit;
+  FVoices:=hVoice.GetVoices('name='+W,'');
+  if (FVoices=nil) then Exit;
+  c:=FVoices.Count;
+  if c<>0 then
+  for i:=0 to c-1 do
+  begin
+   FVoice:=FVoices.Item(i);
+   if (W=Trim(FVoice.GetDescription(0))) then
+   begin
+    hVoice._Set_Voice(FVoice);
+    Break;
+   end;
+  end;
+ end;
+
+ procedure SetAudioOutputName(const name:RawByteString);
+ var
+  i,c:Integer;
+  FVoices:ISpeechObjectTokens;
+  FVoice:ISpeechObjectToken;
+  W:WideString;
+ begin
+  if (Trim(name)='') then Exit;
+
+  W:=UTF8Decode(Trim(name));
+  //FVoice:=hVoice.Voice;
+  //if (FVoice<>nil) then
+  // if (Trim(FVoice.GetDescription(0))=W) then Exit;
+  FVoices:=hVoice.GetAudioOutputs('name='+W,'');
+  if (FVoices=nil) then Exit;
+  c:=FVoices.Count;
+  if c<>0 then
+  for i:=0 to c-1 do
+  begin
+   FVoice:=FVoices.Item(i);
+   if (W=Trim(FVoice.GetDescription(0))) then
+   begin
+    hVoice._Set_AudioOutput(FVoice);
+    Break;
+   end;
+  end;
+ end;
+
+begin
+ try
+  if (hVoice=nil) then
+  begin
+   CoInitialize(nil);
+   hVoice:=CoSpVoice.Create;
+  end;
+  if (hVoice=nil) then Exit;
+  hVoice.Rate  :=FRate;
+  hVoice.Volume:=FVolume;
+  SetVoiceName(FVoiceName);
+  SetAudioOutputName(FAudioOutputName);
+
+  if FState or (not FCanPlay) then Exit;
+
+  hVoice.Resume;
+  hVoice.Speak(UTF8Decode(FText),SVSFlagsAsync or SVSFPurgeBeforeSpeak);
+
+  While (not FState) and FCanPlay do
+  begin
+   hVoice.WaitUntilDone(200);
+   if (hVoice.Status.RunningState=SRSEDone) then Break;
+  end;
+  hVoice.Skip('Sentence',1);
+
+ except
+  on E:Exception do
+  begin
+   DumpExceptionCallStack(E);
+  end;
+ end;
+end;
+
+Procedure EnumSAPIVoices(cb:TEnumSAPIVoiceCb);
+var
+ i,c:Integer;
+ hVoice:ISpeechVoice;
+ FVoices:ISpeechObjectTokens;
+ FVoice:ISpeechObjectToken;
+begin
+ if (cb=nil) then Exit;
+ CoInitialize(nil);
+ hVoice:=CoSpVoice.Create;
+ if (hVoice=nil) then Exit;
+ FVoices:=hVoice.GetVoices('','');
+ if (FVoices=nil) then Exit;
+ c:=FVoices.Count;
+ if c<>0 then
+ for i:=0 to c-1 do
+ begin
+  FVoice:=FVoices.Item(i);
+  cb(UTF8Encode(FVoice.GetDescription(0)),FVoice);
+ end;
+end;
+
+Procedure EnumSAPIAudioOutputs(cb:TEnumSAPIVoiceCb);
+var
+ i,c:Integer;
+ hVoice:ISpeechVoice;
+ FVoices:ISpeechObjectTokens;
+ FVoice:ISpeechObjectToken;
+begin
+ if (cb=nil) then Exit;
+ CoInitialize(nil);
+ hVoice:=CoSpVoice.Create;
+ if (hVoice=nil) then Exit;
+ FVoices:=hVoice.GetAudioOutputs('','');
+ if (FVoices=nil) then Exit;
+ c:=FVoices.Count;
+ if c<>0 then
+ for i:=0 to c-1 do
+ begin
+  FVoice:=FVoices.Item(i);
+  cb(UTF8Encode(FVoice.GetDescription(0)),FVoice);
+ end;
+end;
+
 Procedure TAudioThread.InherUpdate;
 Var
  Node:PQNode;
@@ -582,9 +773,13 @@ begin
  begin
   try
    if FCanPlay then
-    Case Node^.FIsMpg of
-     True :OnPlay_mpgfile(Node^.FStream,Node^.FVolume,Node^.FIndex);
-     False:OnPlay_sndfile(Node^.FStream,Node^.FVolume,Node^.FIndex);
+    Case Node^.Ftype of
+     0:With PQNodeStream(Node)^ do
+        OnPlay_sndfile(FStream,FVolume,FIndex);
+     1:With PQNodeStream(Node)^ do
+        OnPlay_mpgfile(FStream,FVolume,FIndex);
+     2:With PQNodeSAPI(Node)^ do
+        OnPlay_sapi(FRate,FVolume,FText,FVoiceName,FAudioOutputName);
     end;
   except
    on E:Exception do
@@ -690,11 +885,11 @@ end;
 
 Constructor TAudioHandle.Create;
 begin
- Node:=Default(TQNode);
+ Node:=Default(TQNodeStream);
  Node.Parent:=@Finish;
  Node.FVolume:=1;
  Node.FIndex:=-1;
- Node.FIsMpg:=False;
+ Node.Ftype:=0;
  FState:=False;
 end;
 
@@ -754,6 +949,122 @@ begin
   Exit;
  end;
  Log(app_logic,0,['AudioHandle.Send,OnFinish:',TMethod(OnFinish).Code,TMethod(OnFinish).Data]);
+
+ OnFinish();
+end;
+
+Procedure TAudioHandle.SetIsMpg(b:Boolean);
+begin
+ Case b of
+  True :Node.Ftype:=0;
+  False:Node.Ftype:=1;
+ end;
+end;
+
+function  TAudioHandle.GetIsMpg:Boolean;
+begin
+ Result:=(Node.Ftype=1);
+end;
+
+/////////
+
+Procedure TSAPIHandle.Clear;
+begin
+ if FState then Exit;
+ OnFinish:=nil;
+ Node.FRate:=0;
+ Node.FVolume:=100;
+ Node.FText:='';
+ Node.FVoiceName:='';
+ Node.FAudioOutputName:='';
+end;
+
+Procedure TSAPIHandle.SetConnection(C:TAudioConnection);
+begin
+ if not State then
+ if FAudioCon<>C then
+ begin
+  if Assigned(FAudioCon) then
+  begin
+   FAudioCon.Free;
+  end;
+  FAudioCon:=C;
+  if Assigned(FAudioCon) then
+  begin
+   FAudioCon.Acquire;
+  end;
+ end;
+end;
+
+Constructor TSAPIHandle.Create;
+begin
+ Node:=Default(TQNodeSAPI);
+ Node.Parent:=@Finish;
+ Node.FRate:=0;
+ Node.FVolume:=100;
+ Node.FText:='';
+ Node.FVoiceName:='';
+ Node.FAudioOutputName:='';
+ Node.Ftype:=2;
+ FState:=False;
+end;
+
+Destructor  TSAPIHandle.Destroy;
+begin
+ Clear;
+ SetConnection(nil);
+end;
+
+Procedure TSAPIHandle.BreakSend;
+begin
+ FState:=True;
+ Node.Parent:=@Finish;
+ SendCurrQueue(@Node);
+end;
+
+Procedure TSAPIHandle.Send;
+begin
+ if not Assigned(Self) then
+ begin
+  Log(app_logic,1,['SAPIHandle.Send,Assigned(Self):',Self]);
+  Exit;
+ end;
+ if FState then
+ begin
+  Log(app_logic,1,['SAPIHandle.Send,FState:',FState]);
+  Exit;
+ end;
+
+ Node.Parent:=@Finish;
+
+ if not Assigned(FAudioCon) then
+ begin
+  Log(app_logic,1,['SAPIHandle.Send,Assigned(FAudioCon):',FAudioCon]);
+  Finish;
+  Exit;
+ end;
+
+ if FAudioCon.Send(@Node) then
+ begin
+  FState:=True;
+ end else
+ begin
+  Log(app_logic,1,['SAPIHandle.SendRequest=false']);
+  BreakSend;
+  Exit;
+ end;
+
+end;
+
+Procedure TSAPIHandle.Finish;
+begin
+ FState:=False;
+ if not Assigned(OnFinish) then
+ begin
+  Log(app_logic,1,['SAPIHandle.Send,Assigned(OnFinish):',TMethod(OnFinish).Code,TMethod(OnFinish).Data]);
+  Exit;
+ end;
+ Log(app_logic,0,['SAPIHandle.Send,OnFinish:',TMethod(OnFinish).Code,TMethod(OnFinish).Data]);
 
  OnFinish();
 end;
