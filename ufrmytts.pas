@@ -110,6 +110,7 @@ implementation
 {$R *.lfm}
 
 uses
+ WordFilter,
  uLog,
  main;
 
@@ -533,6 +534,9 @@ begin
      H:=TSAPIHandle2.Create;
      H.OnFinish:=@H.OnFinishSAPI;
      H.AudioConnection:=FAudioThread;
+
+     FiltredChar(PAnsiChar(msg),Length(msg));
+     FiltredWords(PAnsiChar(msg),Length(msg));
 
      H.Text           :=msg;
      H.Rate           :=sapi_param.FRate;
