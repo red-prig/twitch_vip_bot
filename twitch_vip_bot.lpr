@@ -24,10 +24,10 @@ program twitch_vip_bot;
 {$mode objfpc}{$H+}
 
 uses
-  {$IFDEF UNIX}{$IFDEF UseCThreads}
-  cthreads,
-  {$ENDIF}{$ENDIF}
   FastMM4,
+  {$IFDEF UNIX}
+  cthreads,
+  {$ENDIF}
 
   evpool,bufferevent_openssl,
 
@@ -46,17 +46,25 @@ uses
 
 type
  TUserApp=class(TApplication)
-   procedure TimerIdleUpdate(Sender:TObject);
    procedure CustomExceptionHandler(Sender:TObject;E:Exception);
    procedure OnIdleUpdate(Sender:TObject;var Done:Boolean);
    Procedure FOnLog(time_:TDateTime;type_:LogType;code_:SizeInt;Const S:String);
    procedure OnIPCEvent(Sender:TObject);
  end;
 
-procedure TUserApp.TimerIdleUpdate(Sender:TObject);
+ TNodeQueueApp=class(TNodeQueue)
+  public
+   Function Send(Node:Pointer):Boolean; override;
+ end;
+
+Function TNodeQueueApp.Send(Node:Pointer):Boolean;
 begin
- ProcessMessages;
- if not Terminated then Idle(False);
+ Result:=inherited Send(Node);
+ if Result then
+ begin
+  if Assigned(WakeMainThread) then
+   WakeMainThread(nil);
+ end;
 end;
 
 procedure TUserApp.CustomExceptionHandler(Sender:TObject;E:Exception);
@@ -112,9 +120,6 @@ begin
  Application.MainForm.Show;
 end;
 
-Var
- TimerIdleUpdate:TTimer;
-
 Const
  BOM:PAnsiChar=#$EF#$BB#$BF;
 
@@ -140,7 +145,7 @@ begin
 
   RequireDerivedFormResource:=True;
 
-  UAsyncQueue.MainQueue:=TNodeQueue.Create;
+  UAsyncQueue.MainQueue:=TNodeQueueApp.Create;
   UAsyncQueue.CurrQueue:=UAsyncQueue.MainQueue;
 
   Application.OnException:=@TUserApp(Application).CustomExceptionHandler;
@@ -159,11 +164,6 @@ begin
   pool:=Default(Tevpool);
   pool_config:=Default(Tevpool_config);
   evpool_start(@pool,1,@pool_config);
-
-  TimerIdleUpdate:=TTimer.Create(Application);
-  TimerIdleUpdate.Interval:=400;
-  TimerIdleUpdate.OnTimer:=@TUserApp(Application).TimerIdleUpdate;
-  TimerIdleUpdate.Enabled:=True;
 
   Application.Scaled:=True;
   Application.Initialize;
