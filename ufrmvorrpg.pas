@@ -1385,7 +1385,7 @@ type
  end;
 
  TDbcGetUsersTop=class(TDbcStatementScript)
-  top:array[0..2] of TTopRec;
+  top:array of TTopRec;
   user:RawByteString;
   Procedure OnAdd(const _user:RawByteString;_LVL,_EXP:Int64);
   Procedure OnFin(Sender:TBaseTask);
@@ -1457,16 +1457,21 @@ begin
  push_irc_msg(Format(vor_rpg.stat_msg.top_msg2,[user,list]));
 end;
 
-procedure GetDBRpgUserTop(Const user:RawByteString);
+procedure GetDBRpgUserTop(Const user:RawByteString;count:DWORD);
 var
  FDbcScript:TDbcGetUsersTop;
 begin
+ if (count=0)  then count:=3;
+ if (count>10) then count:=10;
+
  FDbcScript:=TDbcGetUsersTop.Create;
  FDbcScript.Handle.DbcConnection:=DbcThread;
  FDbcScript.Notify.Add(T_FIN,@FDbcScript.OnFin);
  FDbcScript.SetSctipt(FGetRpgTop);
  FDbcScript.ExecuteScript;
  FDbcScript.user:=user;
+ SetLength(FDbcScript.top,count);
+ FDbcScript.Params.SetInt64('count',count);
  FDbcScript.Start;
  FDbcScript.Release;
 end;
@@ -3257,7 +3262,8 @@ begin
              push_irc_msg(Format(vor_rpg.stat_msg.help_msg3,[user]));
             end;
       'top':begin
-             GetDBRpgUserTop(user);
+             v:=LowerCase(FetchAny(F));
+             GetDBRpgUserTop(user,StrToDWORDDef(V,3));
             end;
 
      else

@@ -205,9 +205,11 @@
   <on_debuf>  @%s наложен дебаф: (%s)                                       </on_debuf>
   <debuf_pr>  @%s &lt; %s &gt;                                              </debuf_pr>
   <help_msg3> @%s https://docs.google.com/spreadsheets/d/1FCLJ4cR-HaOpttgT43RbnT_bC12mbbRX9ozBwtS8zfY/edit </help_msg3>
-  <top_msg1>  %s)%s|LVL:%s|EXP:%s </top_msg1>
+  <top_msg1>  %s)%s[LVL:%s|EXP:%s]</top_msg1>
   <top_msg2>  @%s %s              </top_msg2>
  </stat_msg>
+dsfsdfsdf
+
 
  <calc>
   <BASE_TIME>4500</BASE_TIME>
@@ -590,7 +592,7 @@
  </delete_vips>
 
  <get_rpg_top>
-  SELECT * FROM rpg ORDER BY LVL DESC,EXP DESC LIMIT 3;
+  SELECT * FROM rpg ORDER BY LVL DESC,EXP DESC LIMIT @count;
  </get_rpg_top>
 
  <get_rpg_user1>
