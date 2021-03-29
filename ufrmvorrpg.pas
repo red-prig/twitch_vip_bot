@@ -2153,6 +2153,8 @@ begin
  begin
   //not found in base
 
+  data[0].Delete('kick._in'); //off timeout
+
   push_irc_msg(Format(get_random_msg(vor_rpg.kick.not_vor),[user[0]]));
 
   if is_mod then
