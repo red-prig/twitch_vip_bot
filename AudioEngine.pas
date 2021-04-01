@@ -89,6 +89,7 @@ type
    Procedure   OnPlay_sndfile(FStream:TStream;FVolume:Single;FIndex:PaDeviceIndex);
    Procedure   OnPlay_mpgfile(FStream:TStream;FVolume:Single;FIndex:PaDeviceIndex);
    Procedure   OnPlay_sapi(FRate,FVolume:Integer;Const FText,FVoiceName,FAudioOutputName:RawByteString);
+   Procedure   WaitNext;
   public
    Constructor Create;
   published
@@ -759,6 +760,28 @@ begin
  end;
 end;
 
+Procedure TAudioThread.WaitNext;
+const
+ wait_time=1000;
+var
+ i,d:Int64;
+begin
+ i:=wait_time;
+ While (not FState) and FCanPlay do
+ begin
+  d:=GetTickCount64;
+  RTLeventWaitFor(FQueue.hEvent,i);
+  d:=GetTickCount64-d;
+  if (d>=i) then
+  begin
+   Break;
+  end else
+  begin
+   i:=i-d;
+  end;
+ end;
+end;
+
 Procedure TAudioThread.InherUpdate;
 Var
  Node:PQNode;
@@ -788,6 +811,8 @@ begin
    end;
   end;
   SendFrom(Node);
+  if FCanPlay then
+   WaitNext;
   if rc=0 then Break;
   Dec(rc);
   if rc=0 then Break;
