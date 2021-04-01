@@ -691,6 +691,9 @@ type
   Function  GetESCPercent:Int64;
   Function  GetAGLPercent:Int64;
   Function  GetTime:Int64;
+  Function  kick_in_time:Int64;  inline;
+  Function  kick_out_time:Int64; inline;
+  Function  duel_kd_time:Int64;  inline;
   procedure IncEXP(val:Int64);
   Function  NeedReset:Boolean;
   Function  Reset(is_mod:Boolean):Boolean;
@@ -920,6 +923,21 @@ begin
   Result:=Trunc(Log2(_CHR*3-2)*vor_rpg.calc.MUL_TIME+vor_rpg.calc.DEC_TIME)
  else
   Result:=-Trunc(Log2(abs(_CHR)*3-2)*vor_rpg.calc.MUL_TIME+vor_rpg.calc.DEC_TIME);
+end;
+
+Function TPlayer.kick_in_time:Int64; inline;
+begin
+ Result:=vor_rpg.kick.in_time-GetTime;
+end;
+
+Function TPlayer.kick_out_time:Int64; inline;
+begin
+ Result:=vor_rpg.kick.out_time+GetTime;
+end;
+
+Function TPlayer.duel_kd_time:Int64; inline;
+begin
+ Result:=vor_rpg.duel.kd_time-GetTime;
 end;
 
 procedure TUserPoints.Load(J:TJson);
@@ -1752,20 +1770,22 @@ var
  procedure vacuum;
  var
   now,time:Int64;
+  Points:TPlayer;
  begin
+  Points.Load(data);
   now:=DateTimeToUnix(sysutils.Now,False);
   time:=data.Path['duel.time'].AsInt(0);
-  if (time=0) or ((time+vor_rpg.duel.kd_time)<=Now) then
+  if (time=0) or ((time+Points.duel_kd_time)<=Now) then
   begin
    Save40nul(data,'duel.time',0);
   end;
   time:=data.Path['kick._in'].AsInt(0);
-  if (time=0) or ((time+vor_rpg.kick.in_time)<=Now) then
+  if (time=0) or ((time+Points.kick_in_time)<=Now) then
   begin
    Save40nul(data,'kick._in',0);
   end;
   time:=data.Path['kick._out'].AsInt(0);
-  if (time=0) or ((time+vor_rpg.kick.out_time)<=Now) then
+  if (time=0) or ((time+Points.kick_out_time)<=Now) then
   begin
    Save40nul(data,'kick._out',0);
   end;
@@ -2127,12 +2147,15 @@ var
  Now,time:Int64;
 begin
 
+ Points1.Load(data[0]);
+ Points2.Load(data[1]);
+
  Now:=DateTimeToUnix(sysutils.Now,False);
 
  time:=data[0].Path['kick._in'].AsInt(0);
- if (time<>0) and ((time+vor_rpg.kick.in_time)>Now) then
+ if (time<>0) and ((time+Points1.kick_in_time)>Now) then
  begin
-  time:=(time+vor_rpg.kick.in_time)-Now;
+  time:=(time+Points1.kick_in_time)-Now;
   if vor_rpg.kick.in_msg='' then
   begin
    vor_rpg.kick.in_msg:='%s kick in timeout (%s)';
@@ -2168,16 +2191,14 @@ begin
    Exit;
   end;
 
-  Points1.Load(data[0]);
-
   SetDBRpgUser1(user[0],data[0],@OnUnlock);
   Exit;
  end;
 
  time:=data[1].Path['kick._out'].AsInt(0);
- if (time<>0) and ((time+vor_rpg.kick.out_time)>Now) then
+ if (time<>0) and ((time+Points2.kick_out_time)>Now) then
  begin
-  time:=(time+vor_rpg.kick.out_time)-Now;
+  time:=(time+Points2.kick_out_time)-Now;
   if vor_rpg.kick.out_msg='' then
   begin
    vor_rpg.kick.out_msg:='%s kick out timeout (%s)';
@@ -2187,9 +2208,6 @@ begin
   Exit;
  end;
  data[1].Values['kick._out']:=Now;
-
- Points1.Load(data[0]);
- Points2.Load(data[1]);
 
  val:=vor_rpg.kick.PERC+Points1.GetESCPercent-Points2.GetESCPercent;
  if is_mod then val:=val+10;
@@ -2640,9 +2658,9 @@ var
   Result:=False;
   Now:=DateTimeToUnix(sysutils.Now,False);
   time:=data.Path['duel.time'].AsInt(0);
-  if (time<>0) and ((time+vor_rpg.duel.kd_time)>Now) then
+  if (time<>0) and ((time+Points.duel_kd_time)>Now) then
   begin
-   time:=(time+vor_rpg.duel.kd_time)-Now;
+   time:=(time+Points.duel_kd_time)-Now;
    if (vor_rpg.duel.time_msg='') then
    begin
     vor_rpg.duel.time_msg:='@%s duel in timeout (%s)';
