@@ -133,6 +133,7 @@ var
     top_msg1,
     top_msg2,
     rate_msg,
+    rank_msg,
     on_debuf,
     debuf_pr:RawByteString;
    end;
@@ -197,6 +198,7 @@ var
   FrmVorRpg: TFrmVorRpg;
 
   FGetRpgTop:TSQLScript;
+  FGetRpgRank:TSQLScript;
 
   FGetRpgUser1:TSQLScript;
   FGetRpgUser2:TSQLScript;
@@ -1494,6 +1496,62 @@ begin
  FDbcScript.Params.SetInt64('count',count);
  FDbcScript.Start;
  FDbcScript.Release;
+end;
+
+type
+ TDbcGetUsersRank=class(TDbcStatementScript)
+  s:RawByteString;
+  Procedure OnFin(Sender:TBaseTask);
+ end;
+
+Procedure TDbcGetUsersRank.OnFin(Sender:TBaseTask);
+var
+ rank_f:SizeInt;
+ rank:Int64;
+begin
+
+ rank:=0;
+ if (ResultSet<>nil) then
+ if ResultSet.First then
+ begin
+  rank_f:=ResultSet.FindColumn('rank');
+  rank:=ResultSet.GetLong(rank_f);
+ end;
+
+ if vor_rpg.stat_msg.rank_msg='' then
+ begin
+  vor_rpg.stat_msg.rank_msg:='@%s Rank:%s';
+ end;
+
+ push_irc_msg(Format(vor_rpg.stat_msg.rank_msg,[s,IntToStr(rank)]));
+end;
+
+procedure GetDBRpgUserRank(Const s,user:RawByteString);
+var
+ FDbcScript:TDbcGetUsersRank;
+begin
+ FDbcScript:=TDbcGetUsersRank.Create;
+ FDbcScript.Handle.DbcConnection:=DbcThread;
+ FDbcScript.Notify.Add(T_FIN,@FDbcScript.OnFin);
+ FDbcScript.SetSctipt(FGetRpgRank);
+ FDbcScript.ExecuteScript;
+ FDbcScript.s:=s;
+ FDbcScript.Params.SetRawByteString('user',user);
+ FDbcScript.Start;
+ FDbcScript.Release;
+end;
+
+procedure _GetDBRpgUserTop(Const user,msg:RawByteString);
+var
+ count:DWORD;
+begin
+ if TryStrToDWord(msg,count) then
+ begin
+  GetDBRpgUserTop(user,count);
+ end else
+ begin
+  GetDBRpgUserRank(user,LowerCase(Extract_nick(msg)));
+ end;
 end;
 
 type
@@ -3320,8 +3378,8 @@ begin
              push_irc_msg(Format(vor_rpg.stat_msg.help_msg3,[user]));
             end;
       'top':begin
-             v:=LowerCase(FetchAny(F));
-             GetDBRpgUserTop(user,StrToDWORDDef(V,3));
+             v:=FetchAny(F);
+             _GetDBRpgUserTop(user,v);
             end;
 
      else

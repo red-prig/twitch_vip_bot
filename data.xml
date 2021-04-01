@@ -208,6 +208,7 @@
   <top_msg1>  %s)%s[LVL:%s|EXP:%s]</top_msg1>
   <top_msg2>  @%s %s              </top_msg2>
   <rate_msg>  @%s Побед:%s|Поражений:%s [%s%%]</rate_msg>
+  <rank_msg>  @%s Ранг:%s </rank_msg>
  </stat_msg>
 dsfsdfsdf
 
@@ -596,6 +597,14 @@ dsfsdfsdf
  <get_rpg_top>
   SELECT * FROM rpg ORDER BY LVL DESC,EXP DESC LIMIT @count;
  </get_rpg_top>
+
+ <get_rpg_rank>
+  SELECT Rank FROM(
+   SELECT
+    ROW_NUMBER() OVER
+     (ORDER BY LVL DESC,EXP DESC) Rank,user
+   FROM rpg) WHERE user=@user;
+ </get_rpg_rank>
 
  <get_rpg_user1>
   SELECT * FROM rpg WHERE user=@user1;

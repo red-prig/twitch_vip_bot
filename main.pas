@@ -3511,6 +3511,10 @@ begin
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.rate_msg);
    end;
+  'rank_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.rank_msg);
+   end;
   'on_debuf':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.on_debuf);
@@ -3968,6 +3972,10 @@ begin
   'get_rpg_top':
    begin
     Node.Push(TLoadSQL_Func,@FGetRpgTop);
+   end;
+  'get_rpg_rank':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRpgRank);
    end;
   'get_rpg_user1':
    begin
