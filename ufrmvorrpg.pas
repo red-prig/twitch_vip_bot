@@ -1162,9 +1162,9 @@ begin
  Result:=i;
 end;
 
-function do_debuf(Const s,user:RawByteString;var data:TJson):Boolean;
+function do_debuf(Const {s,}user:RawByteString;var data:TJson;per_time:Byte):Boolean;
 var
- id,time:Int64;
+ id,time,tmax,tmin:Int64;
  debuf:Tdebuf;
  cmd:RawByteString;
 begin
@@ -1173,7 +1173,12 @@ begin
  if (id<>-1) then
  begin
   debuf:=Get_debuf(id);
-  time:=abs(vor_rpg.debuf.MIN_TIME)+Random(RCT,abs(vor_rpg.debuf.MAX_TIME-vor_rpg.debuf.MIN_TIME+1));
+  tmax:=Max(vor_rpg.debuf.MAX_TIME,vor_rpg.debuf.MIN_TIME);
+  tmin:=Min(vor_rpg.debuf.MAX_TIME,vor_rpg.debuf.MIN_TIME);
+  time:=tmax-tmin+1;
+  time:=(time*per_time) div 100;
+  if (time<=0) then Exit;
+  time:=tmin+Random(RCT,time);
   Set_debuf(data,id,time);
   if vor_rpg.stat_msg.on_debuf='' then
   begin
@@ -1186,7 +1191,7 @@ begin
  end;
 end;
 
-function try_debuf(Const s,user:RawByteString;var data:TJson):Boolean;
+function try_debuf(Const {s,}user:RawByteString;var data:TJson;per_time:Byte):Boolean;
 var
  rnd:Integer;
 begin
@@ -1194,7 +1199,7 @@ begin
  rnd:=Random(RCT,100);
  if (rnd<vor_rpg.debuf.PERC) then
  begin
-  Result:=do_debuf(s,user,data);
+  Result:=do_debuf({s,}user,data,per_time);
  end;
 end;
 
@@ -1223,7 +1228,7 @@ begin
    FrmMain._add_reward_2_log(s,cmd);
    Points1.IncExp(1);
 
-   try_debuf(s,user[0],data[0]);
+   try_debuf({s,}user[0],data[0],Points1.CHR);
 
   end else
   begin
@@ -1252,7 +1257,7 @@ begin
     FrmMain._add_reward_2_log(s,cmd);
     Points1.IncExp(2);
 
-    try_debuf(s,user[0],data[0]);
+    try_debuf({s,}user[0],data[0],Points1.CHR);
 
    end;
   end;
@@ -1287,7 +1292,7 @@ begin
     Points1.IncExp(4);
     Points2.IncExp(1);
 
-    try_debuf(s,user[1],data[1]);
+    try_debuf({s,}user[1],data[1],Points2.CHR);
 
    end else
    begin
@@ -1309,7 +1314,7 @@ begin
     Points1.IncExp(3);
     Points2.IncExp(1);
 
-    try_debuf(s,user[0],data[0]);
+    try_debuf({s,}user[0],data[0],Points1.CHR);
 
    end;
 
@@ -1374,7 +1379,7 @@ begin
      Points1.IncExp(1);
      Points2.IncExp(2);
 
-     try_debuf(s,user[0],data[0]);
+     try_debuf({s,}user[0],data[0],Points1.CHR);
 
     end;
 
@@ -1899,7 +1904,7 @@ begin
              Exit;
             end;
    'dbf.add':begin
-              do_debuf('',user,data);
+              do_debuf({'',}user,data,Points1.CHR);
               Points1.Save(data);
               SetDBRpgUser1(user,data,@OnUnlock);
               Exit;
@@ -2219,18 +2224,18 @@ begin
   begin
    //kick is
    push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_kick),[user[0],user[1]]));
-   do_debuf('',user[1],data[1]);
+   do_debuf({'',}user[1],data[1],Points2.CHR);
   end else
   begin
    //do def
    push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_def),[user[0],user[1]]));
-   try_debuf('',user[0],data[0]);
+   try_debuf({'',}user[0],data[0],Points1.CHR);
   end;
  end else
  begin
   //escape
   push_irc_msg(Format(get_random_msg(vor_rpg.kick.go_esc),[user[0],user[1]]));
-  try_debuf('',user[0],data[0]);
+  try_debuf({'',}user[0],data[0],Points1.CHR);
  end;
 
  if (user[0]=user[1]) then
@@ -2609,7 +2614,7 @@ begin
  if (i=0) then
   push_irc_msg(Format(get_random_msg(vor_rpg.duel.win_msg),[User[osrc],User[odst]]));
 
- try_debuf('',User[odst],data[odst]);
+ try_debuf({'',}User[odst],data[odst],Points[odst].CHR);
 
  Points[0].Save(data[0]);
  Points[1].Save(data[1]);
