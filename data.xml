@@ -599,10 +599,11 @@ dsfsdfsdf
  </get_rpg_top>
 
  <get_rpg_rank>
-  SELECT Rank FROM(
+ 
+  SELECT rank FROM(
    SELECT
     ROW_NUMBER() OVER
-     (ORDER BY LVL DESC,EXP DESC) Rank,user
+     (ORDER BY LVL DESC,EXP DESC) rank,user
    FROM rpg) WHERE user=@user;
  </get_rpg_rank>
 
