@@ -3507,6 +3507,10 @@ begin
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.top_msg2);
    end;
+  'rate_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.rate_msg);
+   end;
   'on_debuf':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.on_debuf);

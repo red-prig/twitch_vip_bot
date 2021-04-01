@@ -132,6 +132,7 @@ var
     help_msg3,
     top_msg1,
     top_msg2,
+    rate_msg,
     on_debuf,
     debuf_pr:RawByteString;
    end;
@@ -1652,9 +1653,36 @@ end;
 procedure TDbcGetUserInfo.Print;
 var
  Points:TPlayer;
+
+ procedure dorate;
+ var
+  w,l:Int64;
+  p:RawByteString;
+ begin
+  if (vor_rpg.stat_msg.rate_msg='') then
+  begin
+   vor_rpg.stat_msg.rate_msg:='@%s wins:%s|loses:%s [%s%%]';
+  end;
+  w:=data.Path['rate.win' ].AsInt64(0);
+  l:=data.Path['rate.lose'].AsInt64(0);
+  p:='';
+  if (w+l)>0 then
+  begin
+   p:=FloatToStrF(w/(w+l)*100,ffFixed,0,2);
+  end;
+  push_irc_msg(Format(vor_rpg.stat_msg.rate_msg,[src,IntToStr(w),IntToStr(l),p]));
+ end;
+
 begin
  Points.Load(data);
  case cmd of
+  'winrate',
+  'rate',
+  'wrt':
+  begin
+   dorate;
+  end;
+
   'dbf',
   'debuf':
   begin
@@ -2510,6 +2538,11 @@ type
    Procedure OnEvent; override;
  end;
 
+Procedure IncJInt64(J:TJson;const f:RawByteString;delta:Int64); inline;
+begin
+ J.Values[f]:=J.Path[f].AsInt64(0)+delta;
+end;
+
 Procedure TDuelScript.OnEvent;
 var
  Points:array[0..1] of TPlayer;
@@ -2584,9 +2617,12 @@ begin
   odst:=0;
  end;
 
- if Points[odst].Points.TryDecExp then
+ IncJInt64(data[osrc],'rate.win' ,1); //winner
+ IncJInt64(data[odst],'rate.lose',1); //loser
+
+ if Points[odst].Points.TryDecExp then //loser
  begin
-  Points[osrc].IncEXP(1);
+  Points[osrc].IncEXP(1); //winner
  end;
 
  i:=0;
@@ -3242,6 +3278,9 @@ begin
          push_irc_msg(Format('@%s !vor mod [rst,base,kick,xchg,duel,dbf,lvl,pts,stat,add [prm],sub [prm]] "nick"',[user]));
        end;
       end;
+     'winrate',
+     'rate',
+     'wrt',
      'dbf',
      'debuf',
      'level',
