@@ -599,7 +599,6 @@ dsfsdfsdf
  </get_rpg_top>
 
  <get_rpg_rank>
- 
   SELECT rank FROM(
    SELECT
     ROW_NUMBER() OVER
