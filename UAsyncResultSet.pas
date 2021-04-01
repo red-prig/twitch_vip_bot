@@ -288,20 +288,40 @@ var
 begin
   { Search for case sensitive columns. }
   for I := 0 to FColumnsInfo.Count-1 do
+   if (TZColumnInfo(FColumnsInfo[I]).ColumnName='') then
+   begin
+    if TZColumnInfo(FColumnsInfo[I]).ColumnLabel = ColumnName then
+    begin
+      Result := I+FirstDbcIndex;
+      Exit;
+    end;
+   end else
+   begin
     if TZColumnInfo(FColumnsInfo[I]).ColumnName = ColumnName then
     begin
       Result := I+FirstDbcIndex;
       Exit;
     end;
+   end;
 
   { Search for case insensitive columns. }
   ColumnNameUpper := AnsiUpperCase(ColumnName);
   for I := 0 to FColumnsInfo.Count-1 do
+   if (TZColumnInfo(FColumnsInfo[I]).ColumnName='') then
+   begin
+    if AnsiUpperCase(TZColumnInfo(FColumnsInfo[I]).ColumnLabel) = ColumnNameUpper then
+    begin
+      Result := I+FirstDbcIndex;
+      Exit;
+    end;
+   end else
+   begin
     if AnsiUpperCase(TZColumnInfo(FColumnsInfo[I]).ColumnName) = ColumnNameUpper then
     begin
       Result := I+FirstDbcIndex;
       Exit;
     end;
+   end;
 
   Result := InvalidDbcIndex;
 end;
