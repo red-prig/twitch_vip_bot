@@ -1523,7 +1523,13 @@ begin
   vor_rpg.stat_msg.rank_msg:='@%s Rank:%s';
  end;
 
- push_irc_msg(Format(vor_rpg.stat_msg.rank_msg,[s,IntToStr(rank)]));
+ if (rank=0) then
+ begin
+  push_irc_msg(Format(vor_rpg.stat_msg.rank_msg,[s,'???']));
+ end else
+ begin
+  push_irc_msg(Format(vor_rpg.stat_msg.rank_msg,[s,IntToStr(rank)]));
+ end;
 end;
 
 procedure GetDBRpgUserRank(Const s,user:RawByteString);
