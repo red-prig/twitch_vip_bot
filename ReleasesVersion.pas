@@ -64,17 +64,20 @@ end;
 type
  THtmlLinkParser=packed class(THtmlAttrParser)
   private
-   is_linka:Boolean;
+   _type_elem:Byte;
+   markdown_body:Byte;
   protected
   public
-   pattern,download_url:RawByteString;
+   pattern,download_url,markdown_text:RawByteString;
    Procedure OnAttr;                override;
    Procedure OnElementName;         override;
+   Procedure OnData(P:PAnsiChar;Len:SizeInt); override;
  end;
 
  PQNode_durl=^TQNode_durl;
  TQNode_durl=object(UAsyncQueue.TQNode)
-  len:SizeUint;
+  FUrl:PChar;
+  FText:PChar;
   data:record end;
   Procedure OnParent;
  end;
@@ -125,28 +128,57 @@ const
 Var
  url:RawByteString;
 begin
- if is_linka then
-  Case RawByteString(N) of
-   'href' :begin
-            url:=GetUnescapeHTML(V,StrLen(V));
-            if (url<>'') then
-            begin
-             if Pos(pattern,url)<>0 then
-             if Pos(pattern2,url)<>0 then
-             begin
-              download_url:=url;
-              Abort;
+ Case _type_elem of
+  1:Case RawByteString(N) of
+     'href' :begin
+              url:=GetUnescapeHTML(V,StrLen(V));
+              if (url<>'') then
+              begin
+               if Pos(pattern,url)<>0 then
+               if Pos(pattern2,url)<>0 then
+               begin
+                download_url:=url;
+                Abort;
+               end;
+              end;
              end;
-            end;
-           end;
-  end;
+    end;
+  2:Case RawByteString(N) of
+     'class':Case RawByteString(V) of
+              'markdown-body':markdown_body:=1;
+             end;
+    end;
+ end;
 end;
 
 Procedure THtmlLinkParser.OnElementName;
 begin
- Case RawByteString(N) of
-  'a' :is_linka:=True;
-  else is_linka:=False;
+ Case F of
+  '/':
+   Case RawByteString(N) of
+    'div':if (markdown_body=1) then markdown_body:=2;
+   end;
+  else
+    Case RawByteString(N) of
+     'a'  :_type_elem:=1;
+     'div':if (markdown_body=0) then _type_elem:=2;
+      'p',
+      'br':
+      if (markdown_body=1) then
+      begin
+       markdown_text:=TrimLeft(markdown_text+#13#10);
+       _type_elem:=0;
+      end;
+     else  _type_elem:=0;
+    end;
+ end;
+end;
+
+Procedure THtmlLinkParser.OnData(P:PAnsiChar;Len:SizeInt);
+begin
+ if (markdown_body=1) then
+ begin
+  markdown_text:=TrimLeft(markdown_text+GetUnescapeHTML(P,Len));
  end;
 end;
 
@@ -162,13 +194,13 @@ procedure TProgressStream2Mem.OnEndStream(Sender:TObject);
 var
  P:PQNode_durl;
  ClientData:THttpClient;
- HttpStream:THttpStream2Mem;
+ HttpStream:TProgressStream2Mem;
  Parser:THtmlLinkParser;
  M:TMemoryStream;
  URI:TURI;
  S:RawByteString;
 begin
- HttpStream:=THttpStream2Mem(Sender);
+ HttpStream:=TProgressStream2Mem(Sender);
  ClientData:=HttpStream.FClientData;
 
  URI:=parse_uri(releases_url);
@@ -179,11 +211,14 @@ begin
 
  if (Parser.download_url<>'') then
  begin
+  Parser.markdown_text:=TrimRight(Parser.markdown_text);
   S:=URI.getProtocol+'://'+URI.getAuthority+Parser.download_url;
-  P:=AllocMem(SizeOf(TQNode_durl)+Length(S));
+  P:=AllocMem(SizeOf(TQNode_durl)+Length(S)+Length(Parser.markdown_text)+2);
   P^.Parent:=@P^.OnParent;
-  P^.len:=Length(S);
-  Move(PAnsiChar(S)^,P^.data,Length(S));
+  P^.FUrl:=@P^.data;
+  P^.FText:=@P^.FUrl[Length(S)+1];
+  Move(PAnsiChar(S)^,P^.FUrl^,Length(S)+1);
+  Move(PAnsiChar(Parser.markdown_text)^,P^.FText^,Length(Parser.markdown_text)+1);
   SendMainQueue(P);
  end;
 
@@ -219,13 +254,15 @@ end;
 
 Procedure TQNode_durl.OnParent;
 var
- download_url:RawByteString;
+ download_url,rText:RawByteString;
  v,fname:RawByteString;
  ClientData:THttpClient;
  HttpStream:THttpStream2Location;
  Form:TProgressBarForm;
 begin
- SetString(download_url,@data,len);
+ download_url:=FUrl;
+ rText:=FText;
+
  FreeMem(@Self);
 
  fname:=ExtractFileExt(download_url);
@@ -236,8 +273,8 @@ begin
 
  if CompareVersion(v,current_version)>0 then
  begin
-  if QuestionDlg('Найдена новая версия!',
-                 'Загрузить обновление ('+v+')?',
+  if QuestionDlg('Загрузить обновление ('+v+')?',
+                 'Примечания к версии'+#13#10#13#10+rText,
                  mtInformation,
                  [mrYes,'Да',mrNo,'Нет'],
                  'Загрузить обновление?')=mrYes then

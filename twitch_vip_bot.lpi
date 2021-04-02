@@ -34,7 +34,7 @@
         <PackageName Value="LCL"/>
       </Item2>
     </RequiredPackages>
-    <Units Count="17">
+    <Units Count="18">
       <Unit0>
         <Filename Value="twitch_vip_bot.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -141,6 +141,10 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="WordFilter"/>
       </Unit16>
+      <Unit17>
+        <Filename Value="ReleasesVersion.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit17>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -159,14 +163,8 @@
       <SmartLinkUnit Value="True"/>
       <RelocatableUnit Value="True"/>
       <TargetCPU Value="x86_64"/>
-      <Optimizations>
-        <OptimizationLevel Value="3"/>
-      </Optimizations>
     </CodeGeneration>
     <Linking>
-      <Debugging>
-        <GenerateDebugInfo Value="False"/>
-      </Debugging>
       <LinkSmart Value="True"/>
       <Options>
         <Win32>
