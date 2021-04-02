@@ -2631,6 +2631,33 @@ begin
  ytts.FAudioConnection:=@FAudioThread;
 end;
 
+function FetchDot(var Value:RawByteString):RawByteString;
+var
+ i:SizeInt;
+begin
+ i:=Pos('.',Value);
+ if (i=0) then
+ begin
+  Result:=Value;
+  Value:='';
+ end else
+ begin
+  Result:=Copy(Value,1,(i-1));
+  Value:=Copy(Value,i+1,Length(Value)-(i-2));
+ end;
+end;
+
+function CompareVersion(S1,S2:RawByteString):SizeInt;
+var
+ v1,v2:RawByteString;
+begin
+ repeat
+  v1:=FetchDot(s1);
+  v2:=FetchDot(s2);
+  Result:=NaturalCompareText(v1,v2);
+ until (Result<>0) or ((s1='') and (s2=''));
+end;
+
 procedure TFrmMain.SendReleasesRequest;
 var
  ClientData:THttpClient;
@@ -2819,7 +2846,7 @@ begin
  v:=ExtractFileDir(download_url);
  v:=ExtractFileName(v);
 
- if CompareStr(v,current_version)>0 then
+ if CompareVersion(v,current_version)>0 then
  begin
   if QuestionDlg('Найдена новая версия!',
                  'Загрузить обновление ('+v+')?',
