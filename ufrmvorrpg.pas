@@ -694,9 +694,9 @@ type
   Function  GetESCPercent:Int64;
   Function  GetAGLPercent:Int64;
   Function  GetTime:Int64;
-  Function  kick_in_time:Int64;  inline;
-  Function  kick_out_time:Int64; inline;
-  Function  duel_kd_time:Int64;  inline;
+  Function  kick_in_time:Int64;
+  Function  kick_out_time:Int64;
+  Function  duel_kd_time:Int64;
   procedure IncEXP(val:Int64);
   Function  NeedReset:Boolean;
   Function  Reset(is_mod:Boolean):Boolean;
@@ -928,19 +928,37 @@ begin
   Result:=-Trunc(Log2(abs(_CHR)*3-2)*vor_rpg.calc.MUL_TIME+vor_rpg.calc.DEC_TIME);
 end;
 
-Function TPlayer.kick_in_time:Int64; inline;
+Function TPlayer.kick_in_time:Int64;
+var
+ t:Int64;
 begin
- Result:=vor_rpg.kick.in_time-GetTime;
+ t:=GetTime;
+ if (t>0) and (t>=vor_rpg.kick.in_time) then
+ begin
+  Result:=vor_rpg.kick.in_time-(vor_rpg.kick.in_time*CHR) div 100;
+ end else
+ begin
+  Result:=vor_rpg.kick.in_time-t;
+ end;
 end;
 
-Function TPlayer.kick_out_time:Int64; inline;
+Function TPlayer.kick_out_time:Int64;
 begin
  Result:=vor_rpg.kick.out_time+GetTime;
 end;
 
-Function TPlayer.duel_kd_time:Int64; inline;
+Function TPlayer.duel_kd_time:Int64;
+var
+ t:Int64;
 begin
- Result:=vor_rpg.duel.kd_time-GetTime;
+ t:=GetTime;
+ if (t>0) and (t>=vor_rpg.duel.kd_time) then
+ begin
+  Result:=vor_rpg.duel.kd_time-(vor_rpg.duel.kd_time*CHR) div 100;
+ end else
+ begin
+  Result:=vor_rpg.duel.kd_time-t;
+ end;
 end;
 
 procedure TUserPoints.Load(J:TJson);
@@ -1179,7 +1197,7 @@ begin
   tmax:=Max(vor_rpg.debuf.MAX_TIME,vor_rpg.debuf.MIN_TIME);
   tmin:=Min(vor_rpg.debuf.MAX_TIME,vor_rpg.debuf.MIN_TIME);
   time:=tmax-tmin+1;
-  time:=(time*per_time) div 100;
+  time:=time-(time*per_time) div 100;
   if (time<=0) then Exit;
   time:=tmin+Random(RCT,time);
   Set_debuf(data,id,time);
