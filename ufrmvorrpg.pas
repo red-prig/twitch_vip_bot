@@ -1569,6 +1569,10 @@ procedure _GetDBRpgUserTop(Const user,msg:RawByteString);
 var
  count:DWORD;
 begin
+ if (Trim(msg)='') then
+ begin
+  GetDBRpgUserTop(user,3);
+ end else
  if TryStrToDWord(msg,count) then
  begin
   GetDBRpgUserTop(user,count);
