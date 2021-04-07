@@ -229,12 +229,12 @@ dsfsdfsdf
   <MUL_LUK>4</MUL_LUK>
   <MUL_DEF>4</MUL_DEF>
   <MUL_STR>4</MUL_STR>
-  <MUL_AGL>5</MUL_AGL>
+  <MUL_AGL>3</MUL_AGL>
   
   <DEC_LUK>-7</DEC_LUK>
   <DEC_DEF>-6</DEC_DEF>
   <DEC_STR>-6</DEC_STR>
-  <DEC_AGL>5</DEC_AGL>
+  <DEC_AGL>6</DEC_AGL>
   
   <PERC_MINUS_VIP>10</PERC_MINUS_VIP>
  </calc>

@@ -899,9 +899,9 @@ begin
  _AGL:=AGL;
  if (_AGL=0) then Exit(0) else
  if (_AGL>0) then
-  Result:=Trunc(Log2(_AGL*3-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL)
+  Result:=Trunc(Log2((_AGL+1)*4-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL)
  else
-  Result:=-Trunc(Log2(abs(_AGL)*3-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL);
+  Result:=-Trunc(Log2((abs(_AGL)+1)*4-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL);
 end;
 
 Function TPlayer.GetAGLPercent:Int64;
@@ -2330,7 +2330,7 @@ begin
  rnd:=Random(RCT,100);
  if (rnd<val) then
  begin
-  val:=vor_rpg.kick.PERC+Points1.GetSTRPercent-Points2.GetDEFPercent;
+  val:=vor_rpg.kick.PERC+Points1.GetSTRPercent-Points2.GetDEFPercent-1;
   if is_mod then val:=val+10;
   val:=MMP(val);
   rnd:=Random(RCT,100);
