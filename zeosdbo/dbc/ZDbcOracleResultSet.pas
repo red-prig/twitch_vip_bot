@@ -57,9 +57,11 @@ interface
 {$IFNDEF ZEOS_DISABLE_ORACLE}
 
 uses
-{$IFDEF USE_SYNCOMMONS}
+  {$IFDEF MORMOT2}
+  mormot.db.core, mormot.core.datetime, mormot.core.text, mormot.core.base,
+  {$ELSE MORMOT2} {$IFDEF USE_SYNCOMMONS}
   SynCommons, SynTable,
-{$ENDIF USE_SYNCOMMONS}
+  {$ENDIF USE_SYNCOMMONS} {$ENDIF MORMOT2}
   {$IFNDEF NO_UNIT_CONTNRS}Contnrs,{$ENDIF}
   {$IFDEF WITH_TOBJECTLIST_REQUIRES_SYSTEM_TYPES}System.Types{$ELSE}Types{$ENDIF},
   Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, FmtBCD,
@@ -130,9 +132,9 @@ type
     procedure GetTimestamp(ColumnIndex: Integer; var Result: TZTimeStamp); overload;
     function GetResultSet(ColumnIndex: Integer): IZResultSet; override;
     function GetBlob(ColumnIndex: Integer; LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
-    {$IFDEF USE_SYNCOMMONS}
+    {$IFDEF WITH_COLUMNS_TO_JSON}
     procedure ColumnsToJSON(JSONWriter: TJSONWriter; JSONComposeOptions: TZJSONComposeOptions); reintroduce;
-    {$ENDIF USE_SYNCOMMONS}
+    {$ENDIF WITH_COLUMNS_TO_JSON}
   public //implement IZOracleResultSet
     procedure AssignColumnsInfo(const Dest: TObjectList);
   public
@@ -167,12 +169,39 @@ type
   public
     constructor Create(
       const Statement: IZStatement; const SQL: string; StmtHandle: POCIStmt;
-      ErrorHandle: POCIError; OraVariables: PZOCIParamBinds;
+      ErrorHandle: POCIError;
       {$IFDEF AUTOREFCOUNT}const{$ENDIF}BindList: TZBindList);
   protected
     procedure Open; override;
-  public
-    function Next: Boolean; reintroduce;
+  public { Traversal/Positioning }
+    /// <summary>Moves the cursor down one row from its current position. A
+    ///  <c>ResultSet</c> cursor is initially positioned before the first row;
+    ///  the first call to the method <c>next</c> makes the first row the
+    ///  current row; the second call makes the second row the current row, and
+    ///  so on. If an input stream is open for the current row, a call to the
+    ///  method <c>next</c> will implicitly close it. A <c>ResultSet</c>
+    ///  object's warning chain is cleared when a new row is read.
+    /// <returns><c>true</c> if the new current row is valid; <c>false</c> if
+    ///  there are no more rows</returns>
+    function Next: Boolean; override;
+    /// <summary>Moves the cursor to the given row number in
+    ///  this <c>ResultSet</c> object. If the row number is positive, the cursor
+    ///  moves to the given row number with respect to the beginning of the
+    ///  result set. The first row is row 1, the second is row 2, and so on.
+    ///  If the given row number is negative, the cursor moves to
+    ///  an absolute row position with respect to the end of the result set.
+    ///  For example, calling the method <c>absolute(-1)</c> positions the
+    ///  cursor on the last row; calling the method <c>absolute(-2)</c>
+    ///  moves the cursor to the next-to-last row, and so on. An attempt to
+    ///  position the cursor beyond the first/last row in the result set leaves
+    ///  the cursor before the first row or after the last row.
+    ///  <B>Note:</B> Calling <c>absolute(1)</c> is the same
+    ///  as calling <c>first()</c>. Calling <c>absolute(-1)</c>
+    ///  is the same as calling <c>last()</c>.</summary>
+    /// <param>"Row" the absolute position to be moved.</param>
+    /// <returns><c>true</c> if the cursor is on the result set;<c>false</c>
+    ///  otherwise</returns>
+    function MoveAbsolute(Row: Integer): Boolean; override;
   End;
 
   IZOracleLob = interface(IInterface)
@@ -394,11 +423,11 @@ implementation
 
 uses
   Math, {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF} SysConst,
-  ZFastCode, ZMessages, ZEncoding, ZDbcUtils;
+  ZFastCode, ZMessages, ZEncoding, ZDbcUtils, ZDbcOracleStatement;
 
 { TZOracleAbstractResultSet_A }
 
-{$IFDEF USE_SYNCOMMONS}
+{$IFDEF WITH_COLUMNS_TO_JSON}
 procedure TZOracleAbstractResultSet_A.ColumnsToJSON(JSONWriter: TJSONWriter;
   JSONComposeOptions: TZJSONComposeOptions);
 var P: PAnsiChar;
@@ -474,8 +503,13 @@ begin
                             nvu0: JSONWriter.Add('0');
                             vnuNegInt: JSONWriter.AddNoJSONEscape(PAnsiChar(FByteBuffer), NegOrdNVU2Raw(POCINumber(P), FvnuInfo, PAnsiChar(FByteBuffer)));
                             vnuPosInt: JSONWriter.AddNoJSONEscape(PAnsiChar(FByteBuffer), PosOrdNVU2Raw(POCINumber(P), FvnuInfo, PAnsiChar(FByteBuffer)));
+                            {$IFDEF MORMOT2}
+                            vnuPosCurr: JSONWriter.AddCurr(PosNvu2Curr(POCINumber(P), FvnuInfo));
+                            vnuNegCurr: JSONWriter.AddCurr(NegNvu2Curr(POCINumber(P), FvnuInfo));
+                            {$ELSE !MORMOT2}
                             vnuPosCurr: JSONWriter.AddCurr64(PosNvu2Curr(POCINumber(P), FvnuInfo));
                             vnuNegCurr: JSONWriter.AddCurr64(NegNvu2Curr(POCINumber(P), FvnuInfo));
+                            {$ENDIF}
                             nvuNegInf: JSONWriter.AddShort('"-Infinity"');
                             nvuPosInf: JSONWriter.AddShort('"Infinity"');
                             else begin
@@ -509,21 +543,25 @@ begin
                             if jcoMongoISODate in JSONComposeOptions then
                               JSONWriter.AddShort('ISODate("')
                             else if jcoDATETIME_MAGIC in JSONComposeOptions then
+                              {$IFDEF MORMOT2}
+                              JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
+                              {$ELSE}
                               JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
+                              {$ENDIF}
                             else
                               JSONWriter.Add('"');
                             if POraDate(P)^.Cent < 100 then
                               JSONWriter.Add('-');
                             if ColType <> stTime then begin
-                              DateToIso8601PChar(PUTF8Char(fByteBuffer), True, (POraDate(P)^.Cent-100)*100+POraDate(P)^.Year-100,
+                              DateToIso8601PChar(Pointer(fByteBuffer), True, (POraDate(P)^.Cent-100)*100+POraDate(P)^.Year-100,
                                 POraDate(P)^.month, POraDate(P)^.day);
-                              JSONWriter.AddNoJSONEscape(PUTF8Char(fByteBuffer),10);
+                              JSONWriter.AddNoJSONEscape(Pointer(fByteBuffer),10);
                             end else if jcoMongoISODate in JSONComposeOptions then
                               JSONWriter.AddShort('0000-00-00');
                             if (ColType <> stDate) then begin
-                              TimeToIso8601PChar(PUTF8Char(fByteBuffer), True, POraDate(P)^.Hour-1,
+                              TimeToIso8601PChar(Pointer(fByteBuffer), True, POraDate(P)^.Hour-1,
                                 POraDate(P)^.Min-1,POraDate(P)^.Sec-1, 0, 'T', False);
-                              JSONWriter.AddNoJSONEscape(PUTF8Char(fByteBuffer),9);
+                              JSONWriter.AddNoJSONEscape(Pointer(fByteBuffer),9);
                             end;
                             if jcoMongoISODate in JSONComposeOptions
                             then JSONWriter.AddShort('Z)"')
@@ -533,7 +571,11 @@ begin
                           if jcoMongoISODate in JSONComposeOptions then
                             JSONWriter.AddShort('ISODate("')
                           else if jcoDATETIME_MAGIC in JSONComposeOptions then
+                            {$IFDEF MORMOT2}
+                            JSONWriter.AddShorter(JSON_SQLDATE_MAGIC_QUOTE_STR)
+                            {$ELSE}
                             JSONWriter.AddNoJSONEscape(@JSON_SQLDATE_MAGIC_QUOTE_VAR,4)
+                            {$ENDIF}
                           else
                             JSONWriter.Add('"');
                           if (ColType <> stTime) and (FPlainDriver.OCIDateTimeGetDate(FOCIEnv,
@@ -542,15 +584,15 @@ begin
                           // attention : this code handles all timestamps on 01/01/0001 as a pure time value
                           // reason : oracle doesn't have a pure time datatype so all time comparisons compare
                           //          TDateTime values on 30 Dec 1899 against oracle timestamps on 01 januari 0001 (negative TDateTime)
-                            DateToIso8601PChar(PUTF8Char(fByteBuffer), True, Abs(Year), Month, Day);
-                            JSONWriter.AddNoJSONEscape(PUTF8Char(fByteBuffer),10);
+                            DateToIso8601PChar(Pointer(fByteBuffer), True, Abs(Year), Month, Day);
+                            JSONWriter.AddNoJSONEscape(Pointer(fByteBuffer),10);
                           end else if jcoMongoISODate in JSONComposeOptions then
                             JSONWriter.AddShort('0000-00-00');
                           if (ColType <> stDate) and (FPlainDriver.OCIDateTimeGetTime(FOCIEnv,
                              FOCIError, {%H-}PPOCIDescriptor(P)^, Hour{%H-}, Minute{%H-}, Second{%H-}, Millis{%H-}) = OCI_SUCCESS) then begin
-                            TimeToIso8601PChar(PUTF8Char(fByteBuffer), True, Hour, Minute, Second,
+                            TimeToIso8601PChar(Pointer(fByteBuffer), True, Hour, Minute, Second,
                               Millis div 1000000, 'T', jcoMilliseconds in JSONComposeOptions);
-                            JSONWriter.AddNoJSONEscape(PUTF8Char(fByteBuffer),9 + (4*Ord(jcoMilliseconds in JSONComposeOptions)));
+                            JSONWriter.AddNoJSONEscape(Pointer(fByteBuffer),9 + (4*Ord(jcoMilliseconds in JSONComposeOptions)));
                           end;
                           if jcoMongoISODate in JSONComposeOptions
                           then JSONWriter.AddShort('Z)"')
@@ -592,7 +634,7 @@ begin
       JSONWriter.Add('}');
   end;
 end;
-{$ENDIF USE_SYNCOMMONS}
+{$ENDIF WITH_COLUMNS_TO_JSON}
 
 {**
   Constructs this object, assignes main properties and
@@ -2551,8 +2593,8 @@ begin
         FOracleConnection.HandleErrorOrWarning(FOCIError, status, lcExecPrepStmt,
           'OCIDefineObject', Self);
   end;
-
   inherited Open;
+  FCursorLocation := rctServer;
 end;
 
 procedure TZOracleResultSet_A.ResetCursor;
@@ -2670,10 +2712,10 @@ end;
 
 constructor TZOracleCallableResultSet.Create(const Statement: IZStatement;
   const SQL: string; StmtHandle: POCIStmt; ErrorHandle: POCIError;
-  OraVariables: PZOCIParamBinds; {$IFDEF AUTOREFCOUNT}const{$ENDIF} BindList: TZBindList);
+  {$IFDEF AUTOREFCOUNT}const{$ENDIF} BindList: TZBindList);
 var I, N: Integer;
   BindValue: PZBindValue;
-  ParamValue: PZOCIParamBind;
+  OCIBindValue: PZOCIBindValue absolute BindValue;
   CurrentVar: PZSQLVar;
 begin
   N := 0;
@@ -2685,36 +2727,41 @@ begin
 
   N := 0;
   for I := 0 to BindList.Count -1 do begin
-    {$R-}
     BindValue := BindList[i];
     if Ord(BindValue.ParamType) <= ord(pctIn) then
       Continue;
-    ParamValue := @OraVariables[i];
+    {$R-}
     CurrentVar := @FColumns.Variables[N];
     {$IFDEF RangeCheckEnabled} {$R+} {$ENDIF}
-    CurrentVar.valuep := ParamValue.valuep;
-    CurrentVar.dty := ParamValue.dty;
-    CurrentVar.value_sz := ParamValue.value_sz;
-    CurrentVar.Precision := ParamValue.Precision;
-    CurrentVar.Scale := ParamValue.Scale;
-    CurrentVar.indp := ParamValue.indp;
-    CurrentVar.DescriptorType := ParamValue.DescriptorType;
+    CurrentVar.valuep := OCIBindValue.valuep;
+    CurrentVar.dty := OCIBindValue.dty;
+    CurrentVar.value_sz := OCIBindValue.value_sz;
+    CurrentVar.Precision := OCIBindValue.Precision;
+    CurrentVar.Scale := OCIBindValue.Scale;
+    CurrentVar.indp := OCIBindValue.indp;
+    CurrentVar.DescriptorType := OCIBindValue.DescriptorType;
     CurrentVar.ColType := BindValue.SQLType;
-    FFieldNames[N] := ParamValue.ParamName;
+    FFieldNames[N] := OCIBindValue.ParamName;
     Inc(N);
   end;
   inherited Create(Statement, SQL, StmtHandle, ErrorHandle, 0);
   LastRowNo := 1;
 end;
 
+function TZOracleCallableResultSet.MoveAbsolute(Row: Integer): Boolean;
+begin
+  Result := not Closed and ((Row = 1) or (Row = 0));
+  if (Row >= 0) and (Row <= 2) then
+    RowNo := Row;
+end;
+
 function TZOracleCallableResultSet.Next: Boolean;
 begin
-  { Checks for maximum row. }
-  Result := False;
-  if (RowNo = 1) then
-    Exit;
-  RowNo := 1;
-  Result := True;
+  Result := not Closed and (RowNo = 0);
+  if RowNo = 0 then
+    RowNo := 1
+  else if RowNo = 1 then
+    RowNo := 2; //set AfterLast
 end;
 
 procedure TZOracleCallableResultSet.Open;
@@ -2758,8 +2805,8 @@ begin
     end;
     ColumnsInfo.Add(ColumnInfo);
   end;
-
   inherited Open;
+  FCursorLocation := rctClient;
 end;
 
 { TZAbstracOracleLobStream }
@@ -2780,11 +2827,14 @@ end;
 procedure TZAbstracOracleLobStream.Close;
 var Status: sword;
 begin
-  if FOwnerLob.LobIsOpen then begin
-    Status := FPlainDriver.OCILobClose(FOCISvcCtx, FOCIError, FOwnerLob.FLobLocator);
-    if Status <> OCI_SUCCESS then
-      FOwnerLob.FOracleConnection.HandleErrorOrWarning(FOCIError, status,
-        lcExecPrepStmt, 'OCILobClose', Self);
+  if FOwnerLob.LobIsOpen then try
+    if FOwnerLob.FLobLocator <> nil then begin //in case of connection loss! -> TestConnectionLossTicket452
+      Status := FPlainDriver.OCILobClose(FOCISvcCtx, FOCIError, FOwnerLob.FLobLocator);
+      if Status <> OCI_SUCCESS then
+        FOwnerLob.FOracleConnection.HandleErrorOrWarning(FOCIError, status,
+          lcExecPrepStmt, 'OCILobClose', Self);
+    end;
+  finally
     FOwnerLob.LobIsOpen := False;
   end;
 end;
@@ -2875,8 +2925,7 @@ procedure TZAbstracOracleLobStream.CreateTemporary;
 var Status: sword;
 begin
   if not FReleased then begin
-    if FOwnerLob.LobIsOpen then
-      Close;
+    Close;
     if FOwnerLob.FLobLocator = nil then
       AllocLobLocator;
     Status := FPlainDriver.OCILobCreateTemporary(FOCISvcCtx, FOCIError,
@@ -2891,8 +2940,7 @@ end;
 destructor TZAbstracOracleLobStream.Destroy;
 begin
   FOwnerLob.FLobStream := nil;
-  if (FOwnerLob.FLobLocator <> nil) then
-    Close;
+  Close;
   inherited;
 end;
 

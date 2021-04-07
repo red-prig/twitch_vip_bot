@@ -102,12 +102,10 @@ type
     FMetadata: IZDatabaseMetadata;
     FColumnsLabelsCS, //a case sensitive list of unique column labels
     FColumnsLabelsCI: TStrings;  //a lower case list of unique column labels if still duplicate values exist
-
     FSQL: string;
     FTableColumns: TZHashMap;
     FIdentifierConverter: IZIdentifierConverter;
     FResultSet: TZAbstractResultSet;
-    procedure SetMetadata(const Value: IZDatabaseMetadata);
   protected
     FConSettings: PZConSettings;
     procedure SetAutoIncrementFromGetColumnsRS({$IFDEF AUTOREFCOUNT}const{$ENDIF}
@@ -143,10 +141,17 @@ type
     function ReadColumnByRef(FieldRef: TZFieldRef; ColumnInfo: TZColumnInfo): Boolean;
     function ReadColumnByName(const FieldName: string; TableRef: TZTableRef;
       ColumnInfo: TZColumnInfo): Boolean;
+    /// <summary>Clears specified column information.</summary>
+    /// <param>"ColumnInfo" a column information object.</param>
     procedure ClearColumn(ColumnInfo: TZColumnInfo); virtual;
+    /// <summary>Initializes columns with additional data.</summary>
     procedure LoadColumns; virtual;
     procedure ReplaceStarColumns(const SelectSchema: IZSelectSchema);
-
+  public
+    /// <summary>Sets the databasemetadata to this object.</summary>
+    /// <param>"Value" a new IZDatabaseMetadata interface</param>
+    procedure SetMetadata(const Value: IZDatabaseMetadata);
+  protected
     property MetaData: IZDatabaseMetadata read FMetadata write SetMetadata;
     property ColumnsLabels: TStrings read FColumnsLabelsCS write FColumnsLabelsCS;
     property SQL: string read FSQL write FSQL;
@@ -168,6 +173,16 @@ type
     /// <summary>get the number of columns in this <c>ResultSet</c> interface.</summary>
     /// <returns>the number of columns</returns>
     function GetColumnCount: Integer;
+    /// <author>EgonHugeist</author>
+    /// <summary>Indicates whether the metainformations are loaded.</summary>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
+    function IsMetadataLoaded: Boolean;
+    /// <author>EgonHugeist</author>
+    procedure AssignColumnInfosTo(Dest: TObjectList);
+    /// <author>EgonHugeist</author>
+    /// <summary>Sets the metainformations are loaded by value.</summary>
+    /// <param><c>true</c> if indicate they are loaded; <c>false</c> otherwise</param>
+    procedure SetMetadataLoaded(Value: Boolean);
     /// <summary>Indicates whether the designated column is automatically
     ///  numbered, thus read-only.</summary>
     /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
@@ -773,6 +788,11 @@ begin
   Result := TZColumnInfo(FResultSet.ColumnsInfo[ColumnIndex {$IFNDEF GENERIC_INDEX}-1{$ENDIF}]).DefinitelyWritable;
 end;
 
+function TZAbstractResultSetMetadata.IsMetadataLoaded: Boolean;
+begin
+  Result := Loaded;
+end;
+
 function TZAbstractResultSetMetadata.GetDefaultValue(
   ColumnIndex: Integer): string;
 begin
@@ -816,10 +836,41 @@ begin
     Result := FTableColumns.Get(TableKey) as IZResultSet;
 end;
 
-{**
-  Clears specified column information.
-  @param ColumnInfo a column information object.
-}
+procedure TZAbstractResultSetMetadata.AssignColumnInfosTo(
+  Dest: TObjectList);
+var I: Integer;
+  ACopy: TZColumnInfo;
+begin
+  Dest.Clear;
+  Dest.Capacity := FResultSet.ColumnsInfo.Count;
+  for i := 0 to FResultSet.ColumnsInfo.Count -1 do begin
+    ACopy := TZColumnInfo.Create;
+    Dest.Add(ACopy);
+    ACopy.AutoIncrement := TZColumnInfo(FResultSet.ColumnsInfo[i]).AutoIncrement;
+    ACopy.CaseSensitive := TZColumnInfo(FResultSet.ColumnsInfo[i]).CaseSensitive;
+    ACopy.Searchable := TZColumnInfo(FResultSet.ColumnsInfo[i]).Searchable;
+    ACopy.SearchableDisabled := TZColumnInfo(FResultSet.ColumnsInfo[i]).SearchableDisabled;
+    ACopy.Currency := TZColumnInfo(FResultSet.ColumnsInfo[i]).Currency;
+    ACopy.Nullable := TZColumnInfo(FResultSet.ColumnsInfo[i]).Nullable;
+    ACopy.Signed := TZColumnInfo(FResultSet.ColumnsInfo[i]).Signed;
+    ACopy.CharOctedLength := TZColumnInfo(FResultSet.ColumnsInfo[i]).CharOctedLength;
+    ACopy.ColumnLabel := TZColumnInfo(FResultSet.ColumnsInfo[i]).ColumnLabel;
+    ACopy.ColumnName := TZColumnInfo(FResultSet.ColumnsInfo[i]).ColumnName;
+    ACopy.SchemaName := TZColumnInfo(FResultSet.ColumnsInfo[i]).SchemaName;
+    ACopy.Precision := TZColumnInfo(FResultSet.ColumnsInfo[i]).Precision;
+    ACopy.Scale := TZColumnInfo(FResultSet.ColumnsInfo[i]).Scale;
+    ACopy.TableName := TZColumnInfo(FResultSet.ColumnsInfo[i]).TableName;
+    ACopy.CatalogName := TZColumnInfo(FResultSet.ColumnsInfo[i]).CatalogName;
+    ACopy.ColumnType := TZColumnInfo(FResultSet.ColumnsInfo[i]).ColumnType;
+    ACopy.ReadOnly := TZColumnInfo(FResultSet.ColumnsInfo[i]).ReadOnly;
+    ACopy.Writable := TZColumnInfo(FResultSet.ColumnsInfo[i]).Writable;
+    ACopy.DefinitelyWritable := TZColumnInfo(FResultSet.ColumnsInfo[i]).DefinitelyWritable;
+    ACopy.DefaultValue := TZColumnInfo(FResultSet.ColumnsInfo[i]).DefaultValue;
+    ACopy.DefaultExpression := TZColumnInfo(FResultSet.ColumnsInfo[i]).DefaultExpression;
+    ACopy.ColumnCodePage := TZColumnInfo(FResultSet.ColumnsInfo[i]).ColumnCodePage;
+  end;
+end;
+
 procedure TZAbstractResultSetMetadata.ClearColumn(ColumnInfo: TZColumnInfo);
 begin
   ColumnInfo.ReadOnly := True;
@@ -1107,6 +1158,11 @@ begin
     FIdentifierConverter := TZDefaultIdentifierConverter.Create(FMetadata);
 end;
 
+procedure TZAbstractResultSetMetadata.SetMetadataLoaded(Value: Boolean);
+begin
+  Loaded := Value;
+end;
+
 procedure TZAbstractResultSetMetadata.SetSearchable(ColumnIndex: Integer;
   Value: Boolean);
 begin
@@ -1150,9 +1206,6 @@ begin
     else ColumnInfo.Writable := TableColumns.GetBoolean(TableColColumnWritableIndex);
 end;
 
-{**
-  Initializes columns with additional data.
-}
 procedure TZAbstractResultSetMetadata.LoadColumns;
 var
   I, j: Integer;

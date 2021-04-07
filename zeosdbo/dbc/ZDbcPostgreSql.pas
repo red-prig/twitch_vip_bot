@@ -67,21 +67,42 @@ type
   {** Implements PostgreSQL Database Driver. }
   TZPostgreSQLDriver = class(TZAbstractDriver)
   public
+    /// <summary>Constructs this object with default properties.</summary>
     constructor Create; override;
+    /// <summary>Attempts to create a database connection to the given URL.
+    ///  The driver should return "null" if it realizes it is the wrong kind
+    ///  of driver to connect to the given URL. This will be common, as when
+    ///  the zeos driver manager is asked to connect to a given URL it passes
+    ///  the URL to each loaded driver in turn.
+    ///  The driver should raise a EZSQLException if it is the right
+    ///  driver to connect to the given URL, but has trouble loading the
+    ///  library.</summary>
+    /// <param>"url" the TZURL Object used to find the Driver, it's library and
+    ///  assigns the connection properties.</param>
+    /// <returns>a <c>IZConnection</c> interface that represents a
+    ///  connection to the URL</returns>
     function Connect(const Url: TZURL): IZConnection; override;
-    function GetMajorVersion: Integer; override;
+    /// <summary>Gets the driver's minor version number. Initially this should
+    ///  be 0.</summary>
+    /// <returns>this driver's minor version number.</returns>
     function GetMinorVersion: Integer; override;
-
+    /// <summary>Creates a generic tokenizer interface.</summary>
+    /// <returns>a created generic tokenizer object.</returns>
     function GetTokenizer: IZTokenizer; override;
+    /// <summary>Creates a generic statement analyser object.</summary>
+    /// <returns>a created generic tokenizer object as interface.</returns>
     function GetStatementAnalyser: IZStatementAnalyser; override;
   end;
 
   {** Defines a PostgreSQL specific connection. }
   IZPostgreSQLConnection = interface(IZConnection)
     ['{8E62EA93-5A49-4F20-928A-0EA44ABCE5DB}']
-
+    /// <summary>Checks is oid should be treated as Large Object.</summary>
+    /// <returns><c>True</c> if oid should represent a Large Object.</returns>
     function IsOidAsBlob: Boolean;
     function integer_datetimes: Boolean;
+    /// <summary>Checks is bytea_output hex.</summary>
+    /// <returns><c>True</c> if hex is set.</returns>
     function Is_bytea_output_hex: Boolean;
 
     function GetTypeNameByOid(Id: Oid): string;
@@ -100,6 +121,8 @@ type
     procedure AddDomain2BaseTypeIfNotExists(DomainOID, BaseTypeOID: OID);
     function FindDomainBaseType(DomainOID: OID; out BaseTypeOID: OID): Boolean;
     procedure FillUnknownDomainOIDs;
+    function GetTimeZoneOffset: Int64;
+    procedure UpdateTimestampOffset;
 
     procedure GetBinaryEscapeString(Buf: Pointer; Len: LengthInt; out Result: RawByteString);
     procedure GetEscapeString(Buf: PAnsichar; Len: LengthInt; out Result: RawByteString);
@@ -138,14 +161,13 @@ type
   private
     FUndefinedVarcharAsStringLength: Integer;
     Fconn: TPGconn;
-//  Jan: Not sure wether we still need that. What was its intended use?
-//    FBeginRequired: Boolean;
     FTypeList: TStrings;
     FDomain2BaseTypMap: TZOID2OIDMapList;
     FOidAsBlob, Finteger_datetimes: Boolean;
     FServerMajorVersion: Integer;
     FServerMinorVersion: Integer;
     FServerSubVersion: Integer;
+    FTimeZoneOffset: Int64;
     FNoticeProcessor: TPQnoticeProcessor;
     FNoticeReceiver: TPQnoticeReceiver;
     //a collection of statement handles that are not used anymore. These can be
@@ -156,7 +178,6 @@ type
     FClientSettingsChanged: Boolean;
     FIs_bytea_output_hex: Boolean;
     FCheckFieldVisibility: Boolean;
-    FNoTableInfoCache: Boolean;
     fPlainDriver: TZPostgreSQLPlainDriver;
     FLastWarning: EZSQLWarning;
     function HasMinimumServerVersion(MajorVersion, MinorVersion, SubVersion: Integer): Boolean;
@@ -175,6 +196,7 @@ type
     procedure InternalClose; override;
     function GetServerSetting(const AName: RawByteString): string;
     procedure SetServerSetting(const AName, AValue: RawbyteString);
+    procedure UpdateTimestampOffset;
   public
     procedure AfterConstruction; override;
     destructor Destroy; override;
@@ -295,6 +317,12 @@ type
     procedure RollbackPrepared(const transactionid:string);override;
 
     procedure Open; override;
+    /// <summary>Creates a generic tokenizer interface.</summary>
+    /// <returns>a created generic tokenizer object.</returns>
+    function GetTokenizer: IZTokenizer;
+    /// <summary>Creates a generic statement analyser object.</summary>
+    /// <returns>a created generic tokenizer object as interface.</returns>
+    function GetStatementAnalyser: IZStatementAnalyser;
   public //implement IImmediatelyReleasable
     /// <summary>Releases all driver handles and set the object in a closed
     ///  Zombi mode waiting for destruction. Each known supplementary object,
@@ -310,7 +338,11 @@ type
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable;
       var AError: EZSQLConnectionLost); override;
   public  //implement IZPostgreSQLConnection
+    /// <summary>Checks is oid should be treated as Large Object.</summary>
+    /// <returns><c>True</c> if oid should represent a Large Object.</returns>
     function IsOidAsBlob: Boolean;
+    /// <summary>Checks is bytea_output hex.</summary>
+    /// <returns><c>True</c> if hex is set.</returns>
     function Is_bytea_output_hex: Boolean;
     function integer_datetimes: Boolean;
     function CheckFieldVisibility: Boolean;
@@ -330,6 +362,7 @@ type
     function GetServerMinorVersion: Integer;
     function GetServerSubVersion: Integer;
     function StoredProcedureIsSelectable(const ProcName: String): Boolean;
+    function GetTimeZoneOffset: Int64;
   public
     function PingServer: Integer; override;
 
@@ -346,6 +379,8 @@ type
 
     function GetWarnings: EZSQLWarning; override;
     procedure ClearWarnings; override;
+    /// <summary>Returns the ServicerProvider for this connection.</summary>
+    /// <returns>the ServerProvider</returns>
     function GetServerProvider: TZServerProvider; override;
   end;
 
@@ -395,74 +430,27 @@ end;
 
 { TZPostgreSQLDriver }
 
-{**
-  Constructs this object with default properties.
-}
 constructor TZPostgreSQLDriver.Create;
 begin
   inherited Create;
   AddSupportedProtocol(AddPlainDriverToCache(TZPostgreSQLPlainDriver.Create));
 end;
 
-{**
-  Attempts to make a database connection to the given URL.
-  The driver should return "null" if it realizes it is the wrong kind
-  of driver to connect to the given URL.  This will be common, as when
-  the JDBC driver manager is asked to connect to a given URL it passes
-  the URL to each loaded driver in turn.
-
-  <P>The driver should raise a SQLException if it is the right
-  driver to connect to the given URL, but has trouble connecting to
-  the database.
-
-  <P>The java.util.Properties argument can be used to passed arbitrary
-  string tag/value pairs as connection arguments.
-  Normally at least "user" and "password" properties should be
-  included in the Properties.
-
-  @param url the URL of the database to which to connect
-  @param info a list of arbitrary string tag/value pairs as
-    connection arguments. Normally at least a "user" and
-    "password" property should be included.
-  @return a <code>Connection</code> object that represents a
-    connection to the URL
-}
 function TZPostgreSQLDriver.Connect(const Url: TZURL): IZConnection;
 begin
   Result := TZPostgreSQLConnection.Create(Url);
 end;
 
-{**
-  Gets the driver's major version number. Initially this should be 1.
-  @return this driver's major version number
-}
-function TZPostgreSQLDriver.GetMajorVersion: Integer;
-begin
-  Result := 1;
-end;
-
-{**
-  Gets the driver's minor version number. Initially this should be 0.
-  @return this driver's minor version number
-}
 function TZPostgreSQLDriver.GetMinorVersion: Integer;
 begin
   Result := 3;
 end;
 
-{**
-  Gets a SQL syntax tokenizer.
-  @returns a SQL syntax tokenizer object.
-}
 function TZPostgreSQLDriver.GetTokenizer: IZTokenizer;
 begin
   Result := TZPostgreSQLTokenizer.Create; { thread save! Allways return a new Tokenizer! }
 end;
 
-{**
-  Creates a statement analyser object.
-  @returns a statement analyser object.
-}
 function TZPostgreSQLDriver.GetStatementAnalyser: IZStatementAnalyser;
 begin
   Result := TZPostgreSQLStatementAnalyser.Create; { thread save! Allways return a new Analyser! }
@@ -677,21 +665,12 @@ begin
   { Sets a default PostgreSQL port }
   if Self.Port = 0 then
      Self.Port := 5432;
-
-  { Define connect options. }
-//  Jan: Not sure wether we still need that. What was its intended use?
-//  if Info.Values['beginreq'] <> '' then
-//    FBeginRequired := StrToBoolEx(Info.Values['beginreq'])
-//  else
-//    FBeginRequired := True;
-
   inherited SetTransactionIsolation(tiReadCommitted);
 
   { Processes connection properties. }
   FOidAsBlob := StrToBoolEx(Info.Values[DSProps_OidAsBlob]);
   FUndefinedVarcharAsStringLength := StrToIntDef(Info.Values[DSProps_UndefVarcharAsStringLength], 0);
   FCheckFieldVisibility := StrToBoolEx(Info.Values[ConnProps_CheckFieldVisibility]);
-  FNoTableInfoCache := StrToBoolEx(Info.Values[ConnProps_NoTableInfoCache]);
 
   FNoticeProcessor := NoticeProcessorDispatcher;
   FNoticeReceiver  := NoticeReceiverDispatcher;
@@ -767,19 +746,11 @@ begin
   FreeAndNil(SQLWriter);
 end;
 
-{**
-  Checks is oid should be treated as Large Object.
-  @return <code>True</code> if oid should represent a Large Object.
-}
 function TZPostgreSQLConnection.IsOidAsBlob: Boolean;
 begin
   Result := FOidAsBlob;
 end;
 
-{**
-  Checks is bytea_output hex.
-  @return <code>True</code> if hex is set.
-}
 function TZPostgreSQLConnection.Is_bytea_output_hex: Boolean;
 begin
   Result := FIs_bytea_output_hex;
@@ -949,6 +920,7 @@ begin
     {$ENDIF}
     Finteger_datetimes := StrToBoolEx(GetServerSetting(#39+ConnProps_integer_datetimes+#39));
     FIs_bytea_output_hex := UpperCase(GetServerSetting('''bytea_output''')) = 'HEX';
+    UpdateTimestampOffset;
   finally
     if self.IsClosed and (Self.Fconn <> nil) then
     begin
@@ -971,7 +943,9 @@ function TZPostgreSQLConnection.PrepareStatementWithParams(const SQL: string;
 begin
   if IsClosed then
      Open;
-  Result := TZPostgreSQLPreparedStatementV3.Create(Self, SQL, Info)
+  if (GetServerMajorVersion >= 8) and Assigned(FplainDriver.PQexecParams)
+  then Result := TZPostgreSQLPreparedStatementV3.Create(Self, SQL, Info)
+  else Result := TZPostgrePreparedStatementV2.Create(Self, SQL, Info)
 end;
 
 procedure TZPostgreSQLConnection.PrepareTransaction(const transactionid: string);
@@ -1203,6 +1177,77 @@ begin
   else Result := FProcedureTypesCache.Objects[I] <> nil;
 end;
 
+{$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "TS" does not seem to be initialized} {$ENDIF}
+procedure TZPostgreSQLConnection.UpdateTimestampOffset;
+var ANow: TDateTime;
+    SQL: RawByteString;
+    L: LengthInt;
+    QueryHandle: TPGresult;
+    Status: TZPostgreSQLExecStatusType;
+    TS: TZTimestamp;
+    P: Pointer;
+    i64, i64Tz: Int64;
+    Dbl, dblTz: Double;
+  function DateTimeToMilliseconds(const ADateTime: TDateTime): Int64;
+  var
+    LTimeStamp: TTimeStamp;
+  begin
+    LTimeStamp := DateTimeToTimeStamp(ADateTime);
+    Result := LTimeStamp.Date;
+    Result := (Result * MSecsPerDay) + LTimeStamp.Time;
+  end;
+begin
+  if Closed then
+    Exit;
+  if not Assigned(FPlainDriver.PQexecParams) then begin
+    FTimeZoneOffset := 0;
+    Exit;
+  end;
+  ANow := Now;
+  DecodeDateTimeToTimeStamp(ANow, TS);
+  TS.Second := 0;
+  TS.Fractions := 0;
+  L := ZSysUtils.DateTimeToRaw(TS.Year, TS.Month, TS.Day, TS.Hour,
+    TS.Minute, 0, 0, @fByteBuffer[0], DefDateTimeFormatYMD, True, False);
+  SQL := '';
+  System.SetString(SQL, PAnsiChar(@fByteBuffer[0]), L);
+
+  SQL := 'SELECT '+SQL+'::TIMESTAMPTZ';
+  {$IFDEF UNICODE}
+  Ascii7ToUnicodeString(Pointer(SQL), Length(SQL), FLogMessage);
+  {$ENDIF}
+  QueryHandle := FPlainDriver.PQexecParams(Fconn, Pointer(SQL), 0,
+    nil, nil, nil, nil, ParamFormatBin);
+  try
+    Status := FPlainDriver.PQresultStatus(QueryHandle);
+    if Status = PGRES_TUPLES_OK then begin
+      if DriverManager.HasLoggingListener then
+        DriverManager.LogMessage(lcExecute, URL.Protocol, {$IFDEF UNICODE}FLogMessage{$ELSE}SQL{$ENDIF});
+      P := FPlainDriver.PQgetvalue(QueryHandle, 0, 0);
+      if Finteger_datetimes then begin
+        TimeStamp2PG(TS, i64);
+        {$IFNDEF ENDIAN_BIG}
+        Reverse8Bytes(@i64);
+        {$ENDIF}
+        i64tz := PG2Int64(P);
+        FTimeZoneOffSet := i64-i64tz;
+      end else begin
+        TimeStamp2PG(TS, dbl);
+        {$IFNDEF ENDIAN_BIG}
+        Reverse8Bytes(@dbl);
+        {$ENDIF}
+        dblTz := PG2Double(P);
+        FTimeZoneOffSet := Trunc(dbl-dblTz);
+      end;
+    end else
+      HandleErrorOrWarning(PGRES_FATAL_ERROR, lcExecute, {$IFDEF UNICODE}FLogMessage{$ELSE}SQL{$ENDIF}, Self, QueryHandle);
+  finally
+    if QueryHandle <> nil then
+      FPlainDriver.PQclear(QueryHandle);
+  end;
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
 procedure TZPostgreSQLConnection.GetBinaryEscapeString(Buf: Pointer;
   Len: LengthInt; out Result: RawByteString);
 begin
@@ -1231,6 +1276,16 @@ end;
 function TZPostgreSQLConnection.GetPlainDriver: TZPostgreSQLPlainDriver;
 begin
   Result := FPlainDriver;
+end;
+
+function TZPostgreSQLConnection.GetTimeZoneOffset: Int64;
+begin
+  Result := FTimeZoneOffset;
+end;
+
+function TZPostgreSQLConnection.GetTokenizer: IZTokenizer;
+begin
+  Result := TZPostgreSQLTokenizer.Create;
 end;
 
 {**
@@ -1283,6 +1338,7 @@ begin
           {$IFDEF UNICODE}
           TypeName := ZSysUtils.ASCII7ToUnicodeString(P, ZFastCode.StrLen(P));
           {$ELSE}
+          TypeName := '';
           ZSetString(P, ZFastCode.StrLen(P), TypeName);
           {$ENDIF}
         end;
@@ -1359,6 +1415,11 @@ begin
   if (FServerMajorVersion = 0) and (FServerMinorVersion = 0) then
     LoadServerVersion;
   Result := FServerSubVersion;
+end;
+
+function TZPostgreSQLConnection.GetStatementAnalyser: IZStatementAnalyser;
+begin
+  Result := TZPostgreSQLStatementAnalyser.Create;
 end;
 
 {**
@@ -1637,11 +1698,11 @@ var
       (P+escapedLen)^ := #39;
   end;
 begin
-  if (Buf = nil) or (Len = 0) then
-    if Quoted
-    then Result := ''''''
-    else Result := ''
-  else if Assigned(Fconn) and Assigned(FPlainDriver.PQescapeByteaConn) then
+  Result := '';
+  if (Buf = nil) or (Len = 0) then begin
+    if Quoted then
+       Result := ''''''
+  end else if Assigned(Fconn) and Assigned(FPlainDriver.PQescapeByteaConn) then
     SetResult(FPlainDriver.PQescapeByteaConn(Fconn, Buf, Len, @escapedLen), Result)
   else if Assigned(FPlainDriver.PQescapeBytea) then
     SetResult(FPlainDriver.PQescapeBytea(Buf,Len,@escapedLen), Result)

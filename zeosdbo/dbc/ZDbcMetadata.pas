@@ -59,7 +59,7 @@ uses
   Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
   {$IFNDEF NO_UNIT_CONTNRS}Contnrs,{$ENDIF}FmtBCD,
   ZSysUtils, ZClasses, ZDbcIntfs, ZDbcResultSetMetadata, ZDbcCachedResultSet,
-  ZDbcCache, ZCompatibility, ZSelectSchema, ZDbcConnection;
+  ZCompatibility, ZSelectSchema, ZDbcConnection;
 
 type
   TZWildcardsSet= {$IFDEF UNICODE}
@@ -80,36 +80,7 @@ type
   {** Defines a dynamic array of metadata column definitions. }
   TZMetadataColumnDefs = array of TZMetadataColumnDef;
 
-  {** Represents a Virtual ResultSet interface. }
-  IZVirtualResultSet = interface(IZCachedResultSet)
-    ['{D84055AC-BCD5-40CD-B408-6F11AF000C96}']
-    procedure SetType(Value: TZResultSetType);
-    procedure SetConcurrency(Value: TZResultSetConcurrency);
-    procedure ChangeRowNo(CurrentRowNo, NewRowNo: NativeInt);
-    procedure SortRows(const ColumnIndices: TIntegerDynArray; Descending: Boolean);
-  end;
-
-  {** Implements Virtual ResultSet. }
-  TZVirtualResultSet = class(TZAbstractCachedResultSet, IZVirtualResultSet)
-  private
-    fConSettings: TZConSettings;
-    fColumnIndices, FCompareFuncs: Pointer; //ovoid RTTI finalize!
-    function ColumnSort(Item1, Item2: Pointer): Integer;
-  protected
-    procedure CalculateRowDefaults({%H-}RowAccessor: TZRowAccessor); override;
-    procedure PostRowUpdates({%H-}OldRowAccessor, {%H-}NewRowAccessor: TZRowAccessor);
-      override;
-  public
-    constructor CreateWithStatement(const SQL: string; const Statement: IZStatement;
-      ConSettings: PZConSettings);
-    constructor CreateWithColumns(ColumnsInfo: TObjectList; const SQL: string;
-      ConSettings: PZConSettings);
-  public
-    procedure ChangeRowNo(CurrentRowNo, NewRowNo: NativeInt);
-    procedure SortRows(const ColumnIndices: TIntegerDynArray; Descending: Boolean);
-  end;
-
-  {** Implements Unclosable ResultSet which frees all memory if it's not referenced anymore. }
+  {** Implements Uncloseable ResultSet which frees all memory if it's not referenced anymore. }
   TZUnCloseableResultSet = class(TZVirtualResultSet)
   private
     fDoClose: Boolean;
@@ -119,6 +90,24 @@ type
     procedure ResetCursor; override;
   end;
 
+  PZKeyAndResultSetPair = ^TZKeyAndResultSetPair;
+  TZKeyAndResultSetPair = record
+    Key: String;
+    ResultSet: IZResultSet;
+  end;
+
+  TZKeyAndResultSetPairList = Class(TZCustomElementList)
+  protected
+    /// <summary>Notify about an action which will or was performed.
+    ///  if ElementNeedsFinalize is False the method will never be called.
+    ///  Otherwise you may finalize managed types beeing part of each element,
+    ///  such as Strings, Objects etc.</summary>
+    /// <param>"Ptr" the address of the element an action happens for.</param>
+    /// <param>"Index" the index of the element.</param>
+    /// <returns>The address or raises an EListError if the Index is invalid.</returns>
+    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
+  End;
+
   {** Implements Abstract Database Metadata. }
 
   { TZAbstractDatabaseMetadata }
@@ -126,7 +115,7 @@ type
   private
     FConnection: Pointer;
     FUrl: TZURL;
-    FCachedResultSets: IZHashMap;
+    FCachedResultSets: TZKeyAndResultSetPairList;
     FDatabaseInfo: IZDatabaseInfo;
     function GetInfo: TStrings;
     function GetURLString: String;
@@ -140,6 +129,15 @@ type
     procedure ClearBuf; {$IFDEF WITH_INLINE}inline;{$ENDIF}
     procedure FlushBuf(var Value: String); {$IFDEF WITH_INLINE}inline;{$ENDIF}
     procedure ToBuf(C: Char; var Value: String); {$IFDEF WITH_INLINE}inline;{$ENDIF}
+  protected //EH: normalize the qualifier names before testing against the cache
+    procedure NormalizeCatalogName(var Value: String); virtual;
+    procedure NormalizeSchemaName(var Value: String; IsPattern: Boolean); virtual;
+    procedure NormalizeTableName(var Value: String; IsPattern: Boolean); virtual;
+    procedure NormalizeProcedureName(var Value: String; IsPattern: Boolean); virtual;
+    procedure NormalizeColumnNamePattern(var Value: String); virtual;
+    procedure NormalizeParameterNamePattern(var Value: String); virtual;
+    procedure NormalizeSequenceNamePattern(var Value: String); virtual;
+    procedure NormalizeTriggerNamePattern(var Value: String); virtual;
   protected
     FDatabase: String;
     WildcardsArray: {$IFDEF TSYSCHARSET_IS_DEPRECATED}TZWildcardsSet{$ELSE}array of char{$ENDIF}; //Added by Cipto
@@ -166,26 +164,219 @@ type
     function NormalizePatternCase(const Pattern: String): string;
     property Url: string read GetURLString;
     property Info: TStrings read GetInfo;
-    property CachedResultSets: IZHashMap read FCachedResultSets
-      write FCachedResultSets;
+    property CachedResultSets: TZKeyAndResultSetPairList read FCachedResultSets;
     property IC: IZIdentifierConverter read FIC;
   protected
+    /// <summary>Gets a description of tables available in a catalog.
+    ///  Only table descriptions matching the catalog, schema, table
+    ///  name and type criteria are returned. They are ordered by
+    ///  TABLE_TYPE, TABLE_SCHEM and TABLE_NAME.
+    ///  Each table description has the following columns:
+ 	  ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+ 	  ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+ 	  ///  <c>TABLE_NAME</c> String => table name
+ 	  ///  <c>TABLE_TYPE</c> String => table type.  Typical types are "TABLE",
+ 	  ///  		"VIEW",	"SYSTEM TABLE", "GLOBAL TEMPORARY",
+ 	  ///  		"LOCAL TEMPORARY", "ALIAS", "SYNONYM".
+ 	  ///  <c>REMARKS</c> String => explanatory comment on the table</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema
+    ///  pattern from the selection criteria</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <param>"Types" an array of table types to include; nil returns all
+    ///  types.</param>
+    /// <returns><c>ResultSet</c> - each row is a table description</returns>
+    /// <remarks>Some databases may not return information for
+    ///  all tables. Additional columns beyond REMARKS can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function UncachedGetTables(const {%H-}Catalog: string; const {%H-}SchemaPattern: string;
       const {%H-}TableNamePattern: string; const {%H-}Types: TStringDynArray): IZResultSet; virtual;
     function UncachedGetSchemas: IZResultSet; virtual;
     function UncachedGetCatalogs: IZResultSet; virtual;
     function UncachedGetTableTypes: IZResultSet; virtual;
+    /// <summary>Gets a description of table columns available in
+    ///  the specified catalog.
+    ///  Only column descriptions matching the catalog, schema pattern, table
+    ///  name pattern and column name criteria are returned. They are ordered by
+    ///  TABLE_SCHEM, TABLE_NAME and ORDINAL_POSITION.
+    ///  Each column description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>COLUMN_NAME</c> String => column name
+    ///  <c>DATA_TYPE</c> short => SQL type from java.sql.Types
+    ///  <c>TYPE_NAME</c> String => Data source dependent type name,
+    ///   for a UDT the type name is fully qualified
+    ///  <c>COLUMN_SIZE</c> int => column size.  For char or date
+    ///      types this is the maximum number of characters, for numeric or
+    ///      decimal types this is precision.
+    ///  <c>BUFFER_LENGTH</c> is not used.
+    ///  <c>DECIMAL_DIGITS</c> int => the number of fractional digits
+    ///  <c>NUM_PREC_RADIX</c> int => Radix (typically either 10 or 2)
+    ///  <c>NULLABLE</c> int => is NULL allowed?
+    ///     Ord(ntNoNulls) - does not allow NULL values
+    ///     Ord(ntNullable) - allows NULL values
+    ///     Ord(ntNullableUnknown) - nullability unknown
+    ///  <c>REMARKS</c> String => comment describing column (may be null)
+    ///  <c>COLUMN_DEF</c> String => default value (may be null)
+    ///  <c>SQL_DATA_TYPE</c> int => unused
+    ///  <c>SQL_DATETIME_SUB</c> int => unused
+    ///  <c>CHAR_OCTET_LENGTH</c> int => for char types the
+    ///        maximum number of bytes in the column
+    ///  <c>ORDINAL_POSITION</c> int	=> index of column in table
+    ///       (starting at 1)
+    ///  <c>IS_NULLABLE</c> String => "NO" means column definitely
+    ///       does not allow NULL values; "YES" means the column might
+    ///       allow NULL values. An empty string means nobody knows.</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" retrieves those
+    ///  without a schema</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <param>"ColumnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a column description</returns>
+    /// <remarks>Some databases may not return information for
+    ///  all tables. Additional columns beyond IS_NULLABLE can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function UncachedGetColumns(const {%H-}Catalog: string; const {%H-}SchemaPattern: string;
       const {%H-}TableNamePattern: string; const {%H-}ColumnNamePattern: string): IZResultSet; virtual;
+    /// <summary>Gets a description of the access rights for each table
+    ///  available in a catalog. Note that a table privilege applies to one or
+    ///  more columns in the table. It would be wrong to assume that
+    ///  this priviledge applies to all columns (this may be true for
+    ///  some systems but is not true for all.)
+    ///
+    ///  Only privileges matching the schema and table name
+    ///  criteria are returned. They are ordered by TABLE_SCHEM,
+    ///  TABLE_NAME, and PRIVILEGE.
+    ///
+    ///  Each privilige description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>GRANTOR</c> => grantor of access (may be null)
+    ///  <c>GRANTEE</c> String => grantee of access
+    ///  <c>PRIVILEGE</c> String => name of access (SELECT,
+    ///      INSERT, UPDATE, REFRENCES, ...)
+    ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
+    ///   to grant to others; "NO" if not; null if unknown</summary>
+    ///
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema from
+    ///  the selection criteria</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a table privilege description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function UncachedGetTablePrivileges(const {%H-}Catalog: string; const {%H-}SchemaPattern: string;
       const {%H-}TableNamePattern: string): IZResultSet; virtual;
-    function UncachedGetColumnPrivileges(const {%H-}Catalog: string; const {%H-}Schema: string;
-      const {%H-}Table: string; const {%H-}ColumnNamePattern: string): IZResultSet; virtual;
-
-    function UncachedGetPrimaryKeys(const {%H-}Catalog: string; const {%H-}Schema: string;
-      const {%H-}Table: string): IZResultSet; virtual;
-    function UncachedGetImportedKeys(const {%H-}Catalog: string; const {%H-}Schema: string;
-      const {%H-}Table: string): IZResultSet; virtual;
+    /// <summary>Gets a description of the access rights for a table's columns.
+    ///
+    ///  Only privileges matching the column name criteria are
+    ///  returned. They are ordered by COLUMN_NAME and PRIVILEGE.
+    ///
+    ///  Each privilige description has the following columns:
+ 	  ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+ 	  ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+ 	  ///  <c>TABLE_NAME</c> String => table name
+ 	  ///  <c>COLUMN_NAME</c> String => column name
+ 	  ///  <c>GRANTOR</c> => grantor of access (may be null)
+ 	  ///  <c>GRANTEE</c> String => grantee of access
+ 	  ///  <c>PRIVILEGE</c> String => name of access (SELECT,
+    ///     INSERT, UPDATE, REFRENCES, ...)
+ 	  ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
+    ///   to grant to others; "NO" if not; null if unknown</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <param>"ColumnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a privilege description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
+    function UncachedGetColumnPrivileges(const Catalog: string; const Schema: string;
+      const Table: string; const ColumnNamePattern: string): IZResultSet; virtual;
+    /// <summary>Gets a description of a table's primary key columns. They
+    ///  are ordered by COLUMN_NAME.
+    ///  Each primary key column description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>COLUMN_NAME</c> String => column name
+    ///  <c>KEY_SEQ</c> short => sequence number within primary key
+    ///  <c>PK_NAME</c> String => primary key name (may be null)</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <returns><c>ResultSet</c> - each row is a primary key column description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
+    function UncachedGetPrimaryKeys(const Catalog: string; const Schema: string;
+      const Table: string): IZResultSet; virtual;
+    /// <summary>Gets a description of the primary key columns that are
+    ///  referenced by a table's foreign key columns (the primary keys
+    ///  imported by a table).  They are ordered by PKTABLE_CAT,
+    ///  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
+    ///  Each primary key column description has the following columns:
+    ///  <c>PKTABLE_CAT</c> String => primary key table catalog
+    ///       being imported (may be null)
+    ///  <c>PKTABLE_SCHEM</c> String => primary key table schema
+    ///       being imported (may be null)
+    ///  <c>PKTABLE_NAME</c> String => primary key table name
+    ///       being imported
+    ///  <c>PKCOLUMN_NAME</c> String => primary key column name
+    ///       being imported
+    ///  <c>FKTABLE_CAT</c> String => foreign key table catalog (may be null)
+    ///  <c>FKTABLE_SCHEM</c> String => foreign key table schema (may be null)
+    ///  <c>FKTABLE_NAME</c> String => foreign key table name
+    ///  <c>FKCOLUMN_NAME</c> String => foreign key column name
+    ///  <c>KEY_SEQ</c> short => sequence number within foreign key
+    ///  <c>UPDATE_RULE</c> short => What happens to
+    ///        foreign key when primary is updated:
+    ///        importedNoAction - do not allow update of primary
+    ///                key if it has been imported
+    ///        importedKeyCascade - change imported key to agree
+    ///                with primary key update
+    ///        importedKeySetNull - change imported key to NULL if
+    ///                its primary key has been updated
+    ///        importedKeySetDefault - change imported key to default values
+    ///                if its primary key has been updated
+    ///        importedKeyRestrict - same as importedKeyNoAction
+    ///                                  (for ODBC 2.x compatibility)
+    ///  <c>DELETE_RULE</c> short => What happens to
+    ///       the foreign key when primary is deleted.
+    ///        importedKeyNoAction - do not allow delete of primary
+    ///                key if it has been imported
+    ///        importedKeyCascade - delete rows that import a deleted key
+    ///       importedKeySetNull - change imported key to NULL if
+    ///                its primary key has been deleted
+    ///        importedKeyRestrict - same as importedKeyNoAction
+    ///                                  (for ODBC 2.x compatibility)
+    ///        importedKeySetDefault - change imported key to default if
+    ///                its primary key has been deleted
+    ///  <c>FK_NAME</c> String => foreign key name (may be null)
+    ///  <c>PK_NAME</c> String => primary key name (may be null)
+    ///  <c>DEFERRABILITY</c> short => can the evaluation of foreign key
+    ///       constraints be deferred until commit
+    ///        importedKeyInitiallyDeferred - see SQL92 for definition
+    ///        importedKeyInitiallyImmediate - see SQL92 for definition
+    ///        importedKeyNotDeferrable - see SQL92 for definition</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <returns><c>ResultSet</c> - each row is imported key column description</returns>
+    /// <remarks>see GetSearchStringEscape;GetExportedKeys</remarks>
+    function UncachedGetImportedKeys(const Catalog: string; const Schema: string;
+      const Table: string): IZResultSet; virtual;
     function UncachedGetExportedKeys(const {%H-}Catalog: string; const {%H-}Schema: string;
       const {%H-}Table: string): IZResultSet; virtual;
     function UncachedGetCrossReference(const {%H-}PrimaryCatalog: string; const {%H-}PrimarySchema: string;
@@ -200,8 +391,76 @@ type
     function UncachedGetCollationAndCharSet(const {%H-}Catalog, {%H-}SchemaPattern,
       {%H-}TableNamePattern, {%H-}ColumnNamePattern: string): IZResultSet; virtual; //EgonHugeist
     function UncachedGetCharacterSets: IZResultSet; virtual; //EgonHugeist
+    /// <summary>Gets a description of the stored procedures available in a
+    ///  catalog. This method needs to be implemented per driver.
+    ///  Only procedure descriptions matching the schema and procedure name
+    ///  criteria are returned. They are ordered by
+    ///  PROCEDURE_SCHEM, and PROCEDURE_NAME.
+    ///  Each procedure description has the the following columns:
+    ///  <c>PROCEDURE_CAT</c> String => procedure catalog (may be null)
+    ///  <c>PROCEDURE_SCHEM</c> String => procedure schema (may be null)
+    ///  <c>PROCEDURE_NAME</c> String => procedure name
+    ///  <c>PROCEDURE_OVERLOAD</c> => a overload indicator (may be null)
+    ///  <c>RESERVED1</c> => for future use
+    ///  <c>RESERVED2</c> => for future use
+    ///  <c>REMARKS</c> String => explanatory comment on the procedure
+    ///  <c>PROCEDURE_TYPE</c> short => kind of procedure:
+    ///   procedureResultUnknown - May return a result
+    ///   procedureNoResult - Does not return a result
+    ///   procedureReturnsResult - Returns a result</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema
+    ///  pattern from the selection criteria</param>
+    /// <param>"ProcedureNamePattern" a procedure name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a procedure description.</returns>
+    /// <remarks>see getSearchStringEscape</remarks>
     function UncachedGetProcedures(const {%H-}Catalog: string; const {%H-}SchemaPattern: string;
       const {%H-}ProcedureNamePattern: string): IZResultSet; virtual;
+    /// <summary>Gets a description of a catalog's stored procedure parameters
+    ///  and result columns. This method needs to be implemented per driver.
+    ///  Only descriptions matching the schema, procedure and
+    ///  parameter name criteria are returned.  They are ordered by
+    ///  PROCEDURE_SCHEM and PROCEDURE_NAME. Within this, the return value,
+    ///  if any, is first. Next are the parameter descriptions in call
+    ///  order. The column descriptions follow in column number order.
+    ///  Each row in the <c>ResultSet</c> is a parameter description or
+    ///  column description with the following fields:
+ 	  ///  <c>PROCEDURE_CAT</c> String => procedure catalog (may be null)
+ 	  ///  <c>PROCEDURE_SCHEM</c> String => procedure schema (may be null)
+ 	  ///  <c>PROCEDURE_NAME</c> String => procedure name
+ 	  ///  <c>COLUMN_NAME</c> String => column/parameter name
+ 	  ///  <c>COLUMN_TYPE</c> Short => kind of column/parameter:
+    ///      Ord(pctUnknown) - nobody knows
+    ///      Ord(pctIn) - IN parameter
+    ///      Ord(pctInOut) - INOUT parameter
+    ///      Ord(pctOut) - OUT parameter
+    ///      Ord(pctReturn) - procedure return value
+    ///      Ord(pctResultSet) - result column in <c>ResultSet</c>
+    ///  <c>DATA_TYPE</c> short => ZDBC SQL type
+ 	  ///  <c>TYPE_NAME</c> String => SQL type name, for a UDT type the
+    ///   type name is fully qualified
+ 	  ///  <c>PRECISION</c> int => precision
+ 	  ///  <c>LENGTH</c> int => length in bytes of data
+ 	  ///  <c>SCALE</c> short => scale, second fractions
+ 	  ///  <c>RADIX</c> short => radix
+ 	  ///  <c>NULLABLE</c> short => can it contain NULL?
+    ///     Ord(ntNoNulls) - does not allow NULL values
+    ///     Ord(ntNullable) - allows NULL values
+    ///     Ord(ntNullableUnknown) - nullability unknown
+ 	  ///  <c>REMARKS</c> String => comment describing parameter/column</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop
+    ///  schema pattern from the selection criteria</param>
+    /// <param>"ProcedureNamePattern" a procedure name pattern</param>
+    /// <param>"columnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row describes a stored procedure
+    ///  parameter or column</returns>
+    /// <remarks>Some databases may not return the column descriptions for a
+    ///  procedure. Additional columns beyond REMARKS can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function UncachedGetProcedureColumns(const {%H-}Catalog: string; const {%H-}SchemaPattern: string;
       const {%H-}ProcedureNamePattern: string; const {%H-}ColumnNamePattern: string):
       IZResultSet; virtual;
@@ -213,27 +472,255 @@ type
     function UncachedGetUDTs(const {%H-}Catalog: string; const {%H-}SchemaPattern: string;
       const {%H-}TypeNamePattern: string; const {%H-}Types: TIntegerDynArray): IZResultSet; virtual;
   public
+    /// <summary>Constructs this object and assignes the main properties.</summary>
+    /// <param>"Connection" a database connection object.</param>
+    /// <param>"Url" a database connection url class.</param>
     constructor Create(Connection: TZAbstractDbcConnection; const Url: TZURL); virtual;
+    /// <summary>Destroys this object and cleanups the memory.</summary>
     destructor Destroy; override;
-
+    /// <summary>What's the url for this database?</summary>
+    /// <returns>the url or null if it cannot be generated</returns>
     function GetURL: string; virtual;
+    /// <summary>What's our user name as known to the database?</summary>
+    /// <returns>our database user name</returns>
     function GetUserName: string; virtual;
-
-    function GetDatabaseInfo: IZDatabaseInfo; // technobot 2008-06-24 - see also CreateDatabaseInfo method.
-
+    /// <author>technobot</author>
+    /// <summary>Returns general information about the database (version,
+    ///  capabilities,  policies, etc).</summary>
+    /// <returns>the database information object as interface.</returns>
+    function GetDatabaseInfo: IZDatabaseInfo;
+    /// <summary>Gets a description of tables available in a catalog from a
+    ///  cache. If the cache doesn't have a entry for the matching criteria
+    ///  UncachedGetTables is called and the result will be added to the cache.
+    ///  Only table descriptions matching the catalog, schema, table
+    ///  name and type criteria are returned. They are ordered by
+    ///  TABLE_TYPE, TABLE_SCHEM and TABLE_NAME.
+    ///  Each table description has the following columns:
+ 	  ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+ 	  ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+ 	  ///  <c>TABLE_NAME</c> String => table name
+ 	  ///  <c>TABLE_TYPE</c> String => table type.  Typical types are "TABLE",
+ 	  ///  		"VIEW",	"SYSTEM TABLE", "GLOBAL TEMPORARY",
+ 	  ///  		"LOCAL TEMPORARY", "ALIAS", "SYNONYM".
+ 	  ///  <c>REMARKS</c> String => explanatory comment on the table</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema
+    ///  pattern from the selection criteria</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <param>"Types" an array of table types to include; nil returns all
+    ///  types.</param>
+    /// <returns><c>ResultSet</c> - each row is a table description</returns>
+    /// <remarks>Some databases may not return information for
+    ///  all tables. Additional columns beyond REMARKS can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function GetTables(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string; const Types: TStringDynArray): IZResultSet;
+    /// <summary>Gets the schema names available in this database. The results
+    ///  are ordered by schema name.
+    ///  The schema column is:
+    ///  <C>TABLE_SCHEM</C> String => schema name</summary>
+    /// <returns><c>ResultSet</c> - each row has a single String column that is
+    ///  a schema name</returns>
     function GetSchemas: IZResultSet;
+    /// <summary>Gets the catalog names available in this database. The results
+    ///  are ordered by catalog name.
+    ///  The catalog column is:
+    ///  <C>TABLE_CAT</C> String => catalog name</summary>
+    /// <returns><c>ResultSet</c> - each row has a single String column that is
+    ///  a catalog name</returns>
     function GetCatalogs: IZResultSet;
+    /// <summary>Gets the table types available in this database. The results
+    ///  are ordered by table type.
+    ///  The table type is:
+    ///  <c>TABLE_TYPE</c> String => table type. Typical types are "TABLE",
+    ///  "VIEW", "SYSTEM TABLE", "GLOBAL TEMPORARY","LOCAL TEMPORARY", "ALIAS",
+    ///  "SYNONYM".</summary>
+    /// <returns><c>ResultSet</c> - each row has a single String column that is
+    ///  a table type</returns>
     function GetTableTypes: IZResultSet;
+    /// <summary>Gets a description of table columns available in
+    ///  the specified catalog from a cache. If the cache doesn't have a entry
+    ///  for the matching criteria UncachedGetTables is called and the result
+    ///  will be added to the cache.
+    ///  Only column descriptions matching the catalog, schema pattern, table
+    ///  name pattern and column name criteria are returned. They are ordered by
+    ///  TABLE_SCHEM, TABLE_NAME and ORDINAL_POSITION.
+    ///  Each column description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>COLUMN_NAME</c> String => column name
+    ///  <c>DATA_TYPE</c> short => SQL type from java.sql.Types
+    ///  <c>TYPE_NAME</c> String => Data source dependent type name,
+    ///   for a UDT the type name is fully qualified
+    ///  <c>COLUMN_SIZE</c> int => column size. For char or date
+    ///      types this is the maximum number of characters, for numeric or
+    ///      decimal types this is precision.
+    ///  <c>BUFFER_LENGTH</c> is not used.
+    ///  <c>DECIMAL_DIGITS</c> int => the number of fractional digits
+    ///  <c>NUM_PREC_RADIX</c> int => Radix (typically either 10 or 2)
+    ///  <c>NULLABLE</c> int => is NULL allowed?
+    ///     Ord(ntNoNulls) - does not allow NULL values
+    ///     Ord(ntNullable) - allows NULL values
+    ///     Ord(ntNullableUnknown) - nullability unknown
+    ///  <c>REMARKS</c> String => comment describing column (may be null)
+    ///  <c>COLUMN_DEF</c> String => default value (may be null)
+    ///  <c>SQL_DATA_TYPE</c> int => unused
+    ///  <c>SQL_DATETIME_SUB</c> int => unused
+    ///  <c>CHAR_OCTET_LENGTH</c> int => for char types the
+    ///        maximum number of bytes in the column
+    ///  <c>ORDINAL_POSITION</c> int	=> index of column in table
+    ///       (starting at 1)
+    ///  <c>IS_NULLABLE</c> String => "NO" means column definitely
+    ///       does not allow NULL values; "YES" means the column might
+    ///       allow NULL values. An empty string means nobody knows.</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" retrieves those
+    ///  without a schema</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <param>"ColumnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a column description</returns>
+    /// <remarks>Some databases may not return information for
+    ///  all tables. Additional columns beyond IS_NULLABLE can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function GetColumns(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string; const ColumnNamePattern: string): IZResultSet;
+    /// <summary>Gets a description of the access rights for each table
+    ///  available in a catalog from a cache. Note that a table privilege
+    ///  applies to one or more columns in the table. It would be wrong to
+    ///  assume that this priviledge applies to all columns (this may be true
+    ///  for some systems but is not true for all.)
+    ///
+    ///  Only privileges matching the schema and table name
+    ///  criteria are returned. They are ordered by TABLE_SCHEM,
+    ///  TABLE_NAME, and PRIVILEGE.
+    ///
+    ///  Each privilige description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>GRANTOR</c> => grantor of access (may be null)
+    ///  <c>GRANTEE</c> String => grantee of access
+    ///  <c>PRIVILEGE</c> String => name of access (SELECT,
+    ///      INSERT, UPDATE, REFRENCES, ...)
+    ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
+    ///   to grant to others; "NO" if not; null if unknown</summary>
+    ///
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema from
+    ///  the selection criteria</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a table privilege description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function GetTablePrivileges(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string): IZResultSet;
+    /// <summary>Gets a description of the access rights for a table's columns
+    ///  from a cache.
+    ///  Only privileges matching the column name criteria are
+    ///  returned. They are ordered by COLUMN_NAME and PRIVILEGE.
+    ///
+    ///  Each privilige description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>COLUMN_NAME</c> String => column name
+    ///  <c>GRANTOR</c> => grantor of access (may be null)
+    ///  <c>GRANTEE</c> String => grantee of access
+    ///  <c>PRIVILEGE</c> String => name of access (SELECT,
+    ///     INSERT, UPDATE, REFRENCES, ...)
+    ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
+    ///   to grant to others; "NO" if not; null if unknown</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <param>"ColumnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a privilege description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function GetColumnPrivileges(const Catalog: string; const Schema: string;
       const Table: string; const ColumnNamePattern: string): IZResultSet;
+    /// <summary>Gets a description of a table's primary key columns from a
+    ///  cache. They are ordered by COLUMN_NAME.
+    ///  Each primary key column description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>COLUMN_NAME</c> String => column name
+    ///  <c>KEY_SEQ</c> short => sequence number within primary key
+    ///  <c>PK_NAME</c> String => primary key name (may be null)</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <returns><c>ResultSet</c> - each row is a primary key column description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function GetPrimaryKeys(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet;
+    /// <summary>Gets a description of the primary key columns that are
+    ///  referenced by a table's foreign key columns (the primary keys
+    ///  imported by a table) from a cache.  They are ordered by PKTABLE_CAT,
+    ///  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
+    ///  Each primary key column description has the following columns:
+    ///  <c>PKTABLE_CAT</c> String => primary key table catalog
+    ///       being imported (may be null)
+    ///  <c>PKTABLE_SCHEM</c> String => primary key table schema
+    ///       being imported (may be null)
+    ///  <c>PKTABLE_NAME</c> String => primary key table name
+    ///       being imported
+    ///  <c>PKCOLUMN_NAME</c> String => primary key column name
+    ///       being imported
+    ///  <c>FKTABLE_CAT</c> String => foreign key table catalog (may be null)
+    ///  <c>FKTABLE_SCHEM</c> String => foreign key table schema (may be null)
+    ///  <c>FKTABLE_NAME</c> String => foreign key table name
+    ///  <c>FKCOLUMN_NAME</c> String => foreign key column name
+    ///  <c>KEY_SEQ</c> short => sequence number within foreign key
+    ///  <c>UPDATE_RULE</c> short => What happens to
+    ///        foreign key when primary is updated:
+    ///        importedNoAction - do not allow update of primary
+    ///                key if it has been imported
+    ///        importedKeyCascade - change imported key to agree
+    ///                with primary key update
+    ///        importedKeySetNull - change imported key to NULL if
+    ///                its primary key has been updated
+    ///        importedKeySetDefault - change imported key to default values
+    ///                if its primary key has been updated
+    ///        importedKeyRestrict - same as importedKeyNoAction
+    ///                                  (for ODBC 2.x compatibility)
+    ///  <c>DELETE_RULE</c> short => What happens to
+    ///       the foreign key when primary is deleted.
+    ///        importedKeyNoAction - do not allow delete of primary
+    ///                key if it has been imported
+    ///        importedKeyCascade - delete rows that import a deleted key
+    ///       importedKeySetNull - change imported key to NULL if
+    ///                its primary key has been deleted
+    ///        importedKeyRestrict - same as importedKeyNoAction
+    ///                                  (for ODBC 2.x compatibility)
+    ///        importedKeySetDefault - change imported key to default if
+    ///                its primary key has been deleted
+    ///  <c>FK_NAME</c> String => foreign key name (may be null)
+    ///  <c>PK_NAME</c> String => primary key name (may be null)
+    ///  <c>DEFERRABILITY</c> short => can the evaluation of foreign key
+    ///       constraints be deferred until commit
+    ///        importedKeyInitiallyDeferred - see SQL92 for definition
+    ///        importedKeyInitiallyImmediate - see SQL92 for definition
+    ///        importedKeyNotDeferrable - see SQL92 for definition</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <returns><c>ResultSet</c> - each row is imported key column description</returns>
+    /// <remarks>see GetSearchStringEscape;GetExportedKeys</remarks>
     function GetImportedKeys(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet;
     function GetExportedKeys(const Catalog: string; const Schema: string;
@@ -249,8 +736,80 @@ type
       const TableNamePattern: string; const TriggerNamePattern: string): IZResultSet; //EgonHugesit
     function GetSequences(const Catalog: string; const SchemaPattern: string;
       const SequenceNamePattern: string): IZResultSet;
+    /// <summary>Gets a description of the stored procedures available in a
+    ///  catalog from a cache. If the cache doesn't have a entry for the
+    ///  matching criteria UncachedGetProcedures is called and the result will
+    ///  be added to the cache.
+    ///  Only procedure descriptions matching the schema and procedure name
+    ///  criteria are returned. They are ordered by
+    ///  PROCEDURE_SCHEM, and PROCEDURE_NAME.
+    ///  Each procedure description has the the following columns:
+    ///  <c>PROCEDURE_CAT</c> String => procedure catalog (may be null)
+    ///  <c>PROCEDURE_SCHEM</c> String => procedure schema (may be null)
+    ///  <c>PROCEDURE_NAME</c> String => procedure name
+    ///  <c>PROCEDURE_OVERLOAD</c> => a overload indicator (may be null)
+    ///  <c>RESERVED1</c> => for future use
+    ///  <c>RESERVED2</c> => for future use
+    ///  <c>REMARKS</c> String => explanatory comment on the procedure
+    ///  <c>PROCEDURE_TYPE</c> short => kind of procedure:
+    ///   procedureResultUnknown - May return a result
+    ///   procedureNoResult - Does not return a result
+    ///   procedureReturnsResult - Returns a result</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema
+    ///  pattern from the selection criteria</param>
+    /// <param>"ProcedureNamePattern" a procedure name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a procedure description.</returns>
+    /// <remarks>see getSearchStringEscape</remarks>
     function GetProcedures(const Catalog: string; const SchemaPattern: string;
       const ProcedureNamePattern: string): IZResultSet;
+    /// <summary>Gets a description of a catalog's stored procedure parameters
+    ///  and result columns from a cache. If the cache doesn't have a entry for
+    ///  the matching criteria UncachedGetProcedureColumns is called and the
+    ///  result will be added to the cache.
+    ///  Only descriptions matching the schema, procedure and
+    ///  parameter name criteria are returned.  They are ordered by
+    ///  PROCEDURE_SCHEM and PROCEDURE_NAME. Within this, the return value,
+    ///  if any, is first. Next are the parameter descriptions in call
+    ///  order. The column descriptions follow in column number order.
+    ///  Each row in the <c>ResultSet</c> is a parameter description or
+    ///  column description with the following fields:
+    ///  <c>PROCEDURE_CAT</c> String => procedure catalog (may be null)
+    ///  <c>PROCEDURE_SCHEM</c> String => procedure schema (may be null)
+    ///  <c>PROCEDURE_NAME</c> String => procedure name
+    ///  <c>COLUMN_NAME</c> String => column/parameter name
+    ///  <c>COLUMN_TYPE</c> Short => kind of column/parameter:
+    ///      Ord(pctUnknown) - nobody knows
+    ///      Ord(pctIn) - IN parameter
+    ///      Ord(pctInOut) - INOUT parameter
+    ///      Ord(pctOut) - OUT parameter
+    ///      Ord(pctReturn) - procedure return value
+    ///      Ord(pctResultSet) - result column in <c>ResultSet</c>
+    ///  <c>DATA_TYPE</c> short => ZDBC SQL type
+    ///  <c>TYPE_NAME</c> String => SQL type name, for a UDT type the
+    ///   type name is fully qualified
+    ///  <c>PRECISION</c> int => precision
+    ///  <c>LENGTH</c> int => length in bytes of data
+    ///  <c>SCALE</c> short => scale, second fractions
+    ///  <c>RADIX</c> short => radix
+    ///  <c>NULLABLE</c> short => can it contain NULL?
+    ///     Ord(ntNoNulls) - does not allow NULL values
+    ///     Ord(ntNullable) - allows NULL values
+    ///     Ord(ntNullableUnknown) - nullability unknown
+ 	  ///  <c>REMARKS</c> String => comment describing parameter/column</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop
+    ///  schema pattern from the selection criteria</param>
+    /// <param>"ProcedureNamePattern" a procedure name pattern</param>
+    /// <param>"columnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row describes a stored procedure
+    ///  parameter or column</returns>
+    /// <remarks>Some databases may not return the column descriptions for a
+    ///  procedure. Additional columns beyond REMARKS can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function GetProcedureColumns(const Catalog: string; const SchemaPattern: string;
       const ProcedureNamePattern: string; const ColumnNamePattern: string):
       IZResultSet;
@@ -261,7 +820,6 @@ type
     function GetTypeInfo: IZResultSet;
     function GetUDTs(const Catalog: string; const SchemaPattern: string;
       const TypeNamePattern: string; const Types: TIntegerDynArray): IZResultSet;
-
 
     function GetConnection: IZConnection; virtual;
 
@@ -395,6 +953,9 @@ type
     /// <returns><c>true</c> if so; <c>false</c> otherwise.</returns>
     function SupportsConvertForTypes(FromType: TZSQLType; ToType: TZSQLType):
       Boolean; virtual;
+    /// <summary>Are table correlation names supported?
+    /// A Zeos Compliant <c>TM</c> driver always returns true.</summary>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function SupportsTableCorrelationNames: Boolean; virtual;
     function SupportsDifferentTableCorrelationNames: Boolean; virtual;
     function SupportsExpressionsInOrderBy: Boolean; virtual;
@@ -521,20 +1082,61 @@ type
     IZIdentifierConverter)
   private
     FMetadata: Pointer;
+    /// <summary>Get the underlaying IZMetadata interface.</summary>
+    /// <returns>the owner IZMetadata interface.</returns>
     function GetMetaData: IZDatabaseMetadata;
   protected
     property Metadata: IZDatabaseMetadata read GetMetaData;
-
+    /// <summary>Checks is the specified string in lower case.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <returns><c>True</c> if the identifier string is lower case;<c>False</c>
+    ///  otherwise.</returns>
     function IsLowerCase(const Value: string): Boolean;
+    /// <summary>Checks is the specified string in upper case.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <returns><c>True</c> if the identifier string is upper case;<c>False</c>
+    ///  otherwise.</returns>
     function IsUpperCase(const Value: string): Boolean;
+    /// <summary>Checks is the specified string in special case.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <returns><c>True</c> if the identifier string is special case;
+    ///  <c>False</c> otherwise.</returns>
     function IsSpecialCase(const Value: string): Boolean; virtual;
   public
+    /// <summary>Constructs this default identifier Converter object.</summary>
+    /// <param>"Metadata" the owner database metadata interface.</param>
     constructor Create(const Metadata: IZDatabaseMetadata);
 
+    /// <author>FrOsT</author>
+    /// <summary>Get the indentifier case.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <param>"TestKeyWords" indicate if reserved Keywords should be compared.</param>
+    /// <returns>on of the following:
+    ///  icNone - just numbers starting with a underscore found,
+    ///  icLower - the indentifier is lower case,
+    ///  icUpper - the indentifier is upper case,
+    ///  icMixed - the indentifier is mixed case,
+    ///  icSpecial - the identifier is a reserved keyword or contains a
+    ///    character not matching '0'..'9', 'a'..'z' and 'A'..'Z'.</returns>
     function GetIdentifierCase(const Value: String; TestKeyWords: Boolean): TZIdentifierCase;
+    /// <summary>Checks is the string case sensitive.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <returns><c>True</c> if the identifier string is case sensitive;
+    ///  <c>False</c> otherwise.</returns>
     function IsCaseSensitive(const Value: string): Boolean;
+    /// <summary>Checks is the string quoted.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <return><c>True</c> if the identifier string is case quoted;
+    ///  <c>False</c> otherwise.</returns>
     function IsQuoted(const Value: string): Boolean; virtual;
+    /// <summary>Quotes the identifier string.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <param>"Qualifier" an identifier qualifier. Default is <c>iqUnspecified</c>.</param>
+    /// <returns>a quoted string.</returns>
     function Quote(const Value: string; Qualifier: TZIdentifierQualifier = iqUnspecified): string; virtual;
+    /// <summary>Extracts the quote from the idenfitier string.</summary>
+    /// <param>"Value" an identifier string.</param>
+    /// <returns>an extracted and processed string.</returns>
     function ExtractQuote(const Value: string): string; virtual;
   end;
   TZDefaultIdentifierConvertor = TZDefaultIdentifierConverter; //keep that alias for compatibility
@@ -808,7 +1410,7 @@ var
 
 implementation
 
-uses ZFastCode, ZVariant, ZCollections, ZMessages, ZEncoding,
+uses ZFastCode, ZVariant, ZMessages, ZEncoding,
   ZDbcProperties, ZDbcUtils;
 
 { TZAbstractDatabaseInfo }
@@ -1206,11 +1808,6 @@ begin
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
-{**
-  Are table correlation names supported?
-  A JDBC Compliant<sup><font size=-2>TM</font></sup> driver always returns true.
-  @return <code>true</code> if so; <code>false</code> otherwise
-}
 function TZAbstractDatabaseInfo.SupportsTableCorrelationNames: Boolean;
 begin
   Result := True;
@@ -2072,11 +2669,6 @@ end;
 
 { TZAbstractDatabaseMetadata }
 
-{**
-  Constructs this object and assignes the main properties.
-  @param Connection a database connection object.
-  @param Url a database connection url class.
-}
 constructor TZAbstractDatabaseMetadata.Create(Connection: TZAbstractDbcConnection;
   const Url: TZURL);
 begin
@@ -2084,7 +2676,7 @@ begin
   FIC := Self.GetIdentifierConverter;
   FConnection := Pointer(Connection as IZConnection);
   FUrl := Url;
-  FCachedResultSets := TZHashMap.Create;
+  FCachedResultSets := TZKeyAndResultSetPairList.Create(SizeOf(TZKeyAndResultSetPair), True);
   FDatabaseInfo := nil;
   FDatabase := Url.Database;
   FConSettings := IZConnection(FConnection).GetConSettings;
@@ -2152,10 +2744,17 @@ begin
 end;
 
 function TZAbstractDatabaseMetadata.HasKey(const Key: String): Boolean;
-var  TempKey: IZAnyValue;
+var I: Integer;
+  KeyAndResultSetPair: PZKeyAndResultSetPair;
 begin
-  TempKey := TZAnyValue.CreateWithString(Key);
-  Result := FCachedResultSets.Get(TempKey) <> nil;
+  for i := 0 to FCachedResultSets.Count -1 do begin
+    KeyAndResultSetPair := FCachedResultSets.Get(i);
+    if KeyAndResultSetPair.Key = Key then begin
+      Result := True;
+      Exit;
+    end;
+  end;
+  Result := False;
 end;
 
 {**
@@ -2227,13 +2826,11 @@ begin
     else Result := S;
 end;
 
-{**  Destroys this object and cleanups the memory.}
 destructor TZAbstractDatabaseMetadata.Destroy;
 begin
   FIC := nil;
   FUrl := nil;
-  FCachedResultSets.Clear;
-  FCachedResultSets := nil;
+  FreeAndNil(FCachedResultSets);
   FDatabaseInfo := nil;
 
   inherited Destroy;
@@ -2327,11 +2924,16 @@ begin
 end;
 
 procedure TZAbstractDatabaseMetadata.ClearCache(const Key: string);
-var
-  TempKey: IZAnyValue;
+var I: Integer;
+  KeyAndResultSetPair: PZKeyAndResultSetPair;
 begin
-  TempKey := TZAnyValue.CreateWithString(Key);
-  FCachedResultSets.Remove(TempKey);
+  for i := FCachedResultSets.Count -1 downto 0 do begin
+    KeyAndResultSetPair := FCachedResultSets.Get(i);
+    if KeyAndResultSetPair.Key = Key then begin
+      FCachedResultSets.Delete(I);
+      Break;
+    end;
+  end;
 end;
 
 {**
@@ -2341,15 +2943,14 @@ end;
 }
 procedure TZAbstractDatabaseMetadata.AddResultSetToCache(const Key: string;
   const ResultSet: IZResultSet);
-var
-  TempKey: IZAnyValue;
+var I: NativeInt;
+  KeyAndResultSetPair: PZKeyAndResultSetPair;
 begin
-  TempKey := TZAnyValue.CreateWithString(Key);
+  KeyAndResultSetPair := FCachedResultSets.Add(i);
+  KeyAndResultSetPair.Key := Key;
+  KeyAndResultSetPair.ResultSet := ResultSet;
   if ResultSet <> nil then
     ResultSet.BeforeFirst;
-  FCachedResultSets.Put(TempKey, ResultSet);
-  //EH: see my comment below
-  //FCachedResultSets.Put(TempKey, CloneCachedResultSet(ResultSet));
 end;
 
 {**
@@ -2359,20 +2960,17 @@ end;
 }
 function TZAbstractDatabaseMetadata.GetResultSetFromCache(
   const Key: string): IZResultSet;
-var
-  TempKey: IZAnyValue;
+var I: Integer;
+  KeyAndResultSetPair: PZKeyAndResultSetPair;
 begin
-  TempKey := TZAnyValue.CreateWithString(Key);
-  Result := FCachedResultSets.Get(TempKey) as IZResultSet;
-  //EH: this propably has been made because of thread-safety but this is wrong too
-  //worst case:
-  //while a thread moves the cursor anotherone could move the cursor of template RS as well
-  //count of copied rows may be randomly
-  //here we need a different way using the MainThreadID+CurrentThreadID,
-  //a Lock with a CriticalSection, Copy if Required
-  //and put back in a threadpooled list
-  //if Result <> nil then
-    //Result := CloneCachedResultSet(Result);
+  Result := nil;
+  for i := FCachedResultSets.Count -1 downto 0 do begin
+    KeyAndResultSetPair := FCachedResultSets.Get(i);
+    if KeyAndResultSetPair.Key = Key then begin
+      Result := KeyAndResultSetPair.ResultSet;
+      Break;
+    end;
+  end;
   if Result <> nil then
     Result.BeforeFirst;
 end;
@@ -2386,75 +2984,13 @@ end;
 function TZAbstractDatabaseMetadata.CopyToVirtualResultSet(
   const SrcResultSet: IZResultSet; const DestResultSet: IZVirtualResultSet):
   IZVirtualResultSet;
-var
-  I: Integer;
-  Metadata: IZResultSetMetadata;
-  Len: NativeUInt;
-  Buff: array[Byte] of Byte;
-  IsUTF16: Boolean;
-  SQLType: TZSQLType;
 begin
   DestResultSet.SetType(rtScrollInsensitive);
   DestResultSet.SetConcurrency(rcUpdatable);
-
-  Metadata := SrcResultSet.GetMetadata;
-  IsUTF16 := (ConSettings^.ClientCodePage^.Encoding = ceUTF16);
-
-  while SrcResultSet.Next do
-  begin
-    DestResultSet.MoveToInsertRow;
-    for I := FirstDbcIndex to Metadata.GetColumnCount {$IFDEF GENERIC_INDEX}-1{$ENDIF}do
-    if not SrcResultSet.IsNull(I) then begin
-      SQLType := Metadata.GetColumnType(I);
-      case SQLType of
-        stBoolean:
-          DestResultSet.UpdateBoolean(I, SrcResultSet.GetBoolean(I));
-        stByte:
-          DestResultSet.UpdateByte(I, SrcResultSet.GetByte(I));
-        stShort:
-          DestResultSet.UpdateShort(I, SrcResultSet.GetShort(I));
-        stWord:
-          DestResultSet.UpdateWord(I, SrcResultSet.GetWord(I));
-        stSmall:
-          DestResultSet.UpdateSmall(I, SrcResultSet.GetSmall(I));
-        stLongWord:
-          DestResultSet.UpdateUInt(I, SrcResultSet.GetUInt(I));
-        stInteger:
-          DestResultSet.UpdateInt(I, SrcResultSet.GetInt(I));
-        stULong:
-          DestResultSet.UpdateULong(I, SrcResultSet.GetULong(I));
-        stLong:
-          DestResultSet.UpdateLong(I, SrcResultSet.GetLong(I));
-        stFloat:
-          DestResultSet.UpdateFloat(I, SrcResultSet.GetFloat(I));
-        stDouble:
-          DestResultSet.UpdateDouble(I, SrcResultSet.GetDouble(I));
-        stCurrency:
-          DestResultSet.UpdateCurrency(I, SrcResultSet.GetCurrency(I));
-        stBigDecimal: begin
-            SrcResultSet.GetBigDecimal(I, PBCD(@Buff[0])^);
-            DestResultSet.UpdateBigDecimal(I, PBCD(@Buff[0])^);
-          end;
-        stString, stUnicodeString, stAsciiStream, stUnicodeStream: if IsUTF16
-          then DestResultSet.UpdatePWideChar(I, SrcResultSet.GetPWideChar(I, Len), Len)
-          else DestResultSet.UpdatePAnsiChar(I, SrcResultSet.GetPAnsiChar(I, Len), Len);
-        stGUID, stBytes, stBinaryStream:
-          DestResultSet.UpdateBytes(I, SrcResultSet.GetBytes(I));
-        stDate:
-          DestResultSet.UpdateDate(I, SrcResultSet.GetDate(I));
-        stTime:
-          DestResultSet.UpdateTime(I, SrcResultSet.GetTime(I));
-        stTimestamp:
-          DestResultSet.UpdateTimestamp(I, SrcResultSet.GetTimestamp(I));
-        else raise ZDbcUtils.CreateConversionError(I, SQLType, SQLType)
-      end;
-      if SrcResultSet.WasNull then
-        DestResultSet.UpdateNull(I);
-    end;
-    DestResultSet.InsertRow;
-  end;
-
-  DestResultSet.BeforeFirst;
+  if SrcResultSet.GetColumnCount <> DestResultSet.GetColumnCount then
+    raise EZSQLException.Create('Column count missmatch.'+LineEnding+
+      'Wrong method for copy to virtual resultset.');
+  DestResultset.CopyFrom(SrcResultSet, nil, nil);
   DestResultSet.SetConcurrency(rcReadOnly);
   Result := DestResultSet;
 end;
@@ -2466,43 +3002,10 @@ end;
 }
 function TZAbstractDatabaseMetadata.CloneCachedResultSet(
   const ResultSet: IZResultSet): IZResultSet;
-var
-  I: Integer;
-  Metadata: IZResultSetMetadata;
-  ColumnInfo: TZColumnInfo;
-  ColumnsInfo: TObjectList;
-  ConSettings: PZConSettings;
+var RS: TZVirtualResultSet;
 begin
-  Result := nil;
-  Metadata := ResultSet.GetMetadata;
-  ColumnsInfo := TObjectList.Create(True);
-  ConSettings := IZConnection(FConnection).GetConSettings;
-  try
-    for I := FirstDbcIndex to Metadata.GetColumnCount{$IFDEF GENERIC_INDEX}-1{$ENDIF} do
-    begin
-      ColumnInfo := TZColumnInfo.Create;
-      with ColumnInfo do
-      begin
-        //EH 10.07.2019 comment all getters who force LoadColumns of the NativeResultset-Metadata
-        Currency := Metadata.IsCurrency(i);
-        Signed := Metadata.IsSigned(i);
-        ColumnLabel := Metadata.GetOrgColumnLabel(i);
-        Precision := Metadata.GetPrecision(i);
-        ColumnType := Metadata.GetColumnType(i);
-        ColumnCodePage := Metadata.GetColumnCodePage(i);
-      end;
-      ColumnsInfo.Add(ColumnInfo);
-    end;
-
-    if not ResultSet.IsBeforeFirst and  (ResultSet.GetType <> rtForwardOnly) then
-      ResultSet.BeforeFirst;
-    Result := CopyToVirtualResultSet(ResultSet,
-      TZVirtualResultSet.CreateWithColumns(ColumnsInfo, '', ConSettings));
-    if ResultSet.GetType <> rtForwardOnly then
-      ResultSet.BeforeFirst;
-  finally
-    ColumnsInfo.Free;
-  end;
+  RS := TZVirtualResultSet.CreateCloneFrom(ResultSet);
+  Result := CopyToVirtualResultSet(ResultSet, RS);
 end;
 
 {**
@@ -2532,29 +3035,16 @@ begin
     Result := Column+' like '+EscapeString(WorkPattern);
 end;
 
-{**
-  What's the url for this database?
-  @return the url or null if it cannot be generated
-}
 function TZAbstractDatabaseMetadata.GetURL: string;
 begin
   Result := GetURLString;
 end;
 
-{**
-  What's our user name as known to the database?
-  @return our database user name
-}
 function TZAbstractDatabaseMetadata.GetUserName: string;
 begin
   Result := FURL.UserName;
 end;
 
-{**
-  Returns general information about the database (version, capabilities,
-  policies, etc).
-  @return the database information object interface.
-}
 function TZAbstractDatabaseMetadata.GetDatabaseInfo: IZDatabaseInfo;
 begin
   if not Assigned(FDatabaseInfo) then
@@ -2562,39 +3052,6 @@ begin
   Result := FDatabaseInfo;
 end;
 
-{**
-  Gets a description of the stored procedures available in a
-  catalog.
-
-  <P>Only procedure descriptions matching the schema and
-  procedure name criteria are returned.  They are ordered by
-  PROCEDURE_SCHEM, and PROCEDURE_NAME.
-
-  <P>Each procedure description has the the following columns:
-   <OL>
- 	<LI><B>PROCEDURE_CAT</B> String => procedure catalog (may be null)
- 	<LI><B>PROCEDURE_SCHEM</B> String => procedure schema (may be null)
- 	<LI><B>PROCEDURE_NAME</B> String => procedure name
-   <LI> reserved for future use
-   <LI> reserved for future use
-   <LI> reserved for future use
- 	<LI><B>REMARKS</B> String => explanatory comment on the procedure
- 	<LI><B>PROCEDURE_TYPE</B> short => kind of procedure:
-       <UL>
-       <LI> procedureResultUnknown - May return a result
-       <LI> procedureNoResult - Does not return a result
-       <LI> procedureReturnsResult - Returns a result
-       </UL>
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param procedureNamePattern a procedure name pattern
-  @return <code>ResultSet</code> - each row is a procedure description
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.GetProcedures(const Catalog: string;
   const SchemaPattern: string; const ProcedureNamePattern: string): IZResultSet;
 var
@@ -2616,101 +3073,12 @@ begin
   end;
 end;
 
-{**
-  Gets a description of the stored procedures available in a
-  catalog.
-
-  <P>Only procedure descriptions matching the schema and
-  procedure name criteria are returned.  They are ordered by
-  PROCEDURE_SCHEM, and PROCEDURE_NAME.
-
-  <P>Each procedure description has the the following columns:
-   <OL>
- 	<LI><B>PROCEDURE_CAT</B> String => procedure catalog (may be null)
- 	<LI><B>PROCEDURE_SCHEM</B> String => procedure schema (may be null)
- 	<LI><B>PROCEDURE_NAME</B> String => procedure name
-   <LI> reserved for future use
-   <LI> reserved for future use
-   <LI> reserved for future use
- 	<LI><B>REMARKS</B> String => explanatory comment on the procedure
- 	<LI><B>PROCEDURE_TYPE</B> short => kind of procedure:
-       <UL>
-       <LI> procedureResultUnknown - May return a result
-       <LI> procedureNoResult - Does not return a result
-       <LI> procedureReturnsResult - Returns a result
-       </UL>
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param procedureNamePattern a procedure name pattern
-  @return <code>ResultSet</code> - each row is a procedure description
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.UncachedGetProcedures(const Catalog: string;
   const SchemaPattern: string; const ProcedureNamePattern: string): IZResultSet;
 begin
   Result := ConstructVirtualResultSet(ProceduresColumnsDynArray);
 end;
 
-{**
-  Gets a description of a catalog's stored procedure parameters
-  and result columns.
-
-  <P>Only descriptions matching the schema, procedure and
-  parameter name criteria are returned.  They are ordered by
-  PROCEDURE_SCHEM and PROCEDURE_NAME. Within this, the return value,
-  if any, is first. Next are the parameter descriptions in call
-  order. The column descriptions follow in column number order.
-
-  <P>Each row in the <code>ResultSet</code> is a parameter description or
-  column description with the following fields:
-   <OL>
- 	<LI><B>PROCEDURE_CAT</B> String => procedure catalog (may be null)
- 	<LI><B>PROCEDURE_SCHEM</B> String => procedure schema (may be null)
- 	<LI><B>PROCEDURE_NAME</B> String => procedure name
- 	<LI><B>COLUMN_NAME</B> String => column/parameter name
- 	<LI><B>COLUMN_TYPE</B> Short => kind of column/parameter:
-       <UL>
-       <LI> procedureColumnUnknown - nobody knows
-       <LI> procedureColumnIn - IN parameter
-       <LI> procedureColumnInOut - INOUT parameter
-       <LI> procedureColumnOut - OUT parameter
-       <LI> procedureColumnReturn - procedure return value
-       <LI> procedureColumnResult - result column in <code>ResultSet</code>
-       </UL>
-   <LI><B>DATA_TYPE</B> short => SQL type from java.sql.Types
- 	<LI><B>TYPE_NAME</B> String => SQL type name, for a UDT type the
-   type name is fully qualified
- 	<LI><B>PRECISION</B> int => precision
- 	<LI><B>LENGTH</B> int => length in bytes of data
- 	<LI><B>SCALE</B> short => scale
- 	<LI><B>RADIX</B> short => radix
- 	<LI><B>NULLABLE</B> short => can it contain NULL?
-       <UL>
-       <LI> procedureNoNulls - does not allow NULL values
-       <LI> procedureNullable - allows NULL values
-       <LI> procedureNullableUnknown - nullability unknown
-       </UL>
- 	<LI><B>REMARKS</B> String => comment describing parameter/column
-   </OL>
-
-  <P><B>Note:</B> Some databases may not return the column
-  descriptions for a procedure. Additional columns beyond
-  REMARKS can be defined by the database.
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param procedureNamePattern a procedure name pattern
-  @param columnNamePattern a column name pattern
-  @return <code>ResultSet</code> - each row describes a stored procedure parameter or
-       column
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.GetProcedureColumns(const Catalog: string;
   const SchemaPattern: string; const ProcedureNamePattern: string;
   const ColumnNamePattern: string): IZResultSet;
@@ -2733,62 +3101,6 @@ begin
   end;
 end;
 
-{**
-  Gets a description of a catalog's stored procedure parameters
-  and result columns.
-
-  <P>Only descriptions matching the schema, procedure and
-  parameter name criteria are returned.  They are ordered by
-  PROCEDURE_SCHEM and PROCEDURE_NAME. Within this, the return value,
-  if any, is first. Next are the parameter descriptions in call
-  order. The column descriptions follow in column number order.
-
-  <P>Each row in the <code>ResultSet</code> is a parameter description or
-  column description with the following fields:
-   <OL>
- 	<LI><B>PROCEDURE_CAT</B> String => procedure catalog (may be null)
- 	<LI><B>PROCEDURE_SCHEM</B> String => procedure schema (may be null)
- 	<LI><B>PROCEDURE_NAME</B> String => procedure name
- 	<LI><B>COLUMN_NAME</B> String => column/parameter name
- 	<LI><B>COLUMN_TYPE</B> Short => kind of column/parameter:
-       <UL>
-       <LI> procedureColumnUnknown - nobody knows
-       <LI> procedureColumnIn - IN parameter
-       <LI> procedureColumnInOut - INOUT parameter
-       <LI> procedureColumnOut - OUT parameter
-       <LI> procedureColumnReturn - procedure return value
-       <LI> procedureColumnResult - result column in <code>ResultSet</code>
-       </UL>
-   <LI><B>DATA_TYPE</B> short => SQL type from java.sql.Types
- 	<LI><B>TYPE_NAME</B> String => SQL type name, for a UDT type the
-   type name is fully qualified
- 	<LI><B>PRECISION</B> int => precision
- 	<LI><B>LENGTH</B> int => length in bytes of data
- 	<LI><B>SCALE</B> short => scale
- 	<LI><B>RADIX</B> short => radix
- 	<LI><B>NULLABLE</B> short => can it contain NULL?
-       <UL>
-       <LI> procedureNoNulls - does not allow NULL values
-       <LI> procedureNullable - allows NULL values
-       <LI> procedureNullableUnknown - nullability unknown
-       </UL>
- 	<LI><B>REMARKS</B> String => comment describing parameter/column
-   </OL>
-
-  <P><B>Note:</B> Some databases may not return the column
-  descriptions for a procedure. Additional columns beyond
-  REMARKS can be defined by the database.
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param procedureNamePattern a procedure name pattern
-  @param columnNamePattern a column name pattern
-  @return <code>ResultSet</code> - each row describes a stored procedure parameter or
-       column
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.UncachedGetProcedureColumns(const Catalog: string;
   const SchemaPattern: string; const ProcedureNamePattern: string;
   const ColumnNamePattern: string): IZResultSet;
@@ -2892,36 +3204,6 @@ begin
     [Catalog, SchemaPattern, TableNamePattern, TriggerNamePattern]);
 end;
 
-{**
-  Gets a description of tables available in a catalog.
-
-  <P>Only table descriptions matching the catalog, schema, table
-  name and type criteria are returned.  They are ordered by
-  TABLE_TYPE, TABLE_SCHEM and TABLE_NAME.
-
-  <P>Each table description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>TABLE_TYPE</B> String => table type.  Typical types are "TABLE",
- 			"VIEW",	"SYSTEM TABLE", "GLOBAL TEMPORARY",
- 			"LOCAL TEMPORARY", "ALIAS", "SYNONYM".
- 	<LI><B>REMARKS</B> String => explanatory comment on the table
-   </OL>
-
-  <P><B>Note:</B> Some databases may not return information for
-  all tables.
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param tableNamePattern a table name pattern
-  @param types a list of table types to include; null returns all types
-  @return <code>ResultSet</code> - each row is a table description
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.GetTables(const Catalog: string;
   const SchemaPattern: string; const TableNamePattern: string;
   const Types: TStringDynArray): IZResultSet;
@@ -2943,36 +3225,6 @@ begin
   end;
 end;
 
-{**
-  Gets a description of tables available in a catalog.
-
-  <P>Only table descriptions matching the catalog, schema, table
-  name and type criteria are returned.  They are ordered by
-  TABLE_TYPE, TABLE_SCHEM and TABLE_NAME.
-
-  <P>Each table description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>TABLE_TYPE</B> String => table type.  Typical types are "TABLE",
- 			"VIEW",	"SYSTEM TABLE", "GLOBAL TEMPORARY",
- 			"LOCAL TEMPORARY", "ALIAS", "SYNONYM".
- 	<LI><B>REMARKS</B> String => explanatory comment on the table
-   </OL>
-
-  <P><B>Note:</B> Some databases may not return information for
-  all tables.
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param tableNamePattern a table name pattern
-  @param types a list of table types to include; null returns all types
-  @return <code>ResultSet</code> - each row is a table description
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.UncachedGetTables(const Catalog: string;
   const SchemaPattern: string; const TableNamePattern: string;
   const Types: TStringDynArray): IZResultSet;
@@ -2980,18 +3232,6 @@ begin
   Result := ConstructVirtualResultSet(TableColumnsDynArray);
 end;
 
-{**
-  Gets the schema names available in this database.  The results
-  are ordered by schema name.
-
-  <P>The schema column is:
-   <OL>
- 	<LI><B>TABLE_SCHEM</B> String => schema name
-   </OL>
-
-  @return <code>ResultSet</code> - each row has a single String column that is a
-  schema name
-}
 function TZAbstractDatabaseMetadata.GetSchemas: IZResultSet;
 var
   Key: string;
@@ -3028,18 +3268,6 @@ begin
     Result := ConstructVirtualResultSet(SchemaColumnsDynArray);
 end;
 
-{**
-  Gets the catalog names available in this database.  The results
-  are ordered by catalog name.
-
-  <P>The catalog column is:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => catalog name
-   </OL>
-
-  @return <code>ResultSet</code> - each row has a single String column that is a
-  catalog name
-}
 function TZAbstractDatabaseMetadata.GetCatalogs: IZResultSet;
 var
   Key: string;
@@ -3076,20 +3304,6 @@ begin
     Result := ConstructVirtualResultSet(CatalogColumnsDynArray);
 end;
 
-{**
-  Gets the table types available in this database.  The results
-  are ordered by table type.
-
-  <P>The table type is:
-   <OL>
- 	<LI><B>TABLE_TYPE</B> String => table type.  Typical types are "TABLE",
- 			"VIEW",	"SYSTEM TABLE", "GLOBAL TEMPORARY",
- 			"LOCAL TEMPORARY", "ALIAS", "SYNONYM".
-   </OL>
-
-  @return <code>ResultSet</code> - each row has a single String column that is a
-  table type
-}
 function TZAbstractDatabaseMetadata.GetTableTypes: IZResultSet;
 var
   Key: string;
@@ -3201,57 +3415,6 @@ begin
   end;
 end;
 
-{**
-  Gets a description of table columns available in
-  the specified catalog.
-
-  <P>Only column descriptions matching the catalog, schema, table
-  and column name criteria are returned.  They are ordered by
-  TABLE_SCHEM, TABLE_NAME and ORDINAL_POSITION.
-
-  <P>Each column description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>COLUMN_NAME</B> String => column name
- 	<LI><B>DATA_TYPE</B> short => SQL type from java.sql.Types
- 	<LI><B>TYPE_NAME</B> String => Data source dependent type name,
-   for a UDT the type name is fully qualified
- 	<LI><B>COLUMN_SIZE</B> int => column size.  For char or date
- 	    types this is the maximum number of characters, for numeric or
- 	    decimal types this is precision.
- 	<LI><B>BUFFER_LENGTH</B> is not used.
- 	<LI><B>DECIMAL_DIGITS</B> int => the number of fractional digits
- 	<LI><B>NUM_PREC_RADIX</B> int => Radix (typically either 10 or 2)
- 	<LI><B>NULLABLE</B> int => is NULL allowed?
-       <UL>
-       <LI> columnNoNulls - might not allow NULL values
-       <LI> columnNullable - definitely allows NULL values
-       <LI> columnNullableUnknown - nullability unknown
-       </UL>
- 	<LI><B>REMARKS</B> String => comment describing column (may be null)
-  	<LI><B>COLUMN_DEF</B> String => default value (may be null)
- 	<LI><B>SQL_DATA_TYPE</B> int => unused
- 	<LI><B>SQL_DATETIME_SUB</B> int => unused
- 	<LI><B>CHAR_OCTET_LENGTH</B> int => for char types the
-        maximum number of bytes in the column
- 	<LI><B>ORDINAL_POSITION</B> int	=> index of column in table
-       (starting at 1)
- 	<LI><B>IS_NULLABLE</B> String => "NO" means column definitely
-       does not allow NULL values; "YES" means the column might
-       allow NULL values.  An empty string means nobody knows.
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param tableNamePattern a table name pattern
-  @param columnNamePattern a column name pattern
-  @return <code>ResultSet</code> - each row is a column description
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.UncachedGetColumns(const Catalog: string;
   const SchemaPattern: string; const TableNamePattern: string;
   const ColumnNamePattern: string): IZResultSet;
@@ -3259,34 +3422,6 @@ begin
   Result := ConstructVirtualResultSet(TableColColumnsDynArray);
 end;
 
-{**
-  Gets a description of the access rights for a table's columns.
-
-  <P>Only privileges matching the column name criteria are
-  returned.  They are ordered by COLUMN_NAME and PRIVILEGE.
-
-  <P>Each privilige description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>COLUMN_NAME</B> String => column name
- 	<LI><B>GRANTOR</B> => grantor of access (may be null)
- 	<LI><B>GRANTEE</B> String => grantee of access
- 	<LI><B>PRIVILEGE</B> String => name of access (SELECT,
-       INSERT, UPDATE, REFRENCES, ...)
- 	<LI><B>IS_GRANTABLE</B> String => "YES" if grantee is permitted
-       to grant to others; "NO" if not; null if unknown
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those without a schema
-  @param table a table name
-  @param columnNamePattern a column name pattern
-  @return <code>ResultSet</code> - each row is a column privilege description
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.GetColumnPrivileges(const Catalog: string;
   const Schema: string; const Table: string; const ColumnNamePattern: string): IZResultSet;
 var
@@ -3308,72 +3443,14 @@ begin
   end;
 end;
 
-{**
-  Gets a description of the access rights for a table's columns.
-
-  <P>Only privileges matching the column name criteria are
-  returned.  They are ordered by COLUMN_NAME and PRIVILEGE.
-
-  <P>Each privilige description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>COLUMN_NAME</B> String => column name
- 	<LI><B>GRANTOR</B> => grantor of access (may be null)
- 	<LI><B>GRANTEE</B> String => grantee of access
- 	<LI><B>PRIVILEGE</B> String => name of access (SELECT,
-       INSERT, UPDATE, REFRENCES, ...)
- 	<LI><B>IS_GRANTABLE</B> String => "YES" if grantee is permitted
-       to grant to others; "NO" if not; null if unknown
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those without a schema
-  @param table a table name
-  @param columnNamePattern a column name pattern
-  @return <code>ResultSet</code> - each row is a column privilege description
-  @see #getSearchStringEscape
-}
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Catalog/Schema/Table/ColumnNamePattern" not used} {$ENDIF}
 function TZAbstractDatabaseMetadata.UncachedGetColumnPrivileges(const Catalog: string;
   const Schema: string; const Table: string; const ColumnNamePattern: string): IZResultSet;
 begin
-    Result := ConstructVirtualResultSet(TableColPrivColumnsDynArray);
+  Result := ConstructVirtualResultSet(TableColPrivColumnsDynArray);
 end;
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Catalog/Schema" not used} {$ENDIF}
 
-{**
-  Gets a description of the access rights for each table available
-  in a catalog. Note that a table privilege applies to one or
-  more columns in the table. It would be wrong to assume that
-  this priviledge applies to all columns (this may be true for
-  some systems but is not true for all.)
-
-  <P>Only privileges matching the schema and table name
-  criteria are returned.  They are ordered by TABLE_SCHEM,
-  TABLE_NAME, and PRIVILEGE.
-
-  <P>Each privilige description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>GRANTOR</B> => grantor of access (may be null)
- 	<LI><B>GRANTEE</B> String => grantee of access
- 	<LI><B>PRIVILEGE</B> String => name of access (SELECT,
-       INSERT, UPDATE, REFRENCES, ...)
- 	<LI><B>IS_GRANTABLE</B> String => "YES" if grantee is permitted
-       to grant to others; "NO" if not; null if unknown
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param tableNamePattern a table name pattern
-  @return <code>ResultSet</code> - each row is a table privilege description
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.GetTablePrivileges(const Catalog: string;
   const SchemaPattern: string; const TableNamePattern: string): IZResultSet;
 var
@@ -3395,38 +3472,6 @@ begin
   end;
 end;
 
-{**
-  Gets a description of the access rights for each table available
-  in a catalog. Note that a table privilege applies to one or
-  more columns in the table. It would be wrong to assume that
-  this priviledge applies to all columns (this may be true for
-  some systems but is not true for all.)
-
-  <P>Only privileges matching the schema and table name
-  criteria are returned.  They are ordered by TABLE_SCHEM,
-  TABLE_NAME, and PRIVILEGE.
-
-  <P>Each privilige description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>GRANTOR</B> => grantor of access (may be null)
- 	<LI><B>GRANTEE</B> String => grantee of access
- 	<LI><B>PRIVILEGE</B> String => name of access (SELECT,
-       INSERT, UPDATE, REFRENCES, ...)
- 	<LI><B>IS_GRANTABLE</B> String => "YES" if grantee is permitted
-       to grant to others; "NO" if not; null if unknown
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schemaPattern a schema name pattern; "" retrieves those
-  without a schema
-  @param tableNamePattern a table name pattern
-  @return <code>ResultSet</code> - each row is a table privilege description
-  @see #getSearchStringEscape
-}
 function TZAbstractDatabaseMetadata.UncachedGetTablePrivileges(const Catalog: string;
   const SchemaPattern: string; const TableNamePattern: string): IZResultSet;
 begin
@@ -3671,28 +3716,6 @@ begin
     Result := ConstructVirtualResultSet(TableColVerColumnsDynArray);
 end;
 
-{**
-  Gets a description of a table's primary key columns.  They
-  are ordered by COLUMN_NAME.
-
-  <P>Each primary key column description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>COLUMN_NAME</B> String => column name
- 	<LI><B>KEY_SEQ</B> short => sequence number within primary key
- 	<LI><B>PK_NAME</B> String => primary key name (may be null)
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those
-  without a schema
-  @param table a table name
-  @return <code>ResultSet</code> - each row is a primary key column description
-  @exception SQLException if a database access error occurs
-}
 function TZAbstractDatabaseMetadata.GetPrimaryKeys(const Catalog: string;
   const Schema: string; const Table: string): IZResultSet;
 var
@@ -3713,101 +3736,14 @@ begin
   end;
 end;
 
-{**
-  Gets a description of a table's primary key columns.  They
-  are ordered by COLUMN_NAME.
-
-  <P>Each primary key column description has the following columns:
-   <OL>
- 	<LI><B>TABLE_CAT</B> String => table catalog (may be null)
- 	<LI><B>TABLE_SCHEM</B> String => table schema (may be null)
- 	<LI><B>TABLE_NAME</B> String => table name
- 	<LI><B>COLUMN_NAME</B> String => column name
- 	<LI><B>KEY_SEQ</B> short => sequence number within primary key
- 	<LI><B>PK_NAME</B> String => primary key name (may be null)
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those
-  without a schema
-  @param table a table name
-  @return <code>ResultSet</code> - each row is a primary key column description
-  @exception SQLException if a database access error occurs
-}
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Catalog/Schema/Table" not used} {$ENDIF}
 function TZAbstractDatabaseMetadata.UncachedGetPrimaryKeys(const Catalog: string;
   const Schema: string; const Table: string): IZResultSet;
 begin
-    Result := ConstructVirtualResultSet(PrimaryKeyColumnsDynArray);
+  Result := ConstructVirtualResultSet(PrimaryKeyColumnsDynArray);
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
-{**
-  Gets a description of the primary key columns that are
-  referenced by a table's foreign key columns (the primary keys
-  imported by a table).  They are ordered by PKTABLE_CAT,
-  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
-
-  <P>Each primary key column description has the following columns:
-   <OL>
- 	<LI><B>PKTABLE_CAT</B> String => primary key table catalog
-       being imported (may be null)
- 	<LI><B>PKTABLE_SCHEM</B> String => primary key table schema
-       being imported (may be null)
- 	<LI><B>PKTABLE_NAME</B> String => primary key table name
-       being imported
- 	<LI><B>PKCOLUMN_NAME</B> String => primary key column name
-       being imported
- 	<LI><B>FKTABLE_CAT</B> String => foreign key table catalog (may be null)
- 	<LI><B>FKTABLE_SCHEM</B> String => foreign key table schema (may be null)
- 	<LI><B>FKTABLE_NAME</B> String => foreign key table name
- 	<LI><B>FKCOLUMN_NAME</B> String => foreign key column name
- 	<LI><B>KEY_SEQ</B> short => sequence number within foreign key
- 	<LI><B>UPDATE_RULE</B> short => What happens to
-        foreign key when primary is updated:
-       <UL>
-       <LI> importedNoAction - do not allow update of primary
-                key if it has been imported
-       <LI> importedKeyCascade - change imported key to agree
-                with primary key update
-       <LI> importedKeySetNull - change imported key to NULL if
-                its primary key has been updated
-       <LI> importedKeySetDefault - change imported key to default values
-                if its primary key has been updated
-       <LI> importedKeyRestrict - same as importedKeyNoAction
-                                  (for ODBC 2.x compatibility)
-       </UL>
- 	<LI><B>DELETE_RULE</B> short => What happens to
-       the foreign key when primary is deleted.
-       <UL>
-       <LI> importedKeyNoAction - do not allow delete of primary
-                key if it has been imported
-       <LI> importedKeyCascade - delete rows that import a deleted key
-       <LI> importedKeySetNull - change imported key to NULL if
-                its primary key has been deleted
-       <LI> importedKeyRestrict - same as importedKeyNoAction
-                                  (for ODBC 2.x compatibility)
-       <LI> importedKeySetDefault - change imported key to default if
-                its primary key has been deleted
-       </UL>
- 	<LI><B>FK_NAME</B> String => foreign key name (may be null)
- 	<LI><B>PK_NAME</B> String => primary key name (may be null)
- 	<LI><B>DEFERRABILITY</B> short => can the evaluation of foreign key
-       constraints be deferred until commit
-       <UL>
-       <LI> importedKeyInitiallyDeferred - see SQL92 for definition
-       <LI> importedKeyInitiallyImmediate - see SQL92 for definition
-       <LI> importedKeyNotDeferrable - see SQL92 for definition
-       </UL>
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those
-  without a schema
-  @param table a table name
-  @return <code>ResultSet</code> - each row is a primary key column description
-  @see #getExportedKeys
-}
 function TZAbstractDatabaseMetadata.GetImportedKeys(const Catalog: string;
   const Schema: string; const Table: string): IZResultSet;
 var
@@ -3828,78 +3764,13 @@ begin
   end;
 end;
 
-{**
-  Gets a description of the primary key columns that are
-  referenced by a table's foreign key columns (the primary keys
-  imported by a table).  They are ordered by PKTABLE_CAT,
-  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
-
-  <P>Each primary key column description has the following columns:
-   <OL>
- 	<LI><B>PKTABLE_CAT</B> String => primary key table catalog
-       being imported (may be null)
- 	<LI><B>PKTABLE_SCHEM</B> String => primary key table schema
-       being imported (may be null)
- 	<LI><B>PKTABLE_NAME</B> String => primary key table name
-       being imported
- 	<LI><B>PKCOLUMN_NAME</B> String => primary key column name
-       being imported
- 	<LI><B>FKTABLE_CAT</B> String => foreign key table catalog (may be null)
- 	<LI><B>FKTABLE_SCHEM</B> String => foreign key table schema (may be null)
- 	<LI><B>FKTABLE_NAME</B> String => foreign key table name
- 	<LI><B>FKCOLUMN_NAME</B> String => foreign key column name
- 	<LI><B>KEY_SEQ</B> short => sequence number within foreign key
- 	<LI><B>UPDATE_RULE</B> short => What happens to
-        foreign key when primary is updated:
-       <UL>
-       <LI> importedNoAction - do not allow update of primary
-                key if it has been imported
-       <LI> importedKeyCascade - change imported key to agree
-                with primary key update
-       <LI> importedKeySetNull - change imported key to NULL if
-                its primary key has been updated
-       <LI> importedKeySetDefault - change imported key to default values
-                if its primary key has been updated
-       <LI> importedKeyRestrict - same as importedKeyNoAction
-                                  (for ODBC 2.x compatibility)
-       </UL>
- 	<LI><B>DELETE_RULE</B> short => What happens to
-       the foreign key when primary is deleted.
-       <UL>
-       <LI> importedKeyNoAction - do not allow delete of primary
-                key if it has been imported
-       <LI> importedKeyCascade - delete rows that import a deleted key
-       <LI> importedKeySetNull - change imported key to NULL if
-                its primary key has been deleted
-       <LI> importedKeyRestrict - same as importedKeyNoAction
-                                  (for ODBC 2.x compatibility)
-       <LI> importedKeySetDefault - change imported key to default if
-                its primary key has been deleted
-       </UL>
- 	<LI><B>FK_NAME</B> String => foreign key name (may be null)
- 	<LI><B>PK_NAME</B> String => primary key name (may be null)
- 	<LI><B>DEFERRABILITY</B> short => can the evaluation of foreign key
-       constraints be deferred until commit
-       <UL>
-       <LI> importedKeyInitiallyDeferred - see SQL92 for definition
-       <LI> importedKeyInitiallyImmediate - see SQL92 for definition
-       <LI> importedKeyNotDeferrable - see SQL92 for definition
-       </UL>
-   </OL>
-
-  @param catalog a catalog name; "" retrieves those without a
-  catalog; null means drop catalog name from the selection criteria
-  @param schema a schema name; "" retrieves those
-  without a schema
-  @param table a table name
-  @return <code>ResultSet</code> - each row is a primary key column description
-  @see #getExportedKeys
-}
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Catalog/Schema/Table" not used} {$ENDIF}
 function TZAbstractDatabaseMetadata.UncachedGetImportedKeys(const Catalog: string;
   const Schema: string; const Table: string): IZResultSet;
 begin
   Result := ConstructVirtualResultSet(ImportedKeyColumnsDynArray);
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 {**
   Gets a description of the foreign key columns that reference a
@@ -4679,6 +4550,24 @@ begin
   end;
 end;
 
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Value" not used} {$ENDIF}
+procedure TZAbstractDatabaseMetadata.NormalizeCatalogName(var Value: String);
+begin
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Value" not used} {$ENDIF}
+procedure TZAbstractDatabaseMetadata.NormalizeColumnNamePattern(var Value: String);
+begin
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Value" not used} {$ENDIF}
+procedure TZAbstractDatabaseMetadata.NormalizeParameterNamePattern(var Value: String);
+begin
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
 function TZAbstractDatabaseMetadata.NormalizePatternCase(const Pattern: String): string;
 begin
   with FIC do
@@ -4690,16 +4579,48 @@ begin
                   Result := UpperCase(Pattern);
         icUpper: if FDatabaseInfo.StoresLowerCaseIdentifiers then
                    Result := LowerCase(Pattern);
-        icMixed: if not FDatabaseInfo.StoresMixedCaseIdentifiers then
-                   if FDatabaseInfo.StoresUpperCaseIdentifiers then
-                     Result := UpperCase(Pattern)
-                   else
-                     Result := LowerCase(Pattern);
+        icMixed: if FDatabaseInfo.StoresUpperCaseIdentifiers then
+                   Result := UpperCase(Pattern)
+                 else if FDatabaseInfo.StoresLowerCaseIdentifiers then
+                   Result := LowerCase(Pattern);
         {$IFDEF WITH_CASE_WARNING}else ;{$ENDIF}
       end
     end else
       Result := ExtractQuote(Pattern);
 end;
+
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Value" not used} {$ENDIF}
+procedure TZAbstractDatabaseMetadata.NormalizeProcedureName(var Value: String;
+  IsPattern: Boolean);
+begin
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Value" not used} {$ENDIF}
+procedure TZAbstractDatabaseMetadata.NormalizeSchemaName(var Value: String;
+  IsPattern: Boolean);
+begin
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Value" not used} {$ENDIF}
+procedure TZAbstractDatabaseMetadata.NormalizeSequenceNamePattern(var Value: String);
+begin
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Value" not used} {$ENDIF}
+procedure TZAbstractDatabaseMetadata.NormalizeTableName(var Value: String;
+  IsPattern: Boolean);
+begin
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
+
+{$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Value" not used} {$ENDIF}
+procedure TZAbstractDatabaseMetadata.NormalizeTriggerNamePattern(var Value: String);
+begin
+end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 {**
   Get the Wildscards in set of char type
@@ -5003,111 +4924,22 @@ end;
   @param List a string list to fill out
 }
 procedure TZAbstractDatabaseMetadata.GetCacheKeys(List: TStrings);
-var
-  I: Integer;
+var I: Integer;
+  KeyAndResultSetPair: PZKeyAndResultSetPair;
 begin
   List.Clear;
-  with CachedResultSets.Keys do
-    for I := 0 to Count-1 do
-      List.Add((Items[I] as IZAnyValue).GetString);
+  for i := FCachedResultSets.Count -1 downto 0 do begin
+    KeyAndResultSetPair := FCachedResultSets.Get(i);
+    List.Add(KeyAndResultSetPair.Key)
+  end;
 end;
 
 // End of metadata cache key retrieval API (technobot 2008-06-14)
 //----------------------------------------------------------------------
 
 
-{ TZVirtualResultSet }
-
-{**
-  Creates this object and assignes the main properties.
-  @param Statement an SQL statement object.
-  @param SQL an SQL query string.
-}
-constructor TZVirtualResultSet.CreateWithStatement(const SQL: string;
-   const Statement: IZStatement; ConSettings: PZConSettings);
-begin
-  fConSettings := ConSettings^;
-  inherited CreateWithStatement(SQL, Statement, @fConSettings);
-end;
-
-{**
-  Change Order of one Rows in Resultset
-  Note: First Row = 1, to get RowNo use IZResultSet.GetRow
-  @param CurrentRowNo the curren number of row
-  @param NewRowNo the new number of row
-}
-procedure TZVirtualResultSet.ChangeRowNo(CurrentRowNo, NewRowNo: NativeInt);
-var P: Pointer;
-begin
-  CurrentRowNo := CurrentRowNo -1;
-  NewRowNo := NewRowNo -1;
-  P := RowsList[CurrentRowNo];
-  RowsList.Delete(CurrentRowNo);
-  RowsList.Insert(NewRowNo, P);
-  P := InitialRowsList[CurrentRowNo];
-  InitialRowsList.Delete(CurrentRowNo);
-  InitialRowsList.Insert(NewRowNo, P);
-end;
-
-function TZVirtualResultSet.ColumnSort(Item1, Item2: Pointer): Integer;
-begin
-  Result := RowAccessor.CompareBuffers(Item1, Item2,
-    TIntegerDynArray(FColumnIndices), TCompareFuncs(FCompareFuncs));
-end;
-
-{**
-  Creates this object and assignes the main properties.
-  @param ColumnsInfo a columns info for cached rows.
-  @param SQL an SQL query string.
-}
-constructor TZVirtualResultSet.CreateWithColumns(ColumnsInfo: TObjectList;
-  const SQL: string; ConSettings: PZConSettings);
-begin
-  fConSettings := ConSettings^;
-  inherited CreateWithColumns(ColumnsInfo, SQL, @fConSettings);
-end;
-
-{**
-  Calculates column default values..
-  @param RowAccessor a row accessor which contains new column values.
-}
-procedure TZVirtualResultSet.CalculateRowDefaults(RowAccessor: TZRowAccessor);
-begin
-end;
-
-{**
-  Post changes to database server.
-  @param OldRowAccessor a row accessor which contains old column values.
-  @param NewRowAccessor a row accessor which contains new or updated
-    column values.
-}
-procedure TZVirtualResultSet.PostRowUpdates(OldRowAccessor,
-  NewRowAccessor: TZRowAccessor);
-begin
-end;
-
-procedure TZVirtualResultSet.SortRows(const ColumnIndices: TIntegerDynArray;
-  Descending: Boolean);
-var I: Integer;
-    ComparisonKind: TComparisonKind;
-begin
-  SetLength(TCompareFuncs(FCompareFuncs), Length(ColumnIndices));
-  if Descending
-  then ComparisonKind := ckDescending
-  else ComparisonKind := ckAscending;
-  for i := low(ColumnIndices) to high(ColumnIndices) do
-    TCompareFuncs(FCompareFuncs)[i] := RowAccessor.GetCompareFunc(ColumnIndices[I], ComparisonKind);
-  fColumnIndices := Pointer(ColumnIndices);
-  RowsList.Sort(ColumnSort);
-  SetLength(TCompareFuncs(FCompareFuncs), 0);
-end;
-
 { TZDefaultIdentifierConverter }
 
-{**
-  Constructs this default identifier Converter object.
-  @param Metadata a database metadata interface.
-}
 constructor TZDefaultIdentifierConverter.Create(
   const Metadata: IZDatabaseMetadata);
 begin
@@ -5115,7 +4947,6 @@ begin
   FMetadata := Pointer(Metadata);
 end;
 
-{** written by FrOsT}
 function TZDefaultIdentifierConverter.GetIdentifierCase(
   const Value: String; TestKeyWords: Boolean): TZIdentifierCase;
 var
@@ -5157,7 +4988,7 @@ begin
     { Checks for reserved keywords. }
     if Metadata.GetDatabaseInfo.StoresUpperCaseIdentifiers and (Result <> icUpper) then
       S := UpperCase(Value)
-    else if not Metadata.GetDatabaseInfo.StoresUpperCaseIdentifiers and (Result <> icLower) then
+    else if not Metadata.GetDatabaseInfo.StoresLowerCaseIdentifiers and (Result <> icLower) then
       s := LowerCase(Value)
     else S := Value;
     // With sorted list fast binary search is performed
@@ -5173,40 +5004,21 @@ begin
   else Result := nil;
 end;
 
-{**
-  Checks is the specified string in lower case.
-  @param an identifier string.
-  @return <code>True</code> is the identifier string in lower case.
-}
 function TZDefaultIdentifierConverter.IsLowerCase(const Value: string): Boolean;
 begin
   Result := GetIdentifierCase(Value, False) = icLower;
 end;
 
-{**
-  Checks is the specified string in upper case.
-  @param an identifier string.
-  @return <code>True</code> is the identifier string in upper case.
-}
 function TZDefaultIdentifierConverter.IsUpperCase(const Value: string): Boolean;
 begin
   Result := GetIdentifierCase(Value, False) = icUpper;
 end;
 
-{**
-  Checks is the specified string in special case.
-  @param an identifier string.
-  @return <code>True</code> is the identifier string in mixed case.
-}
 function TZDefaultIdentifierConverter.IsSpecialCase(const Value: string): Boolean;
 begin
   Result := GetIdentifierCase(Value, True) = icSpecial;
 end;
 
-{**
-  Checks is the string case sensitive.
-  @return <code>True</code> if the string case sensitive.
-}
 function TZDefaultIdentifierConverter.IsCaseSensitive(const Value: string): Boolean;
 var DataBaseInfo: IZDataBaseInfo;
 begin
@@ -5220,10 +5032,6 @@ begin
   end;
 end;
 
-{**
-  Checks is the string quoted.
-  @return <code>True</code> is the string quoted.
-}
 function TZDefaultIdentifierConverter.IsQuoted(const Value: string): Boolean;
 var
   QuoteDelim: string;
@@ -5235,11 +5043,6 @@ begin
             ((PV+Length(Value)-1)^ = (PQ+Length(QuoteDelim)-1)^);
 end;
 
-{**
-  Extracts the quote from the idenfitier string.
-  @param an identifier string.
-  @return a extracted and processed string.
-}
 function TZDefaultIdentifierConverter.ExtractQuote(const Value: string): string;
 var
   QuoteDelim: string;
@@ -5256,10 +5059,10 @@ begin
     Result := Value;
     case GetIdentifierCase(Value,True) of
       icMixed:
-        if not Metadata.GetDatabaseInfo.StoresMixedCaseIdentifiers then
           if Metadata.GetDatabaseInfo.StoresUpperCaseIdentifiers
           then Result := UpperCase(Result)
-          else Result := LowerCase(Result);
+          else if Metadata.GetDatabaseInfo.StoresLowerCaseIdentifiers then
+            Result := LowerCase(Result);
       icLower: if Metadata.GetDatabaseInfo.StoresUpperCaseIdentifiers then
         Result := UpperCase(Result);
       icUpper: if Metadata.GetDatabaseInfo.StoresLowerCaseIdentifiers then
@@ -5269,11 +5072,6 @@ begin
   end;
 end;
 
-{**
-  Quotes the identifier string.
-  @param an identifier string.
-  @return a quoted string.
-}
 {$IFDEF FPC} {$PUSH} {$WARN 5024 off : Parameter "Qualifier" not used} {$ENDIF}
 function TZDefaultIdentifierConverter.Quote(const Value: string;
   Qualifier: TZIdentifierQualifier = iqUnspecified): string;
@@ -5292,6 +5090,37 @@ begin
   end;
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
+
+{ TZUnCloseableResultSet }
+
+procedure TZUnCloseableResultSet.Close;
+begin
+  if fDoClose then
+    inherited Close;
+end;
+
+destructor TZUnCloseableResultSet.Destroy;
+begin
+  fDoClose := True;
+  inherited Destroy;
+end;
+
+procedure TZUnCloseableResultSet.ResetCursor;
+begin
+  if not fDoClose then
+    BeforeFirst;
+end;
+
+{ TZKeyAndResultSetPairList }
+
+procedure TZKeyAndResultSetPairList.Notify(Ptr: Pointer;
+  Action: TListNotification);
+begin
+  if Action = lnDeleted then begin
+    PZKeyAndResultSetPair(Ptr).Key := '';
+    PZKeyAndResultSetPair(Ptr).ResultSet := nil;
+  end;
+end;
 
 {**
   rerurns cache key for get tables metadata entry
@@ -5618,26 +5447,6 @@ const
 
 var
   I: Integer;
-
-{ TZUnCloseableResultSet }
-
-procedure TZUnCloseableResultSet.Close;
-begin
-  if fDoClose then
-    inherited Close;
-end;
-
-destructor TZUnCloseableResultSet.Destroy;
-begin
-  fDoClose := True;
-  inherited Destroy;
-end;
-
-procedure TZUnCloseableResultSet.ResetCursor;
-begin
-  if not fDoClose then
-    BeforeFirst;
-end;
 
 initialization
   SetLength(CharacterSetsColumnsDynArray, CharacterSetsColumnsCount);

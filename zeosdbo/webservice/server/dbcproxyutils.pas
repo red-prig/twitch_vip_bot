@@ -1,3 +1,54 @@
+{*********************************************************}
+{                                                         }
+{                 Zeos Database Objects                   }
+{                WebService Proxy Server                  }
+{                                                         }
+{         Originally written by Jan Baumgarten            }
+{                                                         }
+{*********************************************************}
+
+{@********************************************************}
+{    Copyright (c) 1999-2020 Zeos Development Group       }
+{                                                         }
+{ License Agreement:                                      }
+{                                                         }
+{ This library is distributed in the hope that it will be }
+{ useful, but WITHOUT ANY WARRANTY; without even the      }
+{ implied warranty of MERCHANTABILITY or FITNESS FOR      }
+{ A PARTICULAR PURPOSE.  See the GNU Lesser General       }
+{ Public License for more details.                        }
+{                                                         }
+{ The source code of the ZEOS Libraries and packages are  }
+{ distributed under the Library GNU General Public        }
+{ License (see the file COPYING / COPYING.ZEOS)           }
+{ with the following  modification:                       }
+{ As a special exception, the copyright holders of this   }
+{ library give you permission to link this library with   }
+{ independent modules to produce an executable,           }
+{ regardless of the license terms of these independent    }
+{ modules, and to copy and distribute the resulting       }
+{ executable under terms of your choice, provided that    }
+{ you also meet, for each linked independent module,      }
+{ the terms and conditions of the license of that module. }
+{ An independent module is a module which is not derived  }
+{ from or based on this library. If you modify this       }
+{ library, you may extend this exception to your version  }
+{ of the library, but you are not obligated to do so.     }
+{ If you do not wish to do so, delete this exception      }
+{ statement from your version.                            }
+{                                                         }
+{                                                         }
+{ The project web site is located on:                     }
+{   https://zeoslib.sourceforge.io/ (FORUM)               }
+{   http://sourceforge.net/p/zeoslib/tickets/ (BUGTRACKER)}
+{   svn://svn.code.sf.net/p/zeoslib/code-0/trunk (SVN)    }
+{                                                         }
+{   http://www.sourceforge.net/projects/zeoslib.          }
+{                                                         }
+{                                                         }
+{                                 Zeos Development Group. }
+{********************************************************@}
+
 unit DbcProxyUtils;
 
 {$ifdef fpc}
@@ -92,7 +143,7 @@ var
 begin
   Result := MetadataStart + LineEnding;
   // todo: adapt to the current start and end of Zeos enumerations
-  for x := 1 to MD.GetColumnCount do begin
+  for x := FirstDbcIndex to MD.GetColumnCount - 1 + FirstDbcIndex do begin
     Line := '';
     addProperty('catalogname', MD.GetCatalogName(x));
     addProperty('codepage', IntToStr(MD.GetColumnCodePage(x)));  // is this needed? All data is unicode in the end?
@@ -260,20 +311,20 @@ begin
     SetLength(CF, MD.GetColumnCount);
     for Idx := FirstDbcIndex to MD.GetColumnCount - 1 + FirstDbcIndex do begin
       case MD.GetColumnType(Idx) of
-        stBoolean: CF[Idx - 1] := ConvertBool;
-        stByte, stShort, stWord, stSmall, stLongWord, stInteger: CF[Idx - 1] := ConvertInt;
-        stULong, stLong: CF[Idx - 1] := ConvertInt64;
-        stFloat: CF[Idx - 1] := ConvertSingle;
-        stDouble: CF[Idx - 1] := ConvertDouble;
-        stCurrency: CF[Idx - 1] := ConvertCurrency;
-        stBigDecimal: CF[Idx - 1] := {$IFNDEF ZEOS73UP}ConvertExtended{$ELSE}ConvertBcd{$ENDIF};
-        stString, stUnicodeString: CF[Idx - 1] := ConvertString;
-        stDate: CF[Idx - 1] := ConvertDate;
-        stTime: CF[Idx - 1] := ConvertTime;
-        stTimestamp: CF[Idx - 1] := ConvertDateTime;
-        stAsciiStream, stUnicodeStream: CF[Idx - 1] := ConvertString;
-        stBinaryStream: CF[Idx - 1] := ConvertBinaryStream;
-        stBytes: CF[Idx-1] := ConvertBytes;
+        stBoolean: CF[Idx - FirstDbcIndex] := ConvertBool;
+        stByte, stShort, stWord, stSmall, stLongWord, stInteger: CF[Idx - FirstDbcIndex] := ConvertInt;
+        stULong, stLong: CF[Idx - FirstDbcIndex] := ConvertInt64;
+        stFloat: CF[Idx - FirstDbcIndex] := ConvertSingle;
+        stDouble: CF[Idx - FirstDbcIndex] := ConvertDouble;
+        stCurrency: CF[Idx - FirstDbcIndex] := ConvertCurrency;
+        stBigDecimal: CF[Idx - FirstDbcIndex] := {$IFNDEF ZEOS73UP}ConvertExtended{$ELSE}ConvertBcd{$ENDIF};
+        stString, stUnicodeString: CF[Idx - FirstDbcIndex] := ConvertString;
+        stDate: CF[Idx - FirstDbcIndex] := ConvertDate;
+        stTime: CF[Idx - FirstDbcIndex] := ConvertTime;
+        stTimestamp: CF[Idx - FirstDbcIndex] := ConvertDateTime;
+        stAsciiStream, stUnicodeStream: CF[Idx - FirstDbcIndex] := ConvertString;
+        stBinaryStream: CF[Idx - FirstDbcIndex] := ConvertBinaryStream;
+        stBytes: CF[Idx-FirstDbcIndex] := ConvertBytes;
         else raise Exception.Create('Conversion of type ' + MD.GetColumnTypeName(Idx) + ' is not supported (yet).');
       end;
     end;
@@ -284,11 +335,11 @@ begin
         if (MaxRows <> 0) then
           if (Rows.Count >= MaxRows) then Break;
         Line := '<row>';
-        for idx := 1 to MD.GetColumnCount do begin
+        for idx := FirstDbcIndex to MD.GetColumnCount - 1 + FirstDbcIndex do begin
           if RS.IsNull(idx) then
             Line := Line + ConvertNull
           else
-            Line := Line + CF[Idx - 1](RS, Idx);
+            Line := Line + CF[Idx - FirstDbcIndex](RS, Idx);
         end;
         Rows.Add(Line + '</row>');
       end;
@@ -313,6 +364,7 @@ var
   ParamValue: String;
   x: Integer;
   Stream: TStringStream;
+  ParamIdx: Integer;
 
   function GetNodeValue(Node: TDomNode): String;
   begin
@@ -350,53 +402,54 @@ begin
       ParamsNode := Doc.GetChildNodes.Item[0];
 
       for x := 1 to ParamsNode.GetChildNodes.Count do begin
+        ParamIdx := x - 1 + FirstDbcIndex;
         ParamNode := ParamsNode.GetChildNodes.Item[x - 1];
         IsNull := StrToBoolDef(GetNodeValue(ParamNode.Attributes.GetNamedItem('isnull')), false);
         ParamTypeStr := GetNodeValue(ParamNode.Attributes.GetNamedItem('type'));
         ParamType := TZSQLType(GetEnumValue(TypeInfo(ParamType), ParamTypeStr));
         ParamValue := GetNodeValue(ParamNode.Attributes.GetNamedItem('value'));
         if IsNull then
-          Statement.SetNull(x, ParamType)
+          Statement.SetNull(ParamIdx, ParamType)
         else begin
           case ParamType of
             stBoolean:
-              Statement.SetBoolean(x, StrToBool(ParamValue));
+              Statement.SetBoolean(ParamIdx, StrToBool(ParamValue));
             stByte:
-              Statement.SetByte(x, StrToInt(ParamValue));
+              Statement.SetByte(ParamIdx, StrToInt(ParamValue));
             stShort:
-              Statement.SetShort(x, StrToInt(ParamValue));
+              Statement.SetShort(ParamIdx, StrToInt(ParamValue));
             stWord:
-              Statement.SetWord(x, StrToInt(ParamValue));
+              Statement.SetWord(ParamIdx, StrToInt(ParamValue));
             stSmall:
-              Statement.SetSmall(x, StrToInt(ParamValue));
+              Statement.SetSmall(ParamIdx, StrToInt(ParamValue));
             stLongWord:
-              Statement.SetUInt(x, StrToDWord(ParamValue));
+              Statement.SetUInt(ParamIdx, StrToDWord(ParamValue));
             stInteger:
-              Statement.SetInt(x, StrToInt(ParamValue));
+              Statement.SetInt(ParamIdx, StrToInt(ParamValue));
             stULong:
-              Statement.SetULong(x, StrToQWord(ParamValue));
+              Statement.SetULong(ParamIdx, StrToQWord(ParamValue));
             stLong:
-              Statement.SetLong(x, StrToInt64(ParamValue));
+              Statement.SetLong(ParamIdx, StrToInt64(ParamValue));
             stFloat:
-              Statement.SetFloat(x, StrToFloat(ParamValue, ProxyFormatSettings));
+              Statement.SetFloat(ParamIdx, StrToFloat(ParamValue, ProxyFormatSettings));
             stDouble:
-              Statement.SetDouble(x, StrToFloat(ParamValue, ProxyFormatSettings));
+              Statement.SetDouble(ParamIdx, StrToFloat(ParamValue, ProxyFormatSettings));
             stCurrency:
-              Statement.SetCurrency(x, StrToCurr(ParamValue, ProxyFormatSettings));
+              Statement.SetCurrency(ParamIdx, StrToCurr(ParamValue, ProxyFormatSettings));
             stBigDecimal:
-              Statement.SetBigDecimal(x, StrToFloat(ParamValue, ProxyFormatSettings));
+              Statement.SetBigDecimal(ParamIdx, StrToFloat(ParamValue, ProxyFormatSettings));
             stString, stUnicodeString:
-              Statement.SetString(x, ParamValue);
+              Statement.SetString(ParamIdx, ParamValue);
             stDate:
-              Statement.SetDate(x, StrToDate(ParamValue, ProxyFormatSettings));
+              Statement.SetDate(ParamIdx, StrToDate(ParamValue, ProxyFormatSettings));
             stTime:
-              Statement.SetTime(x, StrToTime(ParamValue, ProxyFormatSettings));
+              Statement.SetTime(ParamIdx, StrToTime(ParamValue, ProxyFormatSettings));
             stTimestamp:
-              Statement.SetTimestamp(x, StrToDateTime(ParamValue, ProxyFormatSettings));
+              Statement.SetTimestamp(ParamIdx, StrToDateTime(ParamValue, ProxyFormatSettings));
             stAsciiStream, stUnicodeStream:
-              Statement.SetString(x, ParamValue);
+              Statement.SetString(ParamIdx, ParamValue);
             stBinaryStream, stBytes:
-              Statement.SetBytes(x, BinaryToBytes(ParamValue));
+              Statement.SetBytes(ParamIdx, BinaryToBytes(ParamValue));
             else
               raise Exception.Create('Conversion of parameter of type ' + ParamTypeStr + ' is not supported (yet).');
           end;

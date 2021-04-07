@@ -66,9 +66,22 @@ const
   ZEOS_MINOR_VERSION = 0;
   ZEOS_SUB_VERSION = 0;
   ZEOS_STATUS = 'beta';
-  ZEOS_VERSION = Char(48+ZEOS_MAJOR_VERSION)+'.'+
+  ZEOS_VERSION = {$IF ZEOS_MAJOR_VERSION > 9}
+                 Char(48+ZEOS_MAJOR_VERSION div 10)+Char(48+ZEOS_MAJOR_VERSION mod 10)+'.'+
+                 {$ELSE}
+                 Char(48+ZEOS_MAJOR_VERSION)+'.'+
+                 {$IFEND}
+                 {$IF ZEOS_MINOR_VERSION > 9}
+                 Char(48+ZEOS_MINOR_VERSION div 10)+Char(48+ZEOS_MINOR_VERSION mod 10)+'.'+
+                 {$ELSE}
                  Char(48+ZEOS_MINOR_VERSION)+'.'+
-                 Char(48+ZEOS_SUB_VERSION)+'-'+ZEOS_STATUS;
+                 {$IFEND}
+                 {$IF ZEOS_SUB_VERSION > 9}
+                 Char(48+ZEOS_SUB_VERSION div 10)+Char(48+ZEOS_SUB_VERSION mod 10)+'-'+
+                 {$ELSE}
+                 Char(48+ZEOS_SUB_VERSION)+'-'+
+                 {$IFEND}
+                 ZEOS_STATUS;
 
 type
   {$IFDEF OLDFPC}
@@ -424,7 +437,12 @@ type
     /// <summary>Adds ascii7 text from a UnicodeString.</summary>
     /// <param>"AsciiValue" the source string.</param>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
-    procedure AddAscii7UTF16Text(const AsciiValue: UnicodeString; var Result: RawByteString);
+    procedure AddAscii7UTF16Text(const AsciiValue: UnicodeString; var Result: RawByteString); overload;
+    /// <summary>Adds ascii7 text from a UTF16 buffer.</summary>
+    /// <param>"Buf" the source buffer.</param>
+    /// <param>"Len" the length in words of the source buffer.</param>
+    /// <param>"Result" the reference to the raw string we finally write in.</param>
+    procedure AddAscii7UTF16Text(Buf: PWideChar; Len: NativeUInt; var Result: RawByteString); overload;
     {$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}
     /// <summary>Adds ascii7 text from a UnicodeString.</summary>
     /// <param>"AsciiValue" the source string.</param>
@@ -506,7 +524,7 @@ type
     ///  current sequence of bytes</summary>
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
-    procedure AddDecimal(const Value: TBCD; var Result: RawByteString); overload;
+    procedure AddDecimal({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD; var Result: RawByteString); overload;
     /// <summary>adds a TDateTime value as sql date representation to the
     ///  current sequence of bytes</summary>
     /// <param>"Value" the value to be converted.</param>
@@ -518,7 +536,7 @@ type
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Format" the format pattern.</param>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
-    procedure AddDate(const Value: TZDate; const Format: String; var Result: RawByteString); overload;
+    procedure AddDate({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate; const Format: String; var Result: RawByteString); overload;
     /// <summary>adds a TDateTime value as sql time representation to the
     ///  current sequence of bytes</summary>
     /// <param>"Value" the value to be converted.</param>
@@ -530,7 +548,7 @@ type
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Format" the format pattern.</param>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
-    procedure AddTime(const Value: TZTime; const Format: String; var Result: RawByteString); overload;
+    procedure AddTime({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime; const Format: String; var Result: RawByteString); overload;
     /// <summary>adds a TDateTime value as sql timestamp representation to the
     ///  current sequence of bytes</summary>
     /// <param>"Value" the value to be converted.</param>
@@ -542,13 +560,13 @@ type
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Format" the format pattern.</param>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
-    procedure AddTimeStamp(const Value: TZTimeStamp; const Format: String; var Result: RawByteString);
+    procedure AddTimeStamp({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp; const Format: String; var Result: RawByteString);
     /// <summary>adds a GUID value as sql representation to the
     ///  current sequence of bytes</summary>
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Options" the conversion options.</param>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
-    procedure AddGUID(const Value: TGUID; Options: TGUIDConvOptions; var Result: RawByteString);
+    procedure AddGUID({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID; Options: TGUIDConvOptions; var Result: RawByteString);
     /// <summary>finalize the Result, flush the buffer into the string</summary>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
     procedure Finalize(var Result: RawByteString);
@@ -567,6 +585,9 @@ type
     /// <summary>add a line feed if neiter buffer nor result is empty.</summary>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
     procedure AddLineFeedIfNotEmpty(var Result: RawByteString);
+    /// <summary>Return the current length if the String get's finalized.</summary>
+    /// <returns>the Length of the string in bytes.</returns>
+    function GetCurrentLength(const Current: RawByteString): Cardinal;
   end;
 
   /// <author>EgonHugeist</author>
@@ -707,7 +728,7 @@ type
     ///  current sequence of words</summary>
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Result" the reference to the UTF16 string we finally write in.</param>
-    procedure AddDecimal(const Value: TBCD; var Result: UnicodeString); overload;
+    procedure AddDecimal({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD; var Result: UnicodeString); overload;
     /// <summary>adds a TDateTime value as sql date representation to the
     ///  current sequence of words</summary>
     /// <param>"Value" the value to be converted.</param>
@@ -717,7 +738,7 @@ type
     ///  current sequence of words</summary>
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Result" the reference to the UTF16 string we finally write in.</param>
-    procedure AddDate(const Value: TZDate; const Format: String; var Result: UnicodeString); overload;
+    procedure AddDate({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate; const Format: String; var Result: UnicodeString); overload;
     /// <summary>adds a TDateTime value as sql time representation to the
     ///  current sequence of words</summary>
     /// <param>"Value" the value to be converted.</param>
@@ -727,7 +748,7 @@ type
     ///  current sequence of words</summary>
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Result" the reference to the UTF16 string we finally write in.</param>
-    procedure AddTime(const Value: TZTime; const Format: String; var Result: UnicodeString); overload;
+    procedure AddTime({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime; const Format: String; var Result: UnicodeString); overload;
     /// <summary>adds a TDateTime value as sql timestamp representation to the
     ///  current sequence of words</summary>
     /// <param>"Value" the value to be converted.</param>
@@ -737,13 +758,13 @@ type
     ///  current sequence of words</summary>
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Result" the reference to the UTF16 string we finally write in.</param>
-    procedure AddTimeStamp(const Value: TZTimeStamp; const Format: String; var Result: UnicodeString);
+    procedure AddTimeStamp({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp; const Format: String; var Result: UnicodeString);
     /// <summary>adds a GUID value as sql representation to the
     ///  current sequence of words</summary>
     /// <param>"Value" the value to be converted.</param>
     /// <param>"Options" the conversion options.</param>
     /// <param>"Result" the reference to the UTF16 string we finally write in.</param>
-    procedure AddGUID(const Value: TGUID; Options: TGUIDConvOptions; var Result: UnicodeString);
+    procedure AddGUID({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID; Options: TGUIDConvOptions; var Result: UnicodeString);
     /// <summary>finalize the Result, flush the buffer into the string</summary>
     /// <param>"Result" the reference to the UTF16 string we finally write in.</param>
     procedure Finalize(var Result: UnicodeString);
@@ -762,6 +783,9 @@ type
     /// <summary>add a line feed if neiter buffer nor result is empty.</summary>
     /// <param>"Result" the reference to the raw string we finally write in.</param>
     procedure AddLineFeedIfNotEmpty(var Result: UnicodeString);
+    /// <summary>Return the current length if the String get's finalized.</summary>
+    /// <returns>the Length of the string in words.</returns>
+    function GetCurrentLength(const Current: UnicodeString): Cardinal;
   end;
 
   /// <author>EgonHugeist</author>
@@ -795,7 +819,6 @@ type
     ///  such as Strings, Objects etc.</summary>
     /// <param>"Ptr" the address of the element an action happens for.</param>
     /// <param>"Index" the index of the element.</param>
-    /// <returns>The address or raises an EListError if the Index is invalid.</returns>
     procedure Notify(Ptr: Pointer; Action: TListNotification); virtual;
     /// <summary>Sets a capacity of elementsizes. If capacity is less than Count
     ///  and error get's thrown. Relloc memory Otherwise. If ElementNeedsFinalize
@@ -820,7 +843,7 @@ type
     /// <summary>Raises and EListError.</summary>
     /// <param>"Msg" the error message.</param>
     /// <param>"Data" the error data.</param>
-    class procedure Error(const Msg: string; Data: NativeInt); overload; virtual;
+    class procedure Error(const Msg: string; Data: NativeInt); virtual;
   public
     /// <summary>Create this object and assigns main properties.</summary>
     /// <param>"ElementSize" a size of the element hold in array.</param>
@@ -1237,6 +1260,25 @@ begin
   end;
 end;
 
+procedure TZRawSQLStringWriter.AddAscii7UTF16Text(Buf: PWideChar;
+  Len: NativeUInt; var Result: RawByteString);
+var PA: PAnsiChar;
+  PEnd: PWideChar;
+begin
+  if Buf = nil then Exit;
+  if Len < NativeUInt(FEnd-FPos) then begin
+    PA := FPos;
+    Inc(FPos, Len);
+  end else
+    PA := FlushBuff(Result, Len);
+  PEnd := Buf + Len;
+  while Buf < PEnd do begin
+    PByte(PA)^ := PWord(Buf)^;
+    Inc(PA);
+    Inc(Buf);
+  end;
+end;
+
 procedure TZRawSQLStringWriter.AddChar(Value: AnsiChar; var Result: RawByteString);
 var P: PAnsiChar;
 begin
@@ -1355,6 +1397,12 @@ begin
   end;
 end;
 
+function TZRawSQLStringWriter.GetCurrentLength(
+  Const Current: RawByteString): Cardinal;
+begin
+  Result := Length(Current) + (FPos - FBuf);
+end;
+
 procedure TZRawSQLStringWriter.IncreaseCapacityTo(AnsiCharCapacity: Integer;
   var Result: RawByteString);
 begin
@@ -1440,7 +1488,7 @@ begin
   AddTextQuoted(Pointer(Value), Length(Value){$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}-1{$ENDIF}, QuoteChar, Result);
 end;
 
-procedure TZRawSQLStringWriter.AddTime(const Value: TZTime;
+procedure TZRawSQLStringWriter.AddTime({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime;
   const Format: String; var Result: RawByteString);
 var L: LengthInt;
   P: PAnsiChar;
@@ -1456,7 +1504,7 @@ begin
   else AddText(P, L, Result);
 end;
 
-procedure TZRawSQLStringWriter.AddTimeStamp(const Value: TZTimeStamp;
+procedure TZRawSQLStringWriter.AddTimeStamp({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp;
   const Format: String; var Result: RawByteString);
 var L: LengthInt;
   P: PAnsiChar;
@@ -1621,7 +1669,7 @@ begin
   else AddText(P, L, Result);
 end;
 
-procedure TZRawSQLStringWriter.AddDate(const Value: TZDate; const Format: String;
+procedure TZRawSQLStringWriter.AddDate({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate; const Format: String;
   var Result: RawByteString);
 var
   L: LengthInt;
@@ -1656,7 +1704,7 @@ begin
   else AddText(P, L, Result);
 end;
 
-procedure TZRawSQLStringWriter.AddDecimal(const Value: TBCD;
+procedure TZRawSQLStringWriter.AddDecimal({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD;
   var Result: RawByteString);
 var L: LengthInt;
   P: PAnsiChar;
@@ -1685,7 +1733,7 @@ begin
   else AddText(P, L, Result);
 end;
 
-procedure TZRawSQLStringWriter.AddGUID(const Value: TGUID;
+procedure TZRawSQLStringWriter.AddGUID({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID;
   Options: TGUIDConvOptions; var Result: RawByteString);
 var
   L: LengthInt;
@@ -1766,7 +1814,7 @@ begin
   else AddText(P, L, Result);
 end;
 
-procedure TZUnicodeSQLStringWriter.AddDate(const Value: TZDate;
+procedure TZUnicodeSQLStringWriter.AddDate({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate;
   const Format: String; var Result: UnicodeString);
 var
   L: LengthInt;
@@ -1800,7 +1848,7 @@ begin
   else AddText(P, L, Result);
 end;
 
-procedure TZUnicodeSQLStringWriter.AddDecimal(const Value: TBCD;
+procedure TZUnicodeSQLStringWriter.AddDecimal({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD;
   var Result: UnicodeString);
 var L: LengthInt;
   P: PWideChar;
@@ -1854,7 +1902,7 @@ begin
   else AddText(P, L, Result);
 end;
 
-procedure TZUnicodeSQLStringWriter.AddGUID(const Value: TGUID;
+procedure TZUnicodeSQLStringWriter.AddGUID({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID;
   Options: TGUIDConvOptions; var Result: UnicodeString);
 var
   L: LengthInt;
@@ -2126,7 +2174,7 @@ begin
   AddTextQuoted(Pointer(Value), Length(Value), QuoteChar, Result);
 end;
 
-procedure TZUnicodeSQLStringWriter.AddTime(const Value: TZTime;
+procedure TZUnicodeSQLStringWriter.AddTime({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime;
   const Format: String; var Result: UnicodeString);
 var L: LengthInt;
   P: PWideChar;
@@ -2142,7 +2190,7 @@ begin
   else AddText(P, L, Result);
 end;
 
-procedure TZUnicodeSQLStringWriter.AddTimeStamp(const Value: TZTimeStamp;
+procedure TZUnicodeSQLStringWriter.AddTimeStamp({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp;
   const Format: String; var Result: UnicodeString);
 var L: LengthInt;
   P: PWideChar;
@@ -2243,6 +2291,12 @@ begin
     Inc(PAnsiChar(Result), LRes);
     FPos := FBuf;
   end;
+end;
+
+function TZUnicodeSQLStringWriter.GetCurrentLength(
+  const Current: UnicodeString): Cardinal;
+begin
+  Result := Length(Current) + (FPos - FBuf);
 end;
 
 procedure TZUnicodeSQLStringWriter.IncreaseCapacityTo(WideCharCapacity: Integer;
@@ -2735,7 +2789,7 @@ var P: Pointer;
 begin
   {$IFNDEF DISABLE_CHECKING}
   if NativeUInt(Index) > FCount then
-    Error(@SListIndexError, Index);
+    Error(SListIndexError, Index);
   {$ENDIF DISABLE_CHECKING}
   if FCount = FCapacity then
     Grow;
@@ -2765,14 +2819,14 @@ var P: Pointer;
 begin
   {$IFNDEF DISABLE_CHECKING}
   if (NewCapacity < FCount) or (NewCapacity > {$IFDEF WITH_MAXLISTSIZE_DEPRECATED}Maxint div 16{$ELSE}MaxListSize{$ENDIF}) then
-    Error(@SListCapacityError, NewCapacity);
+    Error(SListCapacityError, NewCapacity);
   {$ENDIF DISABLE_CHECKING}
   if NewCapacity <> FCapacity then begin
     if NewCapacity < FCount then
       SetCount(NewCapacity);
-    ReallocMem(FElements, NewCapacity * NativeInt(FElementSize*2));
+    ReallocMem(FElements, NewCapacity * NativeInt(FElementSize));
     if FElementNeedsFinalize and (NewCapacity>FCapacity) then begin
-      P := Pointer(NativeUInt(FElements)+(NativeUInt(FCount)*FElementSize));
+      P := Pointer(NativeUInt(FElements)+(NativeUInt(FCapacity)*FElementSize));
       FillChar(P^, NativeInt(FElementSize)*(NewCapacity-FCapacity), #0);
     end;
     FCapacity := NewCapacity;
@@ -2787,7 +2841,7 @@ var I: NativeInt;
 begin
   {$IFNDEF DISABLE_CHECKING}
   if (NewCount <0) or (NewCount > {$IFDEF WITH_MAXLISTSIZE_DEPRECATED}Maxint div 16{$ELSE}MaxListSize{$ENDIF}) then
-    Error(@SListCountError, NewCount);
+    Error(SListCountError, NewCount);
   {$ENDIF DISABLE_CHECKING}
   if NewCount <> FCount then begin
     if NewCount > FCapacity then
@@ -2817,7 +2871,6 @@ procedure TZExchangeableCustomElementList.BeforeDestruction;
 begin
   inherited;
   FreeMem(FElementBuffer);
-
 end;
 
 procedure TZExchangeableCustomElementList.Exchange(Item1, Item2: NativeInt);

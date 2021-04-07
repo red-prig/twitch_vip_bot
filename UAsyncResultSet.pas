@@ -75,8 +75,6 @@ type
 
   TZCustomAsyncResultSet = class
   private
-    Const
-     FCachedLobs=true;
     var
      FConSettings: PZConSettings;
      FLastRowNo: Integer;
@@ -87,6 +85,7 @@ type
      FSelectedRow: PZRowBuffer;
      FRowAccessor: TZRowAccessor;
      FNextRowIndex: Integer;
+     FCachedLobs:Boolean;
   protected
     FRowNo: Integer;
     LastWasNull: Boolean;
@@ -94,25 +93,26 @@ type
     procedure CheckBlobColumn(ColumnIndex: Integer);
     procedure Open; virtual;
 
-    function GetColumnIndex(const ColumnName: string): Integer;
-    property RowNo: Integer read FRowNo write FRowNo;
-    property LastRowNo: Integer read FLastRowNo write FLastRowNo;
-    property MaxRows: Integer read FMaxRows write FMaxRows;
-    property Closed: Boolean read FClosed write FClosed;
+    function  GetColumnIndex(const ColumnName: string): Integer;
+    property  RowNo: Integer read FRowNo write FRowNo;
+    property  LastRowNo: Integer read FLastRowNo write FLastRowNo;
+    property  MaxRows: Integer read FMaxRows write FMaxRows;
+    property  Closed: Boolean read FClosed write FClosed;
 
     class function GetRowAccessorClass: TZRowAccessorClass; virtual;
-    procedure CheckAvailable;
-    function GetNextRowIndex: Integer; virtual;
+    function  GetNextRowIndex: Integer; virtual;
 
-    property SelectedRow: PZRowBuffer read FSelectedRow write FSelectedRow;
-    property RowAccessor: TZRowAccessor read FRowAccessor write FRowAccessor;
-    property NextRowIndex: Integer read FNextRowIndex write FNextRowIndex;
+    property  SelectedRow: PZRowBuffer read FSelectedRow write FSelectedRow;
+    property  RowAccessor: TZRowAccessor read FRowAccessor write FRowAccessor;
+    property  NextRowIndex: Integer read FNextRowIndex write FNextRowIndex;
   public
 
     constructor Create(FResultSet:IZResultSet);
-    destructor Destroy; override;
+    destructor  Destroy; override;
 
-    function GetConSettings: PZConSettings;
+    property  CachedLobs:Boolean read FCachedLobs;
+
+    function  GetConSettings: PZConSettings;
 
     function  Next: Boolean; virtual;
     procedure BeforeClose; virtual;
@@ -124,33 +124,33 @@ type
     // Methods for accessing results by column index
     //======================================================================
 
-    function GetBytes(ColumnIndex: Integer): TBytes;
-    function GetAsciiStream(ColumnIndex: Integer): TStream; virtual;
-    function GetAnsiStream(ColumnIndex: Integer): TStream; virtual;
-    function GetUnicodeStream(ColumnIndex: Integer): TStream; virtual;
-    function GetUTF8Stream(ColumnIndex: Integer): TStream; virtual;
-    function GetBinaryStream(ColumnIndex: Integer): TStream; virtual;
+    function  GetBytes(ColumnIndex: Integer): TBytes;
+    function  GetAsciiStream(ColumnIndex: Integer): TStream; virtual;
+    function  GetAnsiStream(ColumnIndex: Integer): TStream; virtual;
+    function  GetUnicodeStream(ColumnIndex: Integer): TStream; virtual;
+    function  GetUTF8Stream(ColumnIndex: Integer): TStream; virtual;
+    function  GetBinaryStream(ColumnIndex: Integer): TStream; virtual;
 
-    function GetMetaData: TZAsyncResultSetMetadata; virtual;
-    function FindColumn(const ColumnName: string): Integer; virtual;
+    function  GetMetaData: TZAsyncResultSetMetadata; virtual;
+    function  FindColumn(const ColumnName: string): Integer; virtual;
 
     //---------------------------------------------------------------------
     // Traversal/Positioning
     //---------------------------------------------------------------------
 
-    function IsBeforeFirst: Boolean; virtual;
-    function IsAfterLast: Boolean; virtual;
-    function IsFirst: Boolean; virtual;
-    function IsLast: Boolean; virtual;
+    function  IsBeforeFirst: Boolean; virtual;
+    function  IsAfterLast: Boolean; virtual;
+    function  IsFirst: Boolean; virtual;
+    function  IsLast: Boolean; virtual;
     procedure BeforeFirst; virtual;
     procedure AfterLast; virtual;
-    function First: Boolean; virtual;
-    function Last: Boolean; virtual;
-    function GetRow: NativeInt; virtual;
-    function MoveRelative(Rows: Integer): Boolean; virtual;
-    function Previous: Boolean; virtual;
+    function  First: Boolean; virtual;
+    function  Last: Boolean; virtual;
+    function  GetRow: NativeInt; virtual;
+    function  MoveRelative(Rows: Integer): Boolean; virtual;
+    function  Previous: Boolean; virtual;
 
-    property ColumnsInfo: TObjectList read FColumnsInfo write FColumnsInfo;
+    property  ColumnsInfo: TObjectList read FColumnsInfo write FColumnsInfo;
 
     //-------------------
 
@@ -161,51 +161,52 @@ type
     // Methods for accessing results by column index
     //======================================================================
 
-    function IsNull(ColumnIndex: Integer): Boolean; virtual;
-    function GetValue(ColumnIndex: Integer): TZVariant; virtual;
-    function GetPAnsiChar(ColumnIndex: Integer; out Len: NativeUInt): PAnsiChar;
-    function GetPWideChar(ColumnIndex: Integer; out Len: NativeUInt): PWideChar;
-    function GetString(ColumnIndex: Integer): String;
-    {$IFNDEF NO_ANSISTRING}
-    function GetAnsiString(ColumnIndex: Integer): AnsiString;
+    function  IsNull(ColumnIndex: Integer): Boolean; virtual;
+    function  GetValue(ColumnIndex: Integer): TZVariant; virtual;
+    function  GetPAnsiChar(ColumnIndex: Integer; out Len: NativeUInt): PAnsiChar;
+    function  GetPWideChar(ColumnIndex: Integer; out Len: NativeUInt): PWideChar;
+    function  GetString(ColumnIndex: Integer): String;
+    {$IFNDEF  NO_ANSISTRING}
+    function  GetAnsiString(ColumnIndex: Integer): AnsiString;
     {$ENDIF}
-    {$IFNDEF NO_UTF8STRING}
-    function GetUTF8String(ColumnIndex: Integer): UTF8String;
+    {$IFNDEF  NO_UTF8STRING}
+    function  GetUTF8String(ColumnIndex: Integer): UTF8String;
     {$ENDIF}
-    function GetRawByteString(ColumnIndex: Integer): RawByteString;
-    function GetUnicodeString(ColumnIndex: Integer): ZWidestring;
-    function GetBoolean(ColumnIndex: Integer): Boolean;
-    function GetUInt(ColumnIndex: Integer): Cardinal;
-    function GetInt(ColumnIndex: Integer): Integer;
-    function GetULong(ColumnIndex: Integer): UInt64;
-    function GetLong(ColumnIndex: Integer): Int64;
-    function GetFloat(ColumnIndex: Integer): Single;
-    function GetDouble(ColumnIndex: Integer): Double;
-    function GetCurrency(ColumnIndex: Integer): Currency;
+    function  GetRawByteString(ColumnIndex: Integer): RawByteString;
+    function  GetUnicodeString(ColumnIndex: Integer): ZWidestring;
+    function  GetBoolean(ColumnIndex: Integer): Boolean;
+    function  GetUInt(ColumnIndex: Integer): Cardinal;
+    function  GetInt(ColumnIndex: Integer): Integer;
+    function  GetULong(ColumnIndex: Integer): UInt64;
+    function  GetLong(ColumnIndex: Integer): Int64;
+    function  GetFloat(ColumnIndex: Integer): Single;
+    function  GetDouble(ColumnIndex: Integer): Double;
+    function  GetCurrency(ColumnIndex: Integer): Currency;
     procedure GetBigDecimal(ColumnIndex: Integer; var Result: TBCD);
     procedure GetGUID(ColumnIndex: Integer; var Result: TGUID);
-    function GetBytes(ColumnIndex: Integer; out Len: NativeUInt): PByte;
+    function  GetBytes(ColumnIndex: Integer; out Len: NativeUInt): PByte;
     procedure GetDate(ColumnIndex: Integer; Var Result: TZDate); overload;
     procedure GetTime(ColumnIndex: Integer; var Result: TZTime); overload;
     procedure GetTimestamp(ColumnIndex: Integer; var Result: TZTimeStamp); overload;
-    function GetBlob(ColumnIndex: Integer; LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
-    function GetDefaultExpression(ColumnIndex: Integer): string;
+    function  GetBlob(ColumnIndex: Integer; LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
+    function  GetDefaultExpression(ColumnIndex: Integer): string;
 
     //---------------------------------------------------------------------
     // Traversal/Positioning
     //---------------------------------------------------------------------
 
-    function MoveAbsolute(Row: Integer): Boolean; virtual;
+    function  MoveAbsolute(Row: Integer): Boolean; virtual;
 
     //---------------------------------------------------------------------
     // Updates
     //---------------------------------------------------------------------
 
-    function RowUpdated: Boolean;  virtual;
-    function RowInserted: Boolean; virtual;
-    function RowDeleted: Boolean;  virtual;
+    function  RowUpdated: Boolean;  virtual;
+    function  RowInserted: Boolean; virtual;
+    function  RowDeleted: Boolean;  virtual;
 
     procedure UpdateNull(ColumnIndex: Integer);
+    procedure UpdateValue(ColumnIndex: Integer; Value: TZVariant);
     procedure UpdateBoolean(ColumnIndex: Integer; Value: Boolean);
     procedure UpdateByte(ColumnIndex: Integer; Value: Byte);
     procedure UpdateShort(ColumnIndex: Integer; Value: ShortInt);
@@ -257,7 +258,6 @@ type
    private
     FRowsList:TZSortedList;
    protected
-    function  LocateRow(RowsList: TZSortedList; RowIndex: Integer): Integer;
     function  AppendRow(Row: PZRowBuffer): PZRowBuffer;
     procedure Open; override;
 
@@ -268,18 +268,16 @@ type
     function  MoveAbsolute(Row: Integer): Boolean; override;
     procedure InsertRow;  override;
     procedure DeleteRow;  override;
-    function  Fetch(FResultSet:IZResultSet;FIndexPairList:TZIndexPairList):Boolean;
+    function  Fetch(FResultSet:IZResultSet):Boolean;
   end;
 
-function  _NewIndexPair(Count:Integer):TZIndexPairList;
 function  _FindColumn(FColumnsInfo:TObjectList;const ColumnName:string):Integer;
-procedure _LoadColumnInfo(FColumnsInfo:TObjectList;FResultSet:IZResultSet);
-function  _FetchRow(FRowAccessor:TZRowAccessor;FIndexPairList:TZIndexPairList;FResultSet:IZResultSet):PZRowBuffer;
+procedure _LoadColumnInfo(FColumnsInfo:TObjectList;FResultSet:IZResultSet;FCachedLobs:Boolean);
+function  _FetchRow(FRowAccessor:TZRowAccessor;FResultSet:IZResultSet):PZRowBuffer;
 
 implementation
 
-uses ZMessages, ZDbcUtils, ZEncoding, ZDbcProperties,
-  ZSysUtils;
+uses ZMessages, ZDbcUtils, ZEncoding, ZSysUtils, ZDbcProperties;
 
 function _FindColumn(FColumnsInfo:TObjectList;const ColumnName:string):Integer;
 var
@@ -585,6 +583,7 @@ var Blob: IZBlob;
     CP: Word;
 begin
   Result := nil;
+  Clob := nil;
   if IsNull(ColumnIndex) then
     LastWasNull := True
   else begin
@@ -725,15 +724,6 @@ begin
 end;
 
 {**
-  Checks for availability of the cached buffer.
-}
-procedure TZCustomAsyncResultSet.CheckAvailable;
-begin
-  if (FRowAccessor = nil) or (FRowAccessor.RowBuffer = nil) then
-    raise EZSQLException.Create(SRowDataIsNotAvailable);
-end;
-
-{**
   Generates the next row index value.
   @return the new generated row index.
 }
@@ -754,15 +744,10 @@ end;
 }
 procedure TZCustomAsyncResultSet.Open;
 begin
-  if not Closed then
-    raise EZSQLException.Create(SResultsetIsAlreadyOpened);
-
+  if not FClosed then Exit;
   FRowAccessor := GetRowAccessorClass.Create(ColumnsInfo, FConSettings, nil, FCachedLobs);
-
   FSelectedRow := nil;
-
   FNextRowIndex := 0;
-
   FClosed:=False;
 end;
 
@@ -1155,6 +1140,11 @@ end;
 procedure TZCustomAsyncResultSet.UpdateNull(ColumnIndex: Integer);
 begin
   FRowAccessor.SetNull(ColumnIndex);
+end;
+
+procedure TZCustomAsyncResultSet.UpdateValue(ColumnIndex: Integer; Value: TZVariant);
+begin
+  FRowAccessor.SetValue(ColumnIndex,Value);
 end;
 
 {**
@@ -1790,15 +1780,19 @@ end;
 constructor TZCustomAsyncResultSet.Create(FResultSet:IZResultSet);
 var
  New,Old:PZConSettings;
+ Statement:IZStatement;
 begin
+ New:=nil;
  if Assigned(FResultSet) then
  begin
   New:=AllocMem(SizeOf(TZConSettings)+SizeOf(TZCodePage));
   Old:=(FResultSet as TZAbstractResultSet).GetConSettings;
   New^:=Old^;
-  //New^.DataBaseSettings:=nil;
+  New^.W2A2WEncodingSource:=Old^.W2A2WEncodingSource;
   New^.ClientCodePage:=Pointer(@New[1]);
   New^.ClientCodePage^:=Old^.ClientCodePage^;
+  New^.ReadFormatSettings :=Old^.ReadFormatSettings;
+  New^.WriteFormatSettings:=Old^.WriteFormatSettings;
  end;
 
  FConSettings := New;
@@ -1808,9 +1802,16 @@ begin
  FClosed := True;
  FMaxRows := 0;
 
+ Statement := FResultSet.GetStatement;
+ FCachedLobs := False;
+ if Assigned(Statement) then
+ begin
+  FCachedLobs := FCachedLobs or StrToBoolEx(DefineStatementParameter(Statement, DSProps_CachedLobs, 'false'))
+ end;
+
  FColumnsInfo := TObjectList.Create(True); //Free the MemoryLeaks of TZColumnInfo
 
- _LoadColumnInfo(FColumnsInfo,FResultSet);
+ _LoadColumnInfo(FColumnsInfo,FResultSet,FCachedLobs);
  Open;
 end;
 
@@ -1825,7 +1826,7 @@ begin
    Result.Add(I,I);
 end;
 
-procedure _LoadColumnInfo(FColumnsInfo:TObjectList;FResultSet:IZResultSet);
+procedure _LoadColumnInfo(FColumnsInfo:TObjectList;FResultSet:IZResultSet;FCachedLobs:Boolean);
 var
  I:Integer;
  ColumnInfo:TZColumnInfo;
@@ -1857,12 +1858,20 @@ begin
      DefinitelyWritable:=TmpMetaData.IsDefinitelyWritable(I);
      DefaultValue      :=TmpMetaData.GetDefaultValue     (I);
      ColumnCodePage    :=TmpMetaData.GetColumnCodePage   (I);
+
+     if FCachedLobs then
+      Case ColumnType of
+       stAsciiStream  :ColumnType:=stString;
+       stUnicodeStream:ColumnType:=stUnicodeString;
+       stBinaryStream :ColumnType:=stBytes;
+      end;
+
    end;
    FColumnsInfo.Add(ColumnInfo);
  end;
 end;
 
-function _FetchRow(FRowAccessor:TZRowAccessor;FIndexPairList:TZIndexPairList;FResultSet:IZResultSet):PZRowBuffer;
+function _FetchRow(FRowAccessor:TZRowAccessor;FResultSet:IZResultSet):PZRowBuffer;
 var
  TempRow:PZRowBuffer;
 begin
@@ -1871,7 +1880,7 @@ begin
  try
    FRowAccessor.Alloc;
    FRowAccessor.RowBuffer^.UpdateType:=utUnmodified;
-   FRowAccessor.FillFromFromResultSet(FResultSet,FIndexPairList);
+   FRowAccessor.FillFromFromResultSet(FResultSet,nil);
    Result:=FRowAccessor.RowBuffer;
  finally
    if (Result=nil) then //OutOfMem? FetchError?
@@ -1881,27 +1890,6 @@ begin
 end;
 
 /////
-
-{**
-  Finds a row with specified index among list of rows.
-  @param RowsList a list of rows.
-  @param Index a row index.
-  @return a found row buffer of <code>null</code> otherwise.
-}
-function TZAsyncResultSet.LocateRow(RowsList:TZSortedList; RowIndex: Integer): Integer;
-var
-  I: Integer;
-begin
-  Result := -1;
-  for I := 0 to RowsList.Count - 1 do
-  begin
-    if PZRowBuffer(RowsList[I])^.Index = RowIndex then
-    begin
-      Result := I;
-      Break;
-    end;
-  end;
-end;
 
 {**
   Appends a row to the list of rows if such row is not exist.
@@ -1994,7 +1982,7 @@ begin
  end;
 end;
 
-function TZAsyncResultSet.Fetch(FResultSet:IZResultSet;FIndexPairList:TZIndexPairList):Boolean;
+function TZAsyncResultSet.Fetch(FResultSet:IZResultSet):Boolean;
 var
  TempRow:PZRowBuffer;
 
@@ -2006,7 +1994,7 @@ begin
  if not Result or ((MaxRows > 0) and (LastRowNo >= MaxRows)) then
    Exit;
 
- TempRow:=_FetchRow(FRowAccessor,FIndexPairList,FResultSet);
+ TempRow:=_FetchRow(FRowAccessor,FResultSet);
  if (TempRow=nil) then Exit;
 
  TempRow^.Index:=GetNextRowIndex;

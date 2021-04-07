@@ -55,7 +55,7 @@ interface
 
 {$I ZDbc.inc}
 
-{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$IFDEF ENABLE_PROXY} //if set we have an empty unit
 uses
   {$IFDEF WITH_TOBJECTLIST_REQUIRES_SYSTEM_TYPES}System.Types{$IFNDEF NO_UNIT_CONTNRS}, Contnrs{$ENDIF}{$ELSE}Types{$ENDIF},
   Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils, System.NetEncoding,
@@ -323,9 +323,9 @@ type
       ParentResultSet: TZAbstractResultSet);
   End;
 
-{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$ENDIF ENABLE_PROXY} //if set we have an empty unit
 implementation
-{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$IFDEF ENABLE_PROXY} //if set we have an empty unit
 
 uses
   {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF} Math,
@@ -445,20 +445,27 @@ begin
       ColumnLabel := ColumnNode.Attributes['label'];
       ColumnName := ColumnNode.Attributes['name'];
       ColumnType := TZSQLType(GetEnumValue(TypeInfo(TZSQLType), ColumnNode.Attributes['type']));
-      {$IFNDEF ZEOS73UP}
       case ColumnType of
         stString, stUnicodeString:
-          if GetConSettings.CPType = cCP_UTF16 then
-            ColumnType := stUnicodeString
-          else
+          {$IFNDEF ZEOS73UP}if GetConSettings.CPType = cCP_UTF16 then {$ENDIF ZEOS73UP} begin
+            ColumnType := stUnicodeString;
+            ColumnCodePage := zCP_UTF16;
+          {$IFNDEF ZEOS73UP}end else begin
             ColumnType := stString;
+            ColumnCodePage := zCP_UTF8;
+          {$ENDIF ZEOS73UP}
+          end;
         stAsciiStream, stUnicodeStream:
-          if GetConSettings.CPType = cCP_UTF16 then
-            ColumnType := stUnicodeStream
-          else
+          {$IFNDEF ZEOS73UP}if GetConSettings.CPType = cCP_UTF16 then {$ENDIF ZEOS73UP} begin
+            ColumnType := stUnicodeStream;
+            ColumnCodePage := zCP_UTF16;
+          {$IFNDEF ZEOS73UP}
+          end else begin
             ColumnType := stAsciiStream;
+            ColumnCodePage := zCP_UTF8
+          {$ENDIF ZEOS73UP}
+          end;
       end;
-      {$ENDIF}
       DefaultValue := ColumnNode.Attributes['defaultvalue'];
       Precision := StrToInt(ColumnNode.Attributes['precision']);
       Scale := StrToInt(ColumnNode.Attributes['scale']);
@@ -1360,7 +1367,11 @@ begin
   ColType := ColInfo.ColumnType;
   case ColType of
     stBinaryStream: begin
+      {$IFDEF NO_ANSISTRING}
+      Bytes := DecodeBase64(Val);
+      {$ELSE}
       Bytes := DecodeBase64(AnsiString(Val));
+      {$ENDIF}
       Result := TZAbstractBlob.CreateWithData(@Bytes[0], Length(Bytes)) as IZBlob;
     end;
     stAsciiStream, stUnicodeStream: begin
@@ -1522,7 +1533,9 @@ begin
   CheckClosed;
 {$ENDIF}
   { Checks for maximum row. }
-  Result := False;
+{$IFDEF FPC} // I suppose FPC compiler needs this initial assignment...?
+   Result := False;
+{$ENDIF}
   { Processes negative rows. }
   if Row < 0 then begin
     Row := LastRowNo + Row + 1;
@@ -1560,6 +1573,6 @@ begin
   end;
 end;
 
-{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$ENDIF ENABLE_PROXY} //if set we have an empty unit
 end.
 

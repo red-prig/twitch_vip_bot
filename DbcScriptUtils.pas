@@ -132,7 +132,7 @@ type
 
 implementation
 
-function _GetFormat:TZFormatSettings; inline;
+function _GetFormat:TZClientFormatSettings; inline;
 begin
  Result.DateFormat        := DefaultFormatSettings.ShortDateFormat;
  Result.DateFormatLen     := Length(Result.DateFormat);

@@ -55,7 +55,7 @@ interface
 
 {$I ZDbc.inc}
 
-{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$IFDEF ENABLE_PROXY} //if set we have an empty unit
 uses
   Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
   ZDbcIntfs, ZDbcConnection, ZPlainProxyDriver, ZPlainProxyDriverIntf,
@@ -94,7 +94,7 @@ type
     FConnIntf: IZDbcProxy;
     FDbInfo: ZWideString;
 
-    //shadow properties - the just mirror the values that are set on the server
+    //shadow properties - they just mirror the values that are set on the server
     FCatalog: String;
     FServerProvider: TZServerProvider;
 
@@ -102,11 +102,11 @@ type
     FStartTransactionUsed: Boolean;
     {$ENDIF}
   protected
-    procedure AfterConstruction; override;
     procedure transferProperties(PropName, PropValue: String);
     procedure applyProperties(const Properties: String);
     function encodeProperties(PropName, PropValue: String): String;
   public
+    procedure AfterConstruction; override;
     {$IFNDEF ZEOS73UP}
     function CreateRegularStatement(Info: TStrings): IZStatement; override;
     function CreatePreparedStatement(const SQL: string; Info: TStrings): IZPreparedStatement; override;
@@ -218,19 +218,21 @@ type
     function GetServerProvider: TZServerProvider; override;
 
     function GetDbInfoStr: ZWideString;
+
+    procedure ExecuteImmediat(const SQL: UnicodeString; LoggingCategory: TZLoggingCategory); override;
   end;
 
 var
   {** The common driver manager object. }
   ProxyDriver: IZDriver;
 
-{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$ENDIF ENABLE_PROXY} //if set we have an empty unit
 implementation
-{$IFNDEF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$IFDEF ENABLE_PROXY} //if set we have an empty unit
 
 uses
-  ZSysUtils, ZFastCode,
-  ZDbcProxyMetadata, ZDbcStatement, ZDbcProxyStatement,
+  ZSysUtils, ZFastCode, ZEncoding,
+  ZDbcProxyMetadata, ZDbcStatement, ZDbcProxyStatement, ZDbcProperties,
   ZMessages, Typinfo
   {$IFDEF WITH_UNITANSISTRINGS}, AnsiStrings{$ENDIF};
 
@@ -327,12 +329,11 @@ end;
   Constructs this object and assignes the main properties.
 }
 procedure TZDbcProxyConnection.AfterConstruction;
-var
-  PlainDrv: IZProxyPlainDriver;
 begin
   FMetadata := TZProxyDatabaseMetadata.Create(Self, Url);
   FConnIntf := GetPlainDriver.GetLibraryInterface;
-  if not assigned(FConnIntf) then raise Exception.Create(GetPlainDriver.GetLastErrorStr);
+  if not assigned(FConnIntf) then
+    raise Exception.Create(GetPlainDriver.GetLastErrorStr);
   inherited AfterConstruction;
 end;
 
@@ -341,9 +342,10 @@ end;
 }
 procedure TZDbcProxyConnection.Open;
 var
-  LogMessage: RawByteString;
+  LogMessage: String;
   PropList: WideString;
   MyDbInfo: WideString;
+  WsUrl: String; // Webservice URL
 begin
   if not Closed then
     Exit;
@@ -352,15 +354,28 @@ begin
   FStartTransactionUsed := false;
   {$ENDIF}
 
+  WsUrl := URL.Properties.Values[ConnProps_ProxyProtocol];
+  if WsUrl = '' then
+    WsUrl := 'https';
+  WsUrl := WsUrl + '://' + HostName;
+  if Port <> 0 then
+    WsUrl := WsUrl + ':' + ZFastCode.IntToStr(Port);
+  WsUrl := WsUrl + '/services/IZeosProxy';
+
   LogMessage := 'CONNECT TO "'+ URL.Database + '" AS USER "' + URL.UserName + '"';
 
   PropList := encodeProperties('autocommit', BoolToStr(GetAutoCommit, True));
-  FConnIntf.Connect(User, Password, HostName, Database, PropList, MyDbInfo);
+  FConnIntf.Connect(User, Password, WsUrl, Database, PropList, MyDbInfo);
 
   DriverManager.LogMessage(lcConnect, URL.Protocol , LogMessage);
   FDbInfo := MyDbInfo;
   inherited Open;
   applyProperties(PropList);
+  New(ConSettings.ClientCodePage);
+  ConSettings.ClientCodePage.Name := 'UTF16';
+  ConSettings.ClientCodePage.Encoding := ceUTF16;
+  ConSettings.ClientCodePage.CharWidth := 2;
+  ConSettings.ClientCodePage.CP := zCP_UTF16;
 end;
 
 {$IFNDEF ZEOS73UP}
@@ -518,7 +533,7 @@ end;
 }
 procedure TZDbcProxyConnection.InternalClose;
 var
-  LogMessage: RawByteString;
+  LogMessage: String;
 begin
   if ( Closed ) or (not Assigned(PlainDriver)) then
     Exit;
@@ -528,6 +543,7 @@ begin
 
   if Assigned(DriverManager) and DriverManager.HasLoggingListener then //thread save
     DriverManager.LogMessage(lcDisconnect, URL.Protocol, LogMessage);
+  Dispose(ConSettings.ClientCodePage);
 end;
 
 function TZDbcProxyConnection.GetClientVersion: Integer;
@@ -689,6 +705,15 @@ begin
   Result := FDbInfo;
 end;
 
+procedure TZDbcProxyConnection.ExecuteImmediat(const SQL: UnicodeString; LoggingCategory: TZLoggingCategory);
+var
+  Statement: IZStatement;
+begin
+  Statement := CreateStatementWithParams(nil);
+  Statement.Execute(SQL);
+  Statement.Close;
+end;
+
 initialization
   ProxyDriver := TZDbcProxyDriver.Create;
   DriverManager.RegisterDriver(ProxyDriver);
@@ -697,5 +722,5 @@ finalization
     DriverManager.DeregisterDriver(ProxyDriver);
   ProxyDriver := nil;
 
-{$ENDIF ZEOS_DISABLE_PROXY} //if set we have an empty unit
+{$ENDIF ENABLE_PROXY} //if set we have an empty unit
 end.

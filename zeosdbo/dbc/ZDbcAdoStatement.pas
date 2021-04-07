@@ -66,9 +66,10 @@ uses
   ZDbcIntfs, ZDbcStatement, ZDbcAdo, ZPlainAdo, ZVariant, ZDbcAdoUtils,
   ZDbcOleDBStatement, ZDbcUtils;
 
+{$IFDEF WITH_NOT_INLINED_WARNING}{$WARN 6058 off : Call to subroutine "operator:=(const source:OleVariant):AnsiString" marked as inline is not inlined}{$ENDIF}
 type
   {** Implements Prepared ADO Statement. }
-  TZAbstractAdoStatement = Class(TZUTF16ParamDetectPreparedStatement)
+  TZAbstractAdoStatement = Class(TZUTF16ParamCountPreparedStatement)
   private
     FAdoRecordSet: ZPlainAdo.RecordSet;
     FAdoCommand: ZPlainAdo.Command;
@@ -80,6 +81,8 @@ type
     fDEFERPREPARE: Boolean;
   protected
     function CreateResultSet: IZResultSet; virtual;
+    /// <summary>Removes the current connection reference from this object.</summary>
+    /// <remarks>This method will be called only if the object is garbage.</remarks>
     procedure ReleaseConnection; override;
   public
     constructor CreateWithCommandType(const Connection: IZConnection; const SQL: string;
@@ -118,7 +121,23 @@ type
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(Index: Integer; {%H-}SQLType: TZSQLType);
+    /// <summary>Sets the designated parameter to a <c>boolean</c> value.
+    ///  The driver converts this to a SQL <c>Ordinal</c> value when it sends it
+    ///  to the database.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
     procedure SetBoolean(Index: Integer; AValue: Boolean); reintroduce;
+    /// <summary>Sets the designated parameter to a <c>Byte</c> value.
+    ///  If not supported by provider, the driver converts this to a SQL
+    ///  <c>Ordinal</c> value when it sends it to the database.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
     procedure SetByte(Index: Integer; AValue: Byte);
     procedure SetShort(Index: Integer; AValue: ShortInt);
     procedure SetWord(Index: Integer; AValue: Word); reintroduce;
@@ -130,12 +149,18 @@ type
     procedure SetFloat(Index: Integer; AValue: Single); reintroduce;
     procedure SetDouble(Index: Integer; const AValue: Double); reintroduce;
     procedure SetCurrency(Index: Integer; const AValue: Currency); reintroduce;
-    procedure SetBigDecimal(Index: Integer; const AValue: TBCD); reintroduce;
+    /// <summary>Sets the designated parameter to a <c>BigDecimal(TBCD)</c> value.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
+    procedure SetBigDecimal(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TBCD); reintroduce;
 
     procedure SetPWideChar(Index: Word; Value: PWideChar; Len: Cardinal);
     procedure SetPBytes(Index: Word; AValue: PByte; Len: Cardinal);
 
-    procedure SetCharRec(Index: Integer; const AValue: TZCharRec); reintroduce;
+    procedure SetCharRec(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TZCharRec); reintroduce;
     procedure SetString(Index: Integer; const AValue: String); reintroduce;
     {$IFNDEF NO_UTF8STRING}
     procedure SetUTF8String(Index: Integer; const AValue: UTF8String); reintroduce;
@@ -146,13 +171,13 @@ type
     procedure SetRawByteString(Index: Integer; const AValue: RawByteString); reintroduce;
     procedure SetUnicodeString(Index: Integer; const AValue: UnicodeString); reintroduce;
 
-    procedure SetDate(Index: Integer; const AValue: TZDate); overload;
-    procedure SetTime(Index: Integer; const AValue: TZTime); overload;
-    procedure SetTimestamp(Index: Integer; const AValue: TZTimeStamp); overload;
+    procedure SetDate(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TZDate); overload;
+    procedure SetTime(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TZTime); overload;
+    procedure SetTimestamp(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TZTimeStamp); overload;
 
     procedure SetBytes(Index: Integer; const AValue: TBytes); reintroduce; overload;
     procedure SetBytes(ParameterIndex: Integer; Value: PByte; Len: NativeUInt); reintroduce; overload;
-    procedure SetGUID(Index: Integer; const AValue: TGUID); reintroduce;
+    procedure SetGUID(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TGUID); reintroduce;
     procedure SetBlob(Index: Integer; SQLType: TZSQLType; const AValue: IZBlob); override{keep it virtual because of (set)ascii/uniocde/binary streams};
   end;
 
@@ -174,7 +199,7 @@ uses
   Variants, Math, {$IFNDEF FPC}Windows{inline},{$ENDIF}
   {$IFDEF WITH_TOBJECTLIST_INLINE} System.Contnrs{$ELSE} Contnrs{$ENDIF},
   ZEncoding, ZDbcLogging, ZDbcResultSet, ZFastCode, ZPlainOleDBDriver,
-  ZDbcMetadata, ZDbcResultSetMetadata, ZDbcAdoResultSet,
+  ZDbcCachedResultSet, ZDbcResultSetMetadata, ZDbcAdoResultSet,
   ZMessages, ZDbcProperties;
 
 var DefaultPreparableTokens: TPreparablePrefixTokens;
@@ -636,7 +661,7 @@ begin
 end;
 
 procedure TZAdoPreparedStatement.SetBigDecimal(Index: Integer;
-  const AValue: TBCD);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TBCD);
 var V: OleVariant;
 label set_var;
 begin
@@ -787,7 +812,7 @@ begin
 end;
 
 procedure TZAdoPreparedStatement.SetCharRec(Index: Integer;
-  const AValue: TZCharRec);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TZCharRec);
 begin
   if AValue.CP = zCP_UTF16 then
     SetPWidechar(Index, AValue.P, AValue.Len)
@@ -857,7 +882,7 @@ set_var:          FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]
 end;
 
 procedure TZAdoPreparedStatement.SetDate(Index: Integer;
-  const AValue: TZDate);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TZDate);
 var V: OleVariant;
 label jmp_assign;
 begin
@@ -979,7 +1004,7 @@ set_var:          FAdoCommand.Parameters[Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}]
 end;
 
 procedure TZAdoPreparedStatement.SetGUID(Index: Integer;
-  const AValue: TGUID);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TGUID);
 begin
   GUIDToBuffer(@AValue.D1, PWideChar(fByteBuffer), [guidWithBrackets, guidSet0Term]);
   SetPWideChar(Index, PWideChar(fByteBuffer), 38); //ad GUID is a BSTR?
@@ -1280,7 +1305,7 @@ begin
 end;
 
 procedure TZAdoPreparedStatement.SetTime(Index: Integer;
-  const AValue: TZTime);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TZTime);
 var V: OleVariant;
 label jmp_assign;
 begin
@@ -1309,7 +1334,7 @@ jmp_assign:       V := null;
 end;
 
 procedure TZAdoPreparedStatement.SetTimestamp(Index: Integer;
-  const AValue: TZTimeStamp);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} AValue: TZTimeStamp);
 var V: OleVariant;
 label jmp_Assign;
 begin
@@ -1354,6 +1379,7 @@ begin
     adSmallInt: begin
                   tagVariant(V).vt := VT_I2;
                   tagVariant(V).iVal := AValue;
+                  goto set_var;
                 end;
     adInteger:  begin
                   tagVariant(V).vt := VT_I4;

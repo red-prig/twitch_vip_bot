@@ -311,7 +311,6 @@ end;
 
 Procedure TDbcStatementScript.OnQuery;
 Var
- FIndexPairList:TZIndexPairList;
  FContext:TSQLContext;
  FGlobal:IZResultSet;
  I:TSQLScriptIterator;
@@ -344,9 +343,7 @@ begin
  if Assigned(FGlobal) then
  begin
   FRZ:=TZAsyncResultSet.Create(FGlobal);
-  FIndexPairList:=_NewIndexPair(FRZ.ColumnsInfo.Count);
-  While TZAsyncResultSet(FRZ).Fetch(FGlobal,FIndexPairList) and (not FHandle.isCancel) do;
-  FreeAndNil(FIndexPairList);
+  While TZAsyncResultSet(FRZ).Fetch(FGlobal) and (not FHandle.isCancel) do;
  end;
 end;
 

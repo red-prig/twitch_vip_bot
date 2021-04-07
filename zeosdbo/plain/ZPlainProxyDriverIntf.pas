@@ -55,7 +55,7 @@ unit ZPlainProxyDriverIntf;
 
 interface
 
-{$IFNDEF ZEOS_DISABLE_PROXY}
+{$IFDEF ENABLE_PROXY}
 
 uses
   Classes;
@@ -67,7 +67,7 @@ uses
 
   IZDbcProxy = Interface(IUnknown)
     ['{374CAA55-95CD-44FE-8FF3-F90BF8D1DF8C}']
-    procedure Connect(const UserName, Password, DbHost, DbName: WideString; var Properties: WideString; out DbInfo: WideString); {$IFNDEF NO_SAFECALL}safecall;{$ENDIF}
+    procedure Connect(const UserName, Password, ServiceEndpoint, DbName: WideString; var Properties: WideString; out DbInfo: WideString); {$IFNDEF NO_SAFECALL}safecall;{$ENDIF}
     procedure Disconnect; {$IFNDEF NO_SAFECALL}safecall;{$ENDIF}
     procedure SetAutoCommit(const Value: LongBool); {$IFNDEF NO_SAFECALL}safecall;{$ENDIF}
     procedure Commit; {$IFNDEF NO_SAFECALL}safecall;{$ENDIF}
@@ -93,13 +93,13 @@ uses
     function GetCharacterSets(): WideString; {$IFNDEF NO_SAFECALL}safecall;{$ENDIF}
   end;
 
-{$ENDIF ZEOS_DISABLE_PROXY}
+{$ENDIF ENABLE_PROXY}
 
 implementation
 
-{$IFNDEF ZEOS_DISABLE_PROXY}
+{$IFDEF ENABLE_PROXY}
 
-{$ENDIF ZEOS_DISABLE_PROXY}
+{$ENDIF ENABLE_PROXY}
 
 end.
 

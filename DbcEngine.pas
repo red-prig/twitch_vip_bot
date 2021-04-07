@@ -973,15 +973,12 @@ Procedure TDbcStatementTask.OnQuery;
 Var
  stmt:IZStatement;
  FR:IZResultSet;
- FIndexPairList:TZIndexPairList;
 begin
  FreeAndNil(FRZ);
  stmt:=CreateStatement;
  FR:=stmt.ExecuteQuery(FSQL);
  FRZ:=TZAsyncResultSet.Create(FR);
- FIndexPairList:=_NewIndexPair(FRZ.ColumnsInfo.Count);
- While TZAsyncResultSet(FRZ).Fetch(FR,FIndexPairList) and (not FHandle.isCancel) do;
- FreeAndNil(FIndexPairList);
+ While TZAsyncResultSet(FRZ).Fetch(FR) and (not FHandle.isCancel) do;
 end;
 
 Procedure TDbcStatementTask.OnUpdate;

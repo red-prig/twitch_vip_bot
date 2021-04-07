@@ -961,13 +961,11 @@ type
   private
     {$IFDEF AUTOREFCOUNT}[Weak]{$ENDIF}FOwner: TPersistent;
     function GetParamValue(const ParamName: string): Variant;
-    //procedure ReadBinaryData(Stream: TStream);
     procedure SetParamValue(const ParamName: string;
       const Value: Variant);
     function GetItem(Index: Integer): TZParam;
     procedure SetItem(Index: Integer; Value: TZParam);
   protected
-    //procedure DefineProperties(Filer: TFiler); override;
     function GetDataSet: TDataSet;
     function GetOwner: TPersistent; override;
     procedure Update(Item: TCollectionItem); override;
@@ -1288,17 +1286,20 @@ begin
   FNumericScale := Param.FNumericScale;
   FNull := Param.FNull;
   FDataType := Param.FDataType;
-  FParamType := Param.FParamType;
+  if FParamType = ptUnknown then
+    FParamType := Param.FParamType;
   FDecimalSeperator := Param.FDecimalSeperator;
   FSize := Param.FSize;
+  FName := Param.FName;
   if (Param.FArraySize = 0) and not FNull and (Ord(FSQLDataType) >= Ord(stString)) then begin
     { inc the refcounts }
     FData.pvPointer := nil; //avoid gpf
-    case SQLType of
-      stString: RawByteString(FData.pvPointer) := RawByteString(FData.pvPointer);
-      stUnicodeString: UnicodeString(FData.pvPointer) := UnicodeString(FData.pvPointer);
-      stBytes: TBytes(FData.pvPointer) := TBytes(FData.pvPointer);
-      stAsciiStream, stUnicodeStream: IZCLob(FData.pvPointer) := IZCLob(FData.pvPointer);
+    case SQLType of //handle refcounted variables
+      stString: RawByteString(FData.pvPointer) := RawByteString(Param.FData.pvPointer);
+      stUnicodeString: UnicodeString(FData.pvPointer) := UnicodeString(Param.FData.pvPointer);
+      stBytes: TBytes(FData.pvPointer) := TBytes(Param.FData.pvPointer);
+      stAsciiStream, stUnicodeStream: IZCLob(FData.pvPointer) := IZCLob(Param.FData.pvPointer);
+      stBinaryStream: IZBLob(FData.pvPointer) := IZBLob(Param.FData.pvPointer);
       {$IFDEF WITH_CASE_WARNING}else ;{$ENDIF}
     end;
   end else if (Param.FArraySize > 0) then begin//increment the dyn array refcounts
@@ -2201,48 +2202,40 @@ end;
 {$IFDEF FPC} {$PUSH}
   {$WARN 5093 off : Function result variable does not seem to be initialized}
   {$WARN 5094 off : Function result variable does not seem to be initialized}
+  {$IFDEF WITH_NOT_INLINED_WARNING}{$WARN 6058 off : Call to subroutine "operator:=(const source:UnicodeString):Variant" marked as inline is not inlined}{$ENDIF}
 {$ENDIF}
 function TZParam.GetAsVariant: Variant;
+  {$IFDEF WITH_NOT_INLINED_WARNING}{$PUSH}{$WARN 6058 off : Call to subroutine "operator:=(const source:UTF8String):Variant" marked as inline is not inlined}{$ENDIF}
   procedure SetAsRawString(var Result: Variant);
   begin
     {$IF defined(LCL) or defined(NO_ANSISTRING)}
-    TVarData(Result).VType := varString;
-    UTF8String(TVarData(Result).VString) := GetAsUTF8String;
+    Result := GetAsUTF8String;
     {$ELSE}
-    if {$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}DefaultSystemCodePage{$ELSE}ZOSCodePage{$ENDIF} = zCP_UTF8 then begin
-      TVarData(Result).VType := varString;
-      UTF8String(TVarData(Result).VString) := GetAsUTF8String;
-    end else if FZVariantType <> vtAnsiString then begin
-      {$IF declared(varUString)}
-      TVarData(Result).VType := varUString;
-      UnicodeString(TVarData(Result).{$IF declared(VUString)}VUString{$ELSE}VAny{$IFEND}) := UnicodeString(FData.pvPointer);
-      {$ELSE}
-      Result := UnicodeString(FData.pvPointer);
-      {$IFEND}
-    end else begin
-      TVarData(Result).VType := varString;
-      AnsiString(TVarData(Result).VString) := GetAsAnsiString;
-    end;
+    if ({$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}DefaultSystemCodePage{$ELSE}ZOSCodePage{$ENDIF} = zCP_UTF8) then
+      Result := GetAsUTF8String
+    else if (FZVariantType = vtUTF8String) then
+      Result := GetAsUnicodeString
+    else if FZVariantType <> vtAnsiString then
+      Result := GetAsUnicodeString
+    else
+      Result := GetAsAnsiString;
     {$IFEND}
   end;
+  {$IFDEF WITH_NOT_INLINED_WARNING}{$POP}{$ENDIF}
+  {$IFDEF WITH_NOT_INLINED_WARNING}{$PUSH}{$WARN 6058 off : Call to subroutine "operator:=(const source:UnicodeString):Variant" marked as inline is not inlined}{$ENDIF}
   procedure SetAsUniStringFromClob(var Result: Variant);
   begin
-    {$IF declared(varUString)}
-    TVarData(Result).VType := varUString;
-    UnicodeString(TVarData(Result).{$IF declared(VUString)}VUString{$ELSE}VAny{$IFEND}) := GetAsUnicodeString;
-    {$ELSE}
     Result := GetAsUnicodeString;
-    {$IFEND}
   end;
+  {$IFDEF WITH_NOT_INLINED_WARNING}{$POP}{$ENDIF}
   procedure SetAsBytes(var Result: Variant);
   begin
     Result := BytesToVar(GetAsBytes)
   end;
 begin
-  VarClear(Result);
-  If GetIsNull then
-    TVarData(Result).VType := varNull
-  else case FSQLDataType of
+  Result := null; //VarInit(Result) changed (let the compiler do the quirk)-> see https://zeoslib.sourceforge.io/viewtopic.php?f=50&p=162991
+  If not GetIsNull then
+    case FSQLDataType of
       stBoolean:     begin
                         TVarData(Result).VType := varBoolean;
                         TVarData(Result).VBoolean := FData.pvBool;
@@ -2329,14 +2322,7 @@ begin
                       end;
       stString,
       stAsciiStream:  SetAsRawString(Result);
-      stUnicodeString:begin
-                        {$IF declared(varUString)}
-                        TVarData(Result).VType := varUString;
-                        UnicodeString(TVarData(Result).{$IF declared(VUString)}VUString{$ELSE}VAny{$IFEND}) := UnicodeString(FData.pvPointer);
-                        {$ELSE}
-                        Result := UnicodeString(FData.pvPointer);
-                        {$IFEND}
-                      end;
+      stUnicodeString:Result := UnicodeString(FData.pvPointer);
       stUnicodeStream:SetAsUniStringFromClob(Result);
       stBytes,
       stBinaryStream: SetAsBytes(Result);
@@ -2871,7 +2857,9 @@ var SQLType: TZSQLType;
       R := '';
       Stream.Position := 0;
       L := 0;
+      {$IFDEF WITH_RAWBYTESTRING}
       P := nil;
+      {$ENDIF WITH_RAWBYTESTRING}
       while True do begin
         B := Stream.Read(Buf[0], MaxBufSize);
         if B = 0 then Break;
@@ -3282,6 +3270,7 @@ begin
   SetAsFmtBCDs(Cardinal(-1), Value);
 end;
 
+{$IFDEF WITH_NOT_INLINED_WARNING}{$PUSH}{$WARN 6058 off : Call to subroutine "function __GetNull:<recordtype>;" marked as inline is not inlined}{$ENDIF}
 procedure TZParam.SetAsFmtBCDs(Index: Cardinal; const Value: TBCD);
 var DataAddr: PPointer;
     IsNullAddr: PBoolean;
@@ -3327,6 +3316,7 @@ begin
   IsNullAddr^ := False;
   FBound := True;
 end;
+{$IFDEF WITH_NOT_INLINED_WARNING}{$POP}{$ENDIF}
 
 procedure TZParam.SetAsGUID(const Value: TGUID);
 begin
@@ -3766,10 +3756,10 @@ begin
     varLongWord:  SetAsCardinal(TVarData(Value).VLongWord);
     {$IFEND}
     varInt64:     SetAsInt64(TVarData(Value).VInt64);
-    {$IF Declared(VUInt64)}
+    {$IF Declared(varUInt64) and not DEFINED(FPC)}
     varUInt64:    SetAsUInt64(TVarData(Value).VUInt64);
     {$IFEND}
-    {$IF Declared(varQWord)}
+    {$IF Declared(varQWord) and DEFINED(FPC)}
     varQWord:    SetAsUInt64(TVarData(Value).vqword);
     {$IFEND}
   //varRecord   = $0024; { VT_RECORD      36 }
@@ -3798,7 +3788,7 @@ begin
           else {$ENDIF}{$IFDEF WITH_TSQLTimeStampOffset}
           if vt = VarSQLTimeStampOffset then
             AsTimeStampOffset(Value)
-          else {$ENDIF}raise EVariantError.Create('Unkown Variant type');
+          else {$ENDIF}raise EVariantError.Create(SUnsupportedVariantType);
   end;
  // WriteLn('SQLType <> FSQLType');
   if SQLType <> FSQLType then //mimic the TParam behavior
@@ -4022,7 +4012,7 @@ procedure TZParam.SetData(Buffer: Pointer; ByteLen: Cardinal);
       ByteLen := StrLen(PAnsiChar(Buffer));
     tmp := '';
     ZSetString(PAnsiChar(Buffer), ByteLen, tmp);
-    InternalSetAsRawByteString(@FData.pvPointer, @FNull, tmp, {$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}DefaultSystemCodePage{$ELSE}GetACP{$ENDIF});
+    InternalSetAsRawByteString(@FData.pvPointer, @FNull, tmp, {$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}DefaultSystemCodePage{$ELSE}ZOSCodePage{$ENDIF});
   end;
   procedure SetFromBytes;
   var Tmp: TBytes;
@@ -4113,6 +4103,7 @@ begin
     {$IFDEF WITH_FTSINGLE}
     DB.ftSingle:     SetAsSingle(PSingle(Buffer)^);
     {$ENDIF}
+    else raise CreateConversionError(FSQLType, FSQLType);
   end;
 end;
 
@@ -4135,6 +4126,8 @@ begin
       FDataType := Value;
       FSQLType := NewSQLType;
     end;
+    FDynamicParamType := Value <> ftUnknown;
+
   end;
 end;
 
@@ -4266,6 +4259,8 @@ begin
   end;
 end;
 
+type
+  TZProtectedAbstractRODataset = Class(TZAbstractRODataset);
 function TZParam.TrySetConnection: Boolean;
 var Owner: TPersistent;
 label jmpOwner;
@@ -4273,18 +4268,18 @@ begin
   if FConnection = nil then begin
     Owner := GetOwner;
   jmpOwner:
-    if (FDataSet <> nil) and (TZAbstractRODataset(FDataSet).Connection <> nil) then
-      FConnection := TZAbstractRODataset(FDataSet).Connection
+    if (FDataSet <> nil) and (TZProtectedAbstractRODataset(FDataSet).Connection <> nil) then
+      FConnection := TZProtectedAbstractRODataset(FDataSet).Connection
     else if Owner <> nil then
       if Owner.InheritsFrom(TZParams) then begin
         Owner := (Owner as TZParams).GetOwner;
         goto jmpOwner
       end else if Owner.InheritsFrom(TZAbstractRODataset) then
-        TZAbstractConnection(fConnection) := (Owner as TZAbstractRODataset).Connection
+        TZAbstractConnection(fConnection) := TZProtectedAbstractRODataset(Owner as TZAbstractRODataset).Connection
       else if Owner.InheritsFrom(TZUpdateSQL) then begin
         with Owner as TZUpdateSQL do
           if (Dataset <> nil) then
-            TZAbstractConnection(fConnection) := (Dataset as TZAbstractRODataset).Connection;
+            TZAbstractConnection(fConnection) := TZProtectedAbstractRODataset(Dataset as TZAbstractRODataset).Connection;
       end else if Owner.InheritsFrom(TZSQLProcessor) then
         TZAbstractConnection(fConnection) := (Owner as TZSQLProcessor).Connection;
   end;
@@ -4353,10 +4348,15 @@ begin
 end;
 
 procedure TZParams.AssignValues(Value: TZParams);
-var I: Integer;
+var
+  I: Integer;
+  P: TZParam;
 begin
-  for i := 0 to Math.Min(Count, Value.Count) -1 do
-    GetItem(i).Assign(Value.GetItem(I));
+  for I := 0 to Value.Count - 1 do begin
+    P := FindParam(Value[I].Name);
+    if P <> nil then
+      P.Assign(Value[I]);
+  end;
 end;
 
 constructor TZParams.Create(Owner: TPersistent);
@@ -4365,10 +4365,10 @@ begin
   inherited Create(TZParam);
   if (FOwner <> nil) then
     if FOwner.InheritsFrom(TZAbstractRODataset) then
-      TZAbstractConnection(fConnection) := (FOwner as TZAbstractRODataset).Connection
+      TZAbstractConnection(fConnection) := TZProtectedAbstractRODataset(FOwner as TZAbstractRODataset).Connection
     else if FOwner.InheritsFrom(TZUpdateSQL) then with (FOwner as TZUpdateSQL) do begin
       if DataSet <> nil then
-        TZAbstractConnection(fConnection) := (DataSet as TZAbstractRODataset).Connection
+        TZAbstractConnection(fConnection) := TZProtectedAbstractRODataset(DataSet as TZAbstractRODataset).Connection
     end else if FOwner.InheritsFrom(TZSQLProcessor) then
       TZAbstractConnection(fConnection) := (FOwner as TZSQLProcessor).Connection;
 end;
@@ -4401,12 +4401,6 @@ begin
   Result.FName := ParamName;
   Result.SetDataSet(GetDataSet);
 end;
-
-(*procedure TZParams.DefineProperties(Filer: TFiler);
-begin
-  inherited DefineProperties(Filer);
-  Filer.DefineBinaryProperty('Data', ReadBinaryData, nil, False);
-end;*)
 
 function TZParams.FindParam(const Value: string): TZParam;
 var i: Integer;
@@ -4505,61 +4499,13 @@ begin
   if Result = nil then
     raise CreateParameterNotFound;
 end;
-(*
-{$IFDEF FPC}{$PUSH} {$WARN 5057 off : Local variable "Buffer/Bool" does not seem to be initialized}{$ENDIF}
-procedure TZParams.ReadBinaryData(Stream: TStream);
-var
-  I, Temp, NumItems: Integer;
-  Buffer: array[0..2047] of AnsiChar;
-  Version: Word;
-  Bool: Boolean;
-begin
-  Clear;
-  with Stream do begin
-    ReadBuffer(Version, SizeOf(Version));
-    if Version > 2 then DatabaseError({$IF not declared(SInvalidVersion)}'Invalid Version'{$ELSE}SInvalidVersion{$IFEND});
-    NumItems := 0;
-    if Version = 2 then
-      ReadBuffer(NumItems, SizeOf(NumItems)) else
-      ReadBuffer(NumItems, 2);
-    for I := 0 to NumItems - 1 do
-      with AddParameter do begin
-        Temp := 0;
-        if Version = 2
-        then ReadBuffer(Temp, SizeOf(Temp))
-        else ReadBuffer(Temp, 1);
-        {$IFDEF UNICODE}
-        ReadBuffer(Buffer, Temp);
-        FName := PRawToUnicode(@Buffer[0], Temp, DefaultSystemCodePage);
-        {$ELSE}
-        SetLength(FName, Temp);
-        ReadBuffer(Pointer(FName)^, Temp);
-        {$ENDIF}
-        ReadBuffer(FParamType, SizeOf(FParamType));
-        ReadBuffer(FDataType, SizeOf(FDataType));
-
-        if DataType <> ftUnknown then begin
-          Temp := 0;
-          if Version = 2
-          then ReadBuffer(Temp, SizeOf(Temp))
-          else ReadBuffer(Temp, 2);
-          ReadBuffer(Buffer, Temp);
-          SetData(@Buffer, Temp);
-        end;
-        ReadBuffer(Bool, SizeOf(Bool));
-        if Bool then
-          SetIsNull(True);
-        Stream.ReadBuffer(FBound, SizeOf(Boolean));
-      end;
-  end;
-end;
-{$IFDEF FPC}{$POP}{$ENDIF}
-*)
 
 procedure TZParams.RemoveParam(Value: TZParam);
 begin
   Value.Collection := nil;
 end;
+
+type TZHackAbstractRODataset = class(TZAbstractRODataset);
 
 procedure TZParams.SetArraySize(Value: Cardinal);
 var
@@ -4568,6 +4514,9 @@ begin
   if Value <> FArraySize then begin
     for i := 0 to Count -1 do
       TZParam(Items[i]).SetArraySize(Value);
+    if (Value = 0) and (FOwner <> nil) and (FOwner.InheritsFrom(TZAbstractRODataset)) then
+      with TZHackAbstractRODataset(FOwner as TZAbstractRODataset) do
+        if (Statement <> nil) then Statement.ClearParameters;
     FArraySize := Value;
   end;
 end;

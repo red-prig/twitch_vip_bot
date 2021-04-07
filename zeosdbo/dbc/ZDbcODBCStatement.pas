@@ -81,7 +81,6 @@ type
     FODBCConnection: IZODBCConnection;
     FCallResultCache: TZCollection;
     FExecRETCODE: SQLRETURN;
-    fParamBindings: PZODBCParamBindArray;
     fByteBuffer: PByteBuffer;
     procedure InternalExecute;
     procedure PrepareOpenedResultSetsForReusing;
@@ -96,6 +95,8 @@ type
     function InternalCreateResultSet: IZResultSet;
     procedure InternalBeforePrepare;
     function GetCurrentResultSet: IZResultSet;
+    /// <summary>Removes the current connection reference from this object.</summary>
+    /// <remarks>This method will be called only if the object is garbage.</remarks>
     procedure ReleaseConnection; override;
   protected
     function SupportsSingleColumnArrays: Boolean;
@@ -109,6 +110,8 @@ type
 
     procedure Prepare; override;
     procedure Unprepare; override;
+    /// <summary>Do tasks after the statement was closed. For example
+    ///  dispose statement handles.</summary>
     procedure AfterClose; override;
     procedure Cancel; override;
 
@@ -121,6 +124,7 @@ type
     fBindImmediat: Boolean; //the param describe did fail! we'll try to bind the params with describe emulation
     fCurrentIterations: NativeUInt;
     function CreateUnsupportedParamType(Index: Integer; SQLCType: SQLSMALLINT; SQLType: TZSQLType): EZSQLException;
+    function CreateBindVarOutOfRangeException(Index: Integer): EZSQLException;
     procedure RaiseExceeded(Index: Integer);
     procedure SetPWideChar(Index: Integer; Value: PWideChar; WLen: LengthInt);
     procedure SetPAnsiChar(Index: Integer; Value: PAnsiChar; BLen: LengthInt);
@@ -131,17 +135,17 @@ type
     procedure BindRaw(Index: Integer; const Value: RawByteString; CP: Word);
     procedure DescribeParameterFromODBC;
     procedure DescribeParameterFromBindList;
-    procedure BindParam(Bind: PZODBCParamBind; ParameterNumber: SQLUSMALLINT);
+    procedure BindParam(Bind: PZODBCBindValue; ParameterNumber: SQLUSMALLINT);
     procedure BindArrayColumnWise(Index: Integer);
-
-    procedure ReallocParamBindings(OldCount, NewCount: Integer);
   protected
     procedure CheckParameterIndex(var Value: Integer); override;
     procedure PrepareInParameters; override;
     procedure BindInParameters; override;
     procedure UnPrepareInParameters; override;
-    procedure SetBindCapacity(Capacity: Integer); override;
     procedure AddParamLogValue(ParamIndex: Integer; SQLWriter: TZSQLStringWriter; Var Result: SQLString); override;
+    function GetCompareFirstKeywordStrings: PPreparablePrefixTokens; override;
+    class function GetBindListClass: TZBindListClass; override;
+    procedure SetParamCount(NewParamCount: Integer); override;
   public
     constructor Create(const Connection: IZODBCConnection;
       var ConnectionHandle: SQLHDBC; const SQL: string; Info: TStrings);
@@ -154,9 +158,31 @@ type
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(Index: Integer; SQLType: TZSQLType);
+    /// <summary>Sets the designated parameter to a <c>boolean</c> value.
+    ///  The driver converts this to a SQL <c>Ordinal</c> value when it sends it
+    ///  to the database.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
     procedure SetBoolean(ParameterIndex: Integer; Value: Boolean);
+    /// <summary>Sets the designated parameter to a <c>Byte</c> value.
+    ///  If not supported by provider, the driver converts this to a SQL
+    ///  <c>Ordinal</c> value when it sends it to the database.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
     procedure SetByte(ParameterIndex: Integer; Value: Byte);
     procedure SetShort(ParameterIndex: Integer; Value: ShortInt);
+    /// <summary>Sets the designated parameter to a <c>Word</c> value.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
     procedure SetWord(ParameterIndex: Integer; Value: Word);
     procedure SetSmall(ParameterIndex: Integer; Value: SmallInt);
     procedure SetUInt(ParameterIndex: Integer; Value: Cardinal);
@@ -166,17 +192,23 @@ type
     procedure SetFloat(Index: Integer; Value: Single);
     procedure SetDouble(Index: Integer; const Value: Double);
     procedure SetCurrency(Index: Integer; const Value: Currency);
-    procedure SetBigDecimal(Index: Integer; const Value: TBCD);
-    procedure SetDate(Index: Integer; const Value: TZDate); reintroduce; overload;
-    procedure SetTime(Index: Integer; const Value: TZTime); reintroduce; overload;
-    procedure SetTimestamp(Index: Integer; const Value: TZTimeStamp); reintroduce; overload;
+    /// <summary>Sets the designated parameter to a <c>BigDecimal(TBCD)</c> value.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
+    procedure SetBigDecimal(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD);
+    procedure SetDate(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate); reintroduce; overload;
+    procedure SetTime(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime); reintroduce; overload;
+    procedure SetTimestamp(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp); reintroduce; overload;
     procedure SetBytes(Index: Integer; const Value: TBytes); reintroduce; overload;
     procedure SetBytes(Index: Integer; Value: PByte; Len: NativeUInt); reintroduce; overload;
-    procedure SetGUID(Index: Integer; const Value: TGUID); reintroduce;
+    procedure SetGUID(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID); reintroduce;
 
     procedure SetString(Index: Integer; const Value: String); reintroduce;
     procedure SetUnicodeString(Index: Integer; const Value: UnicodeString); reintroduce;
-    procedure SetCharRec(Index: Integer; const Value: TZCharRec); reintroduce;
+    procedure SetCharRec(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZCharRec); reintroduce;
     {$IFNDEF NO_ANSISTRING}
     procedure SetAnsiString(Index: Integer; const Value: AnsiString); reintroduce;
     {$ENDIF}
@@ -194,14 +226,10 @@ type
 
   TZODBCPreparedStatementW = class(TZAbstractODBCPreparedStatement, IZPreparedStatement)
   protected
-    FCachedQueryUni: TUnicodeStringDynArray;
-    FIsParamIndex: TBooleanDynArray;
-  protected
     function ExecutDirect: RETCODE; override;
     procedure InternalPrepare; override;
   public
-    procedure Unprepare; override;
-    function GetUnicodeEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): UnicodeString; override;
+    function GetUnicodeEncodedSQL(const SQL: SQLString): UnicodeString; override;
   end;
 
   TZODBCStatementW = class(TZAbstractODBCStatement)
@@ -225,14 +253,10 @@ type
 
   TZODBCPreparedStatementA = class(TZAbstractODBCPreparedStatement, IZPreparedStatement)
   protected
-    FCachedQueryRaw: TRawByteStringDynArray;
-    FIsParamIndex: TBooleanDynArray;
-  protected
     function ExecutDirect: RETCODE; override;
     procedure InternalPrepare; override;
   public
-    procedure Unprepare; override;
-    function GetRawEncodedSQL(const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): RawByteString; override;
+    function GetRawEncodedSQL(const SQL: SQLString): RawByteString; override;
   end;
 
   TZODBCStatementA = class(TZAbstractODBCStatement)
@@ -254,13 +278,22 @@ type
     function CreateExecutionStatement(const StoredProcName: String): TZAbstractPreparedStatement; override;
   end;
 
+  /// <author>EgonHugeist</author>
+  /// <summary>Implements a ODBC Bindlist object</summary>
+  TZODBCBindList = class(TZBindList)
+  protected
+    /// <summary>Get the size of the custom element of this class.</summary>
+    /// <returns>the size of the custom element.</returns>
+    class function GetElementSize: Integer; override;
+  end;
+
 {$ENDIF ZEOS_DISABLE_ODBC} //if set we have an empty unit
 implementation
 {$IFNDEF ZEOS_DISABLE_ODBC} //if set we have an empty unit
 
 uses Math, DateUtils, TypInfo, {$IFDEF WITH_UNITANSISTRINGS}AnsiStrings,{$ENDIF}
-  ZSysUtils, ZMessages, ZEncoding, ZDbcResultSet, ZFastCode, ZDbcLogging,
-  ZDbcODBCResultSet, ZDbcCachedResultSet, ZDbcGenericResolver,
+  ZSysUtils, ZMessages, ZEncoding, ZTokenizer, ZFastCode, ZDbcLogging,
+  ZDbcResultSet, ZDbcODBCResultSet, ZDbcCachedResultSet, ZDbcGenericResolver,
   ZDbcMetadata;
 
 var DefaultPreparableTokens: TPreparablePrefixTokens;
@@ -452,7 +485,7 @@ begin
     end else
       CallResultCache.Add(TZAnyValue.CreateWithInteger(LastUpdateCount));
   FCallResultCache := CallResultCache;
-  FOutParamResultSet := TZParamODBCResultSet.Create(Self, SQL, fParamBindings, BindList.Count);
+  FOutParamResultSet := TZParamODBCResultSet.Create(Self, SQL, BindList);
   if GetResultSetType <> rtForwardOnly then
     FOutParamResultSet := Connection.GetMetadata.CloneCachedResultSet(FOutParamResultSet);
 end;
@@ -743,30 +776,57 @@ begin
 end;
 
 function TZODBCPreparedStatementW.GetUnicodeEncodedSQL(
-  const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): UnicodeString;
-var I: Integer;
-  {$IFNDEF UNICODE}SQLWriter: TZUnicodeSQLStringWriter;{$ENDIF}
+  const SQL: SQLString): UnicodeString;
+var
+  I, N, C, InParamCount: Integer;
+  Tokens: TZTokenList;
+  Token: PZToken;
+  Tokenizer: IZTokenizer;
+  ComparePrefixTokens: PPreparablePrefixTokens;
 begin
-  if Length(FCachedQueryUni) = 0 then begin
-    FCachedQueryUni := ZDbcUtils.TokenizeSQLQueryUni(SQL, ConSettings,
-      Connection.GetDriver.GetTokenizer, FIsParamIndex, nil,
-      @DefaultPreparableTokens, FTokenMatchIndex);
-    FCountOfQueryParams := 0;
-    Result := ''; //init Result
-    {$IFNDEF UNICODE}SQLWriter := TZUnicodeSQLStringWriter.Create(Length(SQL));{$ENDIF}
-    for I := 0 to High(FCachedQueryUni) do begin
-      {$IFNDEF UNICODE}SQLWriter.AddText(FCachedQueryUni[i], Result);{$ENDIF}
-      Inc(FCountOfQueryParams, Ord(FIsParamIndex[i]));
+  Result := {$IFNDEF UNICODE}''{$ELSE}SQL{$ENDIF};
+  if SQL = '' then Exit;
+  ComparePrefixTokens := GetCompareFirstKeywordStrings;
+  Tokenizer := Connection.GetDriver.GetTokenizer;
+  Tokens := Tokenizer.TokenizeBufferToList(SQL, [toSkipEOF]);
+  {$IFNDEF UNICODE}
+  PRawToUnicode(Pointer(SQL), Length(SQL), GetW2A2WConversionCodePage(ConSettings), Result);
+  {$ENDIF}
+  InParamCount := 0;
+  try
+    FTokenMatchIndex := -1;
+    N := -1;
+    for I := 0 to Tokens.Count -1 do begin
+      Token := Tokens[I];
+      {check if we've a preparable statement. If ComparePrefixTokens = nil then
+        comparing is not required or already done }
+      if (Token.TokenType = ttWord) and Assigned(ComparePrefixTokens) then
+        if N = -1 then begin
+          for C := 0 to high(ComparePrefixTokens^) do
+            if Tokens.IsEqual(I, ComparePrefixTokens^[C].MatchingGroup,  tcInsensitive) then begin
+              if Length(ComparePrefixTokens^[C].ChildMatches) = 0
+              then FTokenMatchIndex := C
+              else N := C; //save group
+              Break;
+            end;
+          if N = -1 then //no sub-tokens ?
+            ComparePrefixTokens := nil; //stop compare sequence
+        end else begin //we already got a group
+          for C := 0 to high(ComparePrefixTokens^[N].ChildMatches) do
+            if Tokens.IsEqual(I, ComparePrefixTokens^[N].ChildMatches[C], tcInsensitive) then begin
+              FTokenMatchIndex := N;
+              Break;
+            end;
+          ComparePrefixTokens := nil; //stop compare sequence
+        end;
+      if (Token.L = 1) and (Token.P^ = Char('?')) then
+        Inc(InParamCount);
     end;
-    {$IFNDEF UNICODE}
-    SQLWriter.Finalize(Result);
-    FreeAndNil(SQLWriter);
-    {$ELSE}
-    Result := SQL;
-    {$ENDIF}
-    SetBindCapacity(FCountOfQueryParams);
-  end else
-    Result := inherited GetUnicodeEncodedSQL(SQL);
+  finally
+    Tokens.Free;
+    Tokenizer := nil;
+  end;
+  SetBindCapacity(InParamCount);
 end;
 
 procedure TZODBCPreparedStatementW.InternalPrepare;
@@ -794,12 +854,6 @@ begin
     fBindImmediat := False;
 end;
 
-procedure TZODBCPreparedStatementW.Unprepare;
-begin
-  inherited;
-  SetLength(FCachedQueryUni, 0);
-end;
-
 { TZODBCPreparedStatementA }
 
 function TZODBCPreparedStatementA.ExecutDirect: RETCODE;
@@ -812,27 +866,57 @@ begin
 end;
 
 function TZODBCPreparedStatementA.GetRawEncodedSQL(
-  const SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND}): RawByteString;
-var I: Integer;
-  SQLWriter: TZRawSQLStringWriter;
+  const SQL: SQLString): RawByteString;
+var
+  I, N, C, InParamCount: Integer;
+  Tokens: TZTokenList;
+  Token: PZToken;
+  Tokenizer: IZTokenizer;
+  ComparePrefixTokens: PPreparablePrefixTokens;
 begin
-  if FCachedQueryRaw = nil then begin
-    FCachedQueryRaw := ZDbcUtils.TokenizeSQLQueryRaw(SQL,
-      {$IFDEF UNICODE}ConSettings.ClientCodePage.CP,{$ENDIF}
-      Connection.GetDriver.GetTokenizer, FIsParamIndex, nil,
-      @DefaultPreparableTokens, FTokenMatchIndex);
-    FCountOfQueryParams := 0;
-    Result := EmptyRaw; //init Result
-    SQLWriter := TZRawSQLStringWriter.Create(Length(SQL));
-    for I := 0 to High(FCachedQueryRaw) do begin
-      SQLWriter.AddText(FCachedQueryRaw[i], Result);
-      Inc(FCountOfQueryParams, Ord(FIsParamIndex[i]));
+  Result := {$IFDEF UNICODE}''{$ELSE}SQL{$ENDIF};
+  if SQL = '' then Exit;
+  ComparePrefixTokens := GetCompareFirstKeywordStrings;
+  Tokenizer := Connection.GetDriver.GetTokenizer;
+  Tokens := Tokenizer.TokenizeBufferToList(SQL, [toSkipEOF]);
+  {$IFDEF UNICODE}
+  PUnicodeToRaw(Pointer(SQL), Length(SQL), FClientCP, Result);
+  {$ENDIF}
+  InParamCount := 0;
+  try
+    FTokenMatchIndex := -1;
+    N := -1;
+    for I := 0 to Tokens.Count -1 do begin
+      Token := Tokens[I];
+      {check if we've a preparable statement. If ComparePrefixTokens = nil then
+        comparing is not required or already done }
+      if (Token.TokenType = ttWord) and Assigned(ComparePrefixTokens) then
+        if N = -1 then begin
+          for C := 0 to high(ComparePrefixTokens^) do
+            if Tokens.IsEqual(I, ComparePrefixTokens^[C].MatchingGroup,  tcInsensitive) then begin
+              if Length(ComparePrefixTokens^[C].ChildMatches) = 0
+              then FTokenMatchIndex := C
+              else N := C; //save group
+              Break;
+            end;
+          if N = -1 then //no sub-tokens ?
+            ComparePrefixTokens := nil; //stop compare sequence
+        end else begin //we already got a group
+          for C := 0 to high(ComparePrefixTokens^[N].ChildMatches) do
+            if Tokens.IsEqual(I, ComparePrefixTokens^[N].ChildMatches[C], tcInsensitive) then begin
+              FTokenMatchIndex := N;
+              Break;
+            end;
+          ComparePrefixTokens := nil; //stop compare sequence
+        end;
+      if (Token.L = 1) and (Token.P^ = Char('?')) then
+        Inc(InParamCount);
     end;
-    SQLWriter.Finalize(Result);
-    FreeAndNil(SQLWriter);
-    SetBindCapacity(FCountOfQueryParams);
-  end else
-    Result := Inherited GetRawEncodedSQL(SQL);
+  finally
+    Tokens.Free;
+    Tokenizer := nil;
+  end;
+  SetBindCapacity(InParamCount);
 end;
 
 procedure TZODBCPreparedStatementA.InternalPrepare;
@@ -860,26 +944,19 @@ begin
     fBindImmediat := False;
 end;
 
-procedure TZODBCPreparedStatementA.Unprepare;
-begin
-  inherited;
-  SetLength(FCachedQueryRaw, 0);
-end;
-
 { TZAbstractODBCPreparedStatement }
 
 procedure TZAbstractODBCPreparedStatement.BindSInteger(Index: Integer;
   SQLType: TZSQLType; Value: NativeInt);
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+  Bind: PZODBCBindValue absolute BindValue;
   PW: PWideChar;
   PA: PAnsiChar absolute PW;
 begin
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount <> 1) or (not Bind.Described and (SQLType <> Bind.SQLType)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount <> 1) or (not Bind.Described and (SQLType <> BindValue.SQLType)) then
       InitBind(Index, 1, SQLType);
     case Bind.ValueType of
       SQL_C_BIT:      PByte(Bind.ParameterValuePtr)^     := Ord(Value <> 0);
@@ -923,7 +1000,8 @@ const
 
 procedure TZAbstractODBCPreparedStatement.AddParamLogValue(ParamIndex: Integer;
   SQLWriter: TZSQLStringWriter; var Result: SQLString);
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
     Len: NativeUint;
 label jmpWritePC;
 begin
@@ -931,15 +1009,13 @@ begin
     pctReturn: SQLWriter.AddText('(RETURN_VALUE)', Result);
     pctOut: SQLWriter.AddText('(OUT_PARAM)', Result);
     else begin
-      {$R-}
-      Bind := @fParamBindings[ParamIndex];
-      {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+      BindValue := BindList[ParamIndex];
       if Bind.StrLen_or_IndPtr^ = SQL_NULL_DATA then
         SQLWriter.AddText('(NULL)', Result)
       else if Bind.StrLen_or_IndPtr^ = SQL_DATA_AT_EXEC then begin
-        if Bind.SQLType = stAsciiStream then
+        if BindValue.SQLType = stAsciiStream then
           SQLWriter.AddText('(CLOB/VARCHAR(MAX))', Result)
-        else if Bind.SQLType = stUnicodeStream then
+        else if BindValue.SQLType = stUnicodeStream then
           SQLWriter.AddText('(NCLOB/NVARCHAR(MAX))', Result)
         else
           SQLWriter.AddText('(BLOB/VARBINARY(MAX))', Result)
@@ -1059,7 +1135,8 @@ var ArrayLen, MaxL, I: Integer;
   PT: PZTime absolute PD;
   PTS: PZTimeStamp absolute PD;
   N: PSQLLENArray;
-  Bind: PZODBCParamBind;
+  BindValue: PZBindValue;
+  Bind: PZODBCBindValue absolute BindValue;
   SQLType: TZSQLType;
   Native, BindAgain: Boolean;
   DT: TDateTime;
@@ -1185,7 +1262,7 @@ var ArrayLen, MaxL, I: Integer;
       stBinaryStream: begin
                         for I := 0 to ArrayLen-1 do begin
                           if (TInterfaceDynArray(DA)[i] <> nil) and (TInterfaceDynArray(DA)[i].QueryInterface(IZBlob, TmpLob) = S_OK) and not TmpLob.IsEmpty then begin
-                            if not (Bind.SQLtype = stBinaryStream) then begin
+                            if not (BindValue.SQLtype = stBinaryStream) then begin
                               if TmpLob.IsClob then
                                 if FClientEncoding = ceUTF16
                                 then TmpLob.SetCodePageTo(zCP_UTF16)
@@ -1203,8 +1280,8 @@ var ArrayLen, MaxL, I: Integer;
     end;
   end;
 begin
-  Bind := @fParamBindings[Index];
-  Arr := BindList[Index].Value;
+  BindValue := BindList[Index];
+  Arr := BindValue.Value;
   DA := Arr.VArray;
   ArrayLen := {%H-}PArrayLenInt({%H-}NativeUInt(DA) - ArrayLenOffSet)^{$IFDEF FPC}+1{$ENDIF}; //FPC returns High() for this pointer location
   SQLType := TZSQLType(Arr.VArrayType);
@@ -1236,15 +1313,15 @@ begin
     end
   else MaxL := Bind.BufferLength;
   Native := (Arr.VArrayVariantType = vtNull) and
-          (Ord(Bind.SQLType) >= Ord(stBoolean)) and (Ord(SQLType) >= Ord(stBoolean)) and (
-          (((Ord(Bind.SQLType) <= Ord(stDouble)) and (Ord(SQLType) <= Ord(stDouble))) and (ODBCSQLTypeOrdinalMatrix[Bind.SQLType] = ODBCSQLTypeOrdinalMatrix[SQLType])) or
-          ((Bind.SQLType = stGUID) and (SQLType = stGUID)));
+          (Ord(BindValue.SQLType) >= Ord(stBoolean)) and (Ord(SQLType) >= Ord(stBoolean)) and (
+          (((Ord(BindValue.SQLType) <= Ord(stDouble)) and (Ord(SQLType) <= Ord(stDouble))) and (ODBCSQLTypeOrdinalMatrix[BindValue.SQLType] = ODBCSQLTypeOrdinalMatrix[SQLType])) or
+          ((BindValue.SQLType = stGUID) and (SQLType = stGUID)));
   BindAgain := False;
   if Native and (ArrayLen > 1) then begin
     InitBind(Index, 0, SQLType, MaxL);
     Bind.ParameterValuePtr := DA;
     Bind.ValueCount := ArrayLen;
-    GetMem(Bind.StrLen_or_IndPtr, ArrayLen * SizeOf(SQLLEN));
+    ReallocMem(Bind.StrLen_or_IndPtr, ArrayLen * SizeOf(SQLLEN));
     BindAgain := True;
     N := PSQLLENArray(Bind.StrLen_or_IndPtr);
     if Arr.VIsNullArray <> nil then
@@ -1252,11 +1329,11 @@ begin
         N[I] := NullInd[IsNullFromArray(Arr, I)]
     else FillChar(N[0], SizeOf(SQLLEN)*ArrayLen, #0);
   end else begin
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount <> ArrayLen) or (not Bind.Described and (Bind.SQLType <> SQLType)) then
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount <> ArrayLen) or (not Bind.Described and (BindValue.SQLType <> SQLType)) then
       InitBind(Index, ArrayLen, SQLType, MaxL);
     N := PSQLLENArray(Bind.StrLen_or_IndPtr);
     P := Bind.ParameterValuePtr;
-    case Bind.SQLType of
+    case BindValue.SQLType of
       stBoolean:      for I := 0 to ArrayLen -1 do begin
                         PByte(P+I)^ := Ord(ArrayValueToBoolean(Arr, I));
                         N[I] := NullInd[IsNullFromArray(Arr, I)];
@@ -1524,16 +1601,15 @@ end;
 
 procedure TZAbstractODBCPreparedStatement.BindUInteger(Index: Integer;
   SQLType: TZSQLType; Value: NativeUInt);
-var Bind: PZODBCParamBind;
-  PW: PWideChar;
-  PA: PAnsiChar absolute PW;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    PW: PWideChar;
+    PA: PAnsiChar absolute PW;
 begin
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (SQLType <> Bind.SQLType)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (SQLType <> BindValue.SQLType)) then
       InitBind(Index, 1, SQLType);
     case Bind.ValueType of
       SQL_C_BIT:      PByte(Bind.ParameterValuePtr)^     := Ord(Value <> 0);
@@ -1550,7 +1626,7 @@ begin
       SQL_C_TIMESTAMP, SQL_C_TYPE_TIMESTAMP, SQL_C_SS_TIMESTAMPOFFSET,
       SQL_C_FLOAT, SQL_C_DOUBLE:
                     begin
-                      InternalBindDouble(Index, Bind.SQLType, Value);
+                      InternalBindDouble(Index, BindValue.SQLType, Value);
                       Exit;
                     end;
       SQL_C_NUMERIC: Curr2ODBCNumeric(Value, Bind.ParameterValuePtr);
@@ -1571,13 +1647,13 @@ begin
     BindList.Put(Index, SQLType, {$IFNDEF CPU64}P4Bytes{$ELSE}P8Bytes{$ENDIF}(@Value));
 end;
 
-procedure TZAbstractODBCPreparedStatement.BindParam(Bind: PZODBCParamBind;
+procedure TZAbstractODBCPreparedStatement.BindParam(Bind: PZODBCBindValue;
   ParameterNumber: SQLUSMALLINT);
 var Desc: SQLHDesc;
 begin
   CheckStmtError(fPlainDriver.SQLBindParameter(fHSTMT, ParameterNumber,//0=bookmark and Params do starts with 1
     Bind.InputOutputType, Bind.ValueType, Bind.ParameterType, Bind.ColumnSize,
-    Bind.DecimalDigits * Ord(Bind.SQLType in [stCurrency, stBigDecimal, stDouble, stTime, stTimeStamp]),
+    Bind.DecimalDigits * Ord(Bind.BindValue.SQLType in [stCurrency, stBigDecimal, stDouble, stTime, stTimeStamp]),
       Bind.ParameterValuePtr, Bind.BufferLength, Bind.StrLen_or_IndPtr));
   if Bind.ValueType = SQL_C_NUMERIC then begin
     CheckStmtError(FPlainDriver.SQLGetStmtAttr(fHSTMT, SQL_ATTR_APP_PARAM_DESC, @Desc, 0, nil));
@@ -1591,18 +1667,17 @@ end;
 
 procedure TZAbstractODBCPreparedStatement.BindRaw(Index: Integer;
   const Value: RawByteString; CP: Word);
-var Bind: PZODBCParamBind;
-  L: LengthInt;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    L: LengthInt;
 begin
   CheckParameterIndex(Index);
   if fBindImmediat then begin
     L := Length(Value);
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and ((not (Bind.SQLType in [stString, StUnicodeString])) or (Bind.BufferLength < L+1))) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and ((not (BindValue.SQLType in [stString, StUnicodeString])) or (Bind.BufferLength < L+1))) then
       InitBind(Index, 1, stString, Length(Value));
-    if Bind.SQLType in [stAsciiStream, stUnicodeStream] then begin
+    if BindValue.SQLType in [stAsciiStream, stUnicodeStream] then begin
       if Value = ''
       then PIZlob(Bind.ParameterValuePtr)^ := TZLocalMemCLob.CreateWithData(PEmptyAnsiString, 0, CP, ConSettings)
       else PIZlob(Bind.ParameterValuePtr)^ := TZLocalMemCLob.CreateWithData(Pointer(Value), L, CP, ConSettings);
@@ -1634,11 +1709,10 @@ procedure TZAbstractODBCPreparedStatement.CheckParameterIndex(var Value: Integer
 begin
   if not Prepared then
     Prepare;
-  if (BindList.Capacity < Value+1) then
-    if fBindImmediat then begin
-      {$IFDEF UNICODE}FUniTemp{$ELSE}FRawTemp{$ENDIF} := Format(SBindVarOutOfRange, [Value]);
-      raise EZSQLException.Create({$IFDEF UNICODE}FUniTemp{$ELSE}FRawTemp{$ENDIF});
-    end else inherited CheckParameterIndex(Value);
+  if (BindList.Count < Value+1) then
+    if fBindImmediat
+    then raise CreateBindVarOutOfRangeException(Value)
+    else inherited CheckParameterIndex(Value);
 end;
 
 constructor TZAbstractODBCPreparedStatement.Create(
@@ -1649,26 +1723,28 @@ begin
   fCurrentIterations := 1;
 end;
 
+function TZAbstractODBCPreparedStatement.CreateBindVarOutOfRangeException(
+  Index: Integer): EZSQLException;
+begin
+  Result := EZSQLException.Create(Format(SBindVarOutOfRange, [Index]));
+end;
+
 procedure TZAbstractODBCPreparedStatement.DescribeParameterFromBindList;
 var
   Idx: SQLUSMALLINT;
-  Bind: PZODBCParamBind;
   BindValue: PZBindValue;
+  Bind: PZODBCBindValue absolute BindValue;
   L: LengthInt;
 label MinBuf;
 begin
   for idx := 0 to BindList.Count -1 do begin
-    {$R-}
-    Bind := @fParamBindings[Idx];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
     BindValue := BindList[IDX];
-    Bind.SQLtype := BindValue.SQLType;
     Bind.InputOutputType := ODBCInputOutputType[BindValue.SQLtype in [stAsciiStream, stUnicodeStream, stBinaryStream]][BindValue.ParamType];
     Bind.ParameterType := ConvertSQLTypeToODBCType(BindValue.SQLtype, Bind.ValueType, ConSettings.ClientCodePage.Encoding);
     if not Bind.Described then //no registered param?
       if BindValue.BindType = zbtNull then
         goto MinBuf
-      else case Bind.SQLtype  of
+      else case BindValue.SQLtype  of
         stAsciiStream, stUnicodeStream, stBinaryStream:
             Bind.BufferLength := SizeOf(Pointer); //range check issue on CalcBufSize
         stString, stUnicodeString: begin
@@ -1680,7 +1756,7 @@ begin
               else L := Length(TBytes(BindValue.Value));
             end;
             Bind.ColumnSize := Math.Max(Bind.ColumnSize, L);
-            if (Bind.SQLType <> stBytes) then
+            if (BindValue.SQLType <> stBytes) then
               if (ConSettings.ClientCodePage^.Encoding = ceUTF16)
               then L := L shl 1
               else L := L * ConSettings.ClientCodePage^.CharWidth;
@@ -1700,18 +1776,18 @@ begin
                       Bind.BufferLength := SizeOf(TSQL_TIMESTAMP_STRUCT);
                     end;
         else
-MinBuf:   Bind.BufferLength := CalcBufSize(0, Bind.ValueType, Bind.SQLType, ConSettings^.ClientCodePage)
+MinBuf:   Bind.BufferLength := CalcBufSize(0, Bind.ValueType, BindValue.SQLType, ConSettings^.ClientCodePage)
       end
   end;
 end;
 
 procedure TZAbstractODBCPreparedStatement.DescribeParameterFromODBC;
-var
-  Idx: SQLUSMALLINT;
-  ParameterCount: SQLSMALLINT;
-  UnSigned: Boolean;
-  Status: SQLRETURN;
-  Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    Idx: SQLUSMALLINT;
+    ParameterCount: SQLSMALLINT;
+    UnSigned: Boolean;
+    Status: SQLRETURN;
 begin
   Status := fPlainDriver.SQLNumParams(fHSTMT, @ParameterCount);
   if Status <> SQL_SUCCESS then begin
@@ -1722,9 +1798,7 @@ begin
     if ParameterCount <> BindList.Count then
       SetParamCount(ParameterCount);
     for Idx := 0 to ParameterCount-1 do begin
-      {$R-}
-      Bind := @fParamBindings[Idx];
-      {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+      BindValue := Bindlist[Idx];
       Status := fPlainDriver.SQLDescribeParam(fHSTMT, Idx +1, //0=bookmark and Params do starts with 1
         @Bind.ParameterType, @Bind.ColumnSize, @Bind.DecimalDigits, @Bind.Nullable);
       if Status <> SQL_SUCCESS then
@@ -1732,16 +1806,16 @@ begin
       // this is the only type where unsigned is correct
       UnSigned := (Bind.ParameterType = SQL_BIGINT) and (Bind.ColumnSize = 20);
       //get "best" TZSQLType -> ODBC does not returns the C-Data types
-      Bind.SQLType := ConvertODBCTypeToSQLType(Bind.ParameterType,
+      BindValue.SQLType := ConvertODBCTypeToSQLType(Bind.ParameterType,
         Bind.DecimalDigits, Bind.ColumnSize, Unsigned, Consettings, @Bind.ValueType);
       //note: Code is prepared to handle any case of Param-Directions  except fetching returned data
-      if (Bind.SQLtype in [stAsciiStream, stUnicodeStream, stBinaryStream])
+      if (BindValue.SQLtype in [stAsciiStream, stUnicodeStream, stBinaryStream])
       then Bind.BufferLength := SizeOf(Pointer) //range check issue on CalcBufSize
       else Bind.BufferLength := CalcBufSize(Bind.ColumnSize,
-          Bind.ValueType, Bind.SQLType, ConSettings^.ClientCodePage);
+          Bind.ValueType, BindValue.SQLType, ConSettings^.ClientCodePage);
       Bind.InputOutputType := ODBCInputOutputType[False
         { incomplete -> Bind.SQLtype in [stAsciiStream, stUnicodeStream, stBinaryStream]}][pctIn];
-      if Bind.SQLType = stTimeStamp then begin
+      if BindValue.SQLType = stTimeStamp then begin
         Bind.ColumnSize := 23;
         Bind.DecimalDigits := 3;
       end;
@@ -1752,17 +1826,26 @@ begin
   end;
 end;
 
+class function TZAbstractODBCPreparedStatement.GetBindListClass: TZBindListClass;
+begin
+  Result := TZODBCBindList;
+end;
+
+function TZAbstractODBCPreparedStatement.GetCompareFirstKeywordStrings: PPreparablePrefixTokens;
+begin
+  Result := @DefaultPreparableTokens;
+end;
+
 procedure TZAbstractODBCPreparedStatement.InternalBindDouble(Index: Integer;
   SQLType: TZSQLType; const Value: Double);
-var Bind: PZODBCParamBind;
-  Year, fraction: Word;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    Year, fraction: Word;
 begin
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (SQLType <> Bind.SQLType)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (SQLType <> BindValue.SQLType)) then
       InitBind(Index, 1, SQLType);
     case Bind.ValueType of
       SQL_C_BIT:      PByte(Bind.ParameterValuePtr)^     := Byte(Value <> 0);
@@ -1847,12 +1930,13 @@ end;
 
 procedure TZAbstractODBCPreparedStatement.InitBind(Index, ValueCount: Integer;
   SQLType: TZSQLType; ActualLength: LengthInt);
-var BindAgain: Boolean;
-  ODBC_CType: SQLSMALLINT;
-  Bind: PZODBCParamBind;
-  P: Pointer;
-  L: NativeUInt;
-  label ReAlloc;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    BindAgain: Boolean;
+    ODBC_CType: SQLSMALLINT;
+    P: Pointer;
+    L: NativeUInt;
+    label ReAlloc;
   procedure FlushLobs;
   var J: Integer;
   begin
@@ -1860,19 +1944,17 @@ var BindAgain: Boolean;
       {$R-}PLobArray(Bind.ParameterValuePtr)[j] := nil;{$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
   end;
 begin
-  {$R-}
-  Bind := @fParamBindings[Index];
-  {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+  BindValue := BindList[Index];
   BindAgain := (Bind.ParameterValuePtr = nil) or (Bind.InputOutputType <> ODBCInputOutputType[SQLType in [stAsciiStream, stUnicodeStream, stBinaryStream]][BindList[Index].ParamType]);
   if (SQLType in [stString, stAsciiStream]) and (FClientEncoding = ceUTF16)
   then SQLType := TZSQLType(Ord(SQLType)+1)
   else if (SQLType in [stUnicodeString, stUnicodeStream]) and (FClientEncoding <> ceUTF16) then
     SQLType := TZSQLType(Ord(SQLType)-1);
 
-  if (Bind.SQLType <> SQLType) or (Ord(SQLType) >= Ord(stAsciistream)) then begin
+  if (BindValue.SQLType <> SQLType) or (Ord(SQLType) >= Ord(stAsciistream)) then begin
     if not Bind.Described or ((Ord(SQLType) <= Ord(stLong)) and (Bind.ParameterType = ODBCSQLTypeOrdinalMatrix[SQLType])) then begin
       {$IFDEF FPC}ODBC_CType := 0;{$ENDIF}
-      Bind.SQLType := SQLType;
+      BindValue.SQLType := SQLType;
       Bind.ParameterType := ConvertSQLTypeToODBCType(SQLType, ODBC_CType, FClientEncoding);;
       Bind.ValueType := ODBC_CType;
       BindAgain := True;
@@ -1908,7 +1990,7 @@ ReAlloc:
     if ValueCount > 0 //FPC heaptrc shows us 0 Bytes unreleased mem ?
     then GetMem(Bind.ParameterValuePtr, Bind.BufferLength*ValueCount)
     else Bind.ParameterValuePtr := nil;
-  end else if (Ord(Bind.SQLType) < Ord(stAsciiStream)) then
+  end else if (Ord(BindValue.SQLType) < Ord(stAsciiStream)) then
     if (Bind.ParameterValuePtr = nil) and (ValueCount> 0)
     then GetMem(Bind.ParameterValuePtr, Bind.BufferLength * ValueCount)
     else goto ReAlloc
@@ -1948,65 +2030,28 @@ begin
     LineEnding+SUnsupportedParameterType+LineEnding+ 'Stmt: '+GetSQL);
 end;
 
-procedure TZAbstractODBCPreparedStatement.ReallocParamBindings(OldCount,
-  NewCount: Integer);
-var
-  I, j: Integer;
-  Bind: PZODBCParamBind;
-begin
-  {first clean mem of binds we don't need any more}
-  if (fParamBindings <> nil) then
-    for i := OldCount-1 downto NewCount do begin
-      {$R-}
-      Bind := @fParamBindings[I];
-      {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-      Bind.ParamName := '';
-      if not Bind.ExternalMem and (Bind.ParameterValuePtr <> nil) then begin
-        if Ord(Bind.SQLType) >= Ord(stAsciiStream) then
-          for j := 0 to Bind.ValueCount -1 do
-            {$R-}
-            PLobArray(Bind.ParameterValuePtr)[j] := nil;
-            {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-        FreeMem(Bind.ParameterValuePtr)
-      end;
-      FreeMem(Bind.StrLen_or_IndPtr);
-    end;
-  ReallocMem(fParamBindings, NewCount*SizeOf(TZODBCParamBind));
-  if fParamBindings <> nil then begin
-    FillChar((PAnsichar(fParamBindings)+(OldCount*SizeOf(TZODBCParamBind)))^,
-      ((NewCount-OldCount)*SizeOf(TZODBCParamBind)), {$IFDEF Use_FastCodeFillChar}#0{$ELSE}0{$ENDIF});
-    for i := OldCount to NewCount-1 do begin
-      {$R-}
-      GetMem(fParamBindings[I].StrLen_or_IndPtr, SizeOf(SQLLEN));
-      fParamBindings[I].ValueCount := 1;
-      {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    end;
-  end;
-end;
-
 procedure TZAbstractODBCPreparedStatement.RegisterParameter(
   ParameterIndex: Integer; SQLType: TZSQLType; ParamType: TZProcedureColumnType;
   const Name: String; PrecisionOrSize, Scale: LengthInt);
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
 begin
   inherited RegisterParameter(ParameterIndex, SQLType, ParamType, Name, PrecisionOrSize, Scale);
-  {$R-}
-  Bind := @fParamBindings[ParameterIndex];
-  {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+  BindValue := BindList[ParameterIndex];
   Bind.InputOutputType := ODBCInputOutputType[SQLType in [stAsciiStream, stUnicodeStream, stBinaryStream]][ParamType] ;
   if not Bind.Described then begin
     Bind.Described := True;
-    Bind.SQLType := SQLType;
+    BindValue.SQLType := SQLType;
     if (SQLtype in [stAsciiStream, stUnicodeStream, stBinaryStream])
     then Bind.BufferLength := SizeOf(Pointer) //range check issue on CalcBufSize
     else if (SQLtype in [stString, stUnicodeString, stBytes]) then begin
       Bind.BufferLength := ((PrecisionOrSize shr 3)+1) shl 3; //8Byte align + Reserved bytes
-      if (Bind.SQLType <> stBytes) then
+      if (BindValue.SQLType <> stBytes) then
         if (ConSettings.ClientCodePage^.Encoding = ceUTF16)
         then Bind.BufferLength := Bind.BufferLength shl 1
         else Bind.BufferLength := Bind.BufferLength * ConSettings.ClientCodePage^.CharWidth;
-    end else Bind.BufferLength := CalcBufSize(0, Bind.ValueType, Bind.SQLType, ConSettings^.ClientCodePage);
-    if Bind.SQLType = stTimeStamp then begin
+    end else Bind.BufferLength := CalcBufSize(0, Bind.ValueType, BindValue.SQLType, ConSettings^.ClientCodePage);
+    if BindValue.SQLType = stTimeStamp then begin
       Bind.ColumnSize := 23;
       Bind.DecimalDigits := 3;
     end else if SQLType in [stCurrency, stBigDecimal] then begin
@@ -2027,25 +2072,16 @@ begin
 end;
 {$ENDIF}
 
-{**
-  Sets the designated parameter to a <code>BigDecimal</code> value.
-  The driver converts this to an SQL <code>NUMERIC</code> value when
-  it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZAbstractODBCPreparedStatement.SetBigDecimal(Index: Integer;
-  const Value: TBCD);
-var Bind: PZODBCParamBind;
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD);
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (Bind.ValueCount > 1) or (not Bind.Described and (stCurrency <> Bind.SQLType)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (Bind.ValueCount > 1) or (not Bind.Described and (stCurrency <> BindValue.SQLType)) then
       InitBind(Index, 1, stBigDecimal);
     case Bind.ValueType of
       SQL_C_BIT:      PByte(Bind.ParameterValuePtr)^     := Ord(BCDCompare(NullBCD, Value) <> 0);
@@ -2069,46 +2105,36 @@ begin
     BindList.Put(Index, Value);
 end;
 
-procedure TZAbstractODBCPreparedStatement.SetBindCapacity(Capacity: Integer);
-var OldCap: Integer;
-begin
-  OldCap := BindList.Capacity;
-  inherited SetBindCapacity(Capacity);
-  if OldCap <> Capacity then
-    ReallocParamBindings(OldCap, Capacity);
-end;
-
 procedure TZAbstractODBCPreparedStatement.SetBlob(ParameterIndex: Integer;
   SQLType: TZSQLType; const Value: IZBlob);
-var Bind: PZODBCParamBind;
-  Len: NativeUInt;
-  PA: PAnsiChar;
-  PW: PWidechar absolute PA;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    Len: NativeUInt;
+    PA: PAnsiChar;
+    PW: PWidechar absolute PA;
 begin
   inherited SetBlob(ParameterIndex, SQLType, Value); //inc refcnt for FPC
   if fBindImmediat then begin
-    {$R-}
     {$IFNDEF GENERIC_INDEX}
     ParameterIndex := ParameterIndex-1;
     {$ENDIF}
-    Bind := @fParamBindings[ParameterIndex];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+    BindValue := BindList[ParameterIndex];
     if (FClientEncoding = ceUTF16) and (SQLType = stAsciiStream) then
       SQLType := stUnicodeStream
     else if (FClientEncoding <> ceUTF16) and (SQLType = stUnicodeStream) then
       SQLType := stAsciiStream;
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (SQLType <> Bind.SQLType)) then
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (SQLType <> BindValue.SQLType)) then
       InitBind(ParameterIndex, 1, SQLType);
     if (Value = nil) or Value.IsEmpty
     then Bind.StrLen_or_IndPtr^ := SQL_NULL_DATA
     else begin
-      if Bind.SQLType <> stBinaryStream then
+      if BindValue.SQLType <> stBinaryStream then
         if Value.IsClob then
           if FClientEncoding = ceUTF16
           then Value.SetCodePageTo(zCP_UTF16)
           else Value.SetCodePageTo(FClientCP)
-        else raise CreateConversionError(ParameterIndex, stBinaryStream, Bind.SQLType);
-      if Bind.SQLType in [stAsciiStream, stUnicodeStream, stBinaryStream] then begin
+        else raise CreateConversionError(ParameterIndex, stBinaryStream, BindValue.SQLType);
+      if BindValue.SQLType in [stAsciiStream, stUnicodeStream, stBinaryStream] then begin
         PIZLob(Bind.ParameterValuePtr)^ := IZBlob(BindList[ParameterIndex].Value);
         Bind.StrLen_or_IndPtr^ := SQL_DATA_AT_EXEC
       end else if (SQLType = stBinaryStream) then begin
@@ -2125,14 +2151,6 @@ begin
   end;
 end;
 
-{**
-  Sets the designated parameter to a <code>boolean</code> value.
-  The driver converts this
-  to an SQL <code>BIT</code> value when it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZAbstractODBCPreparedStatement.SetBoolean(ParameterIndex: Integer;
   Value: Boolean);
 begin
@@ -2142,14 +2160,6 @@ begin
   else BindList.Put(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, Value);
 end;
 
-{**
-  Sets the designated parameter to a <code>unsigned 8Bit int</code> value.
-  The driver converts this
-  to an SQL <code>BYTE</code> value when it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZAbstractODBCPreparedStatement.SetByte(ParameterIndex: Integer; Value: Byte);
 begin
   BindUInteger(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stByte, Cardinal(Value))
@@ -2168,17 +2178,16 @@ end;
 }
 procedure TZAbstractODBCPreparedStatement.SetBytes(Index: Integer; Value: PByte;
   Len: NativeUInt);
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and ((stBytes <> Bind.SQLType) or (Bind.BufferLength < NativeInt(Len)))) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and ((stBytes <> BindValue.SQLType) or (Bind.BufferLength < NativeInt(Len)))) then
       InitBind(Index, 1, stBytes);
-    if Bind.SQLType = stBinaryStream then begin
+    if BindValue.SQLType = stBinaryStream then begin
       PIZlob(Bind.ParameterValuePtr)^ := TZLocalMemBLob.CreateWithData(Value, Len);
       Bind.StrLen_or_IndPtr^ := SQL_DATA_AT_EXEC;
     end else begin
@@ -2211,17 +2220,16 @@ end;
 }
 procedure TZAbstractODBCPreparedStatement.SetBytes(Index: Integer;
   const Value: TBytes);
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and ((stBytes <> Bind.SQLType) or (Bind.BufferLength < Length(Value)))) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and ((stBytes <> BindValue.SQLType) or (Bind.BufferLength < Length(Value)))) then
       InitBind(Index, 1, stBytes);
-    if Bind.SQLType = stBinaryStream then begin
+    if BindValue.SQLType = stBinaryStream then begin
       PIZlob(Bind.ParameterValuePtr)^ := TZLocalMemBLob.CreateWithData(Pointer(Value), Length(Value));
       Bind.StrLen_or_IndPtr^ := SQL_DATA_AT_EXEC;
     end else begin
@@ -2244,7 +2252,7 @@ begin
 end;
 
 procedure TZAbstractODBCPreparedStatement.SetCharRec(Index: Integer;
-  const Value: TZCharRec);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZCharRec);
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
@@ -2270,17 +2278,16 @@ end;
 }
 procedure TZAbstractODBCPreparedStatement.SetCurrency(Index: Integer;
   const Value: Currency);
-var Bind: PZODBCParamBind;
-  PW: PWideChar;
-  PA: PAnsiChar absolute  PW;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    PW: PWideChar;
+    PA: PAnsiChar absolute  PW;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (Bind.ValueCount > 1) or (not Bind.Described and (stCurrency <> Bind.SQLType)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (Bind.ValueCount > 1) or (not Bind.Described and (stCurrency <> BindValue.SQLType)) then
       InitBind(Index, 1, stCurrency);
     case Bind.ValueType of
       SQL_C_BIT:      PByte(Bind.ParameterValuePtr)^     := Ord(Value <> 0);
@@ -2310,27 +2317,18 @@ begin
     BindList.Put(Index, stCurrency, P8Bytes(@Value));
 end;
 
-{**
-  Sets the designated parameter to a <code<java.sql.Date</code> value.
-  The driver converts this to an SQL <code>DATE</code>
-  value when it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZAbstractODBCPreparedStatement.SetDate(Index: Integer;
-  const Value: TZDate);
-var Bind: PZODBCParamBind;
-  DT: TDateTime;
-  Len: LengthInt;
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate);
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    DT: TDateTime;
+    Len: LengthInt;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (Bind.SQLType <> stDate)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (BindValue.SQLType <> stDate)) then
       InitBind(Index, 1, stDate);
     case Bind.ValueType of
       SQL_C_TYPE_DATE, SQL_C_DATE:
@@ -2379,7 +2377,7 @@ begin
       else  begin
               if TryDateToDateTime(Value, DT{%H-})
               then InternalBindDouble(Index, stDate, DT)
-              else BindSInteger(Index, stDate, 1);
+              else BindSInteger(Index, stDate, 1);  //incase of NOT NULL
               Exit;
             end;
     end;
@@ -2422,16 +2420,15 @@ end;
   @param x the parameter value
 }
 procedure TZAbstractODBCPreparedStatement.SetGUID(Index: Integer;
-  const Value: TGUID);
-var Bind: PZODBCParamBind;
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID);
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (stGUID <> Bind.SQLType)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (stGUID <> BindValue.SQLType)) then
       InitBind(Index, 1, stGUID);
     case Bind.ValueType of
       SQL_C_BINARY:   begin
@@ -2486,17 +2483,16 @@ procedure TZAbstractODBCPreparedStatement.SetLong(Index: Integer; const Value: I
 begin
   BindSInteger(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stLong, Value)
 {$ELSE}
-var Bind: PZODBCParamBind;
-  PW: PWideChar;
-  PA: PAnsiChar;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    PW: PWideChar;
+    PA: PAnsiChar absolute PW;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (stLong <> Bind.SQLType)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (stLong <> BindValue.SQLType)) then
       InitBind(Index, 1, stLong);
     case Bind.ValueType of
       SQL_C_BIT:      PByte(Bind.ParameterValuePtr)^     := Ord(Value <> 0);
@@ -2533,20 +2529,19 @@ end;
 
 procedure TZAbstractODBCPreparedStatement.SetNull(Index: Integer;
   SQLType: TZSQLType);
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
 label jmpE;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+    BindValue := BindList[Index];
     if (SQLType = stUnknown) then
       if Bind.Described
-      then SQLType := Bind.SQLType
+      then SQLType := BindValue.SQLType
       else goto jmpE;
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (Bind.SQLType <> SQLType)) then
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (BindValue.SQLType <> SQLType)) then
       InitBind(Index, 1, SQLType);
     Bind.StrLen_or_IndPtr^ := SQL_NULL_DATA;
   end else begin
@@ -2558,16 +2553,15 @@ end;
 
 procedure TZAbstractODBCPreparedStatement.SetPAnsiChar(Index: Integer;
   Value: PAnsiChar; BLen: LengthInt);
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
 begin
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+    BindValue := BindList[Index];
     if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (Bind.BufferLength <= BLen)) then
       InitBind(Index, 1, stString);
-    if Bind.SQLType in [stAsciiStream, stUnicodeStream] then begin
+    if BindValue.SQLType in [stAsciiStream, stUnicodeStream] then begin
       if Value = nil then Value := PEmptyAnsiString;
       PIZlob(Bind.ParameterValuePtr)^ := TZLocalMemCLob.CreateWithData(Value, BLen, FClientCP, ConSettings);
       Bind.StrLen_or_IndPtr^ := SQL_DATA_AT_EXEC;
@@ -2589,7 +2583,7 @@ begin
       SQL_C_TIMESTAMP, SQL_C_TYPE_TIMESTAMP, SQL_C_SS_TIMESTAMPOFFSET,}
       SQL_C_FLOAT:    PSingle(Bind.ParameterValuePtr)^   := RawToFloatDef(Value, AnsiChar('.'), 0);
       SQL_C_DOUBLE:   PDouble(Bind.ParameterValuePtr)^   := RawToFloatDef(Value, AnsiChar('.'), 0);
-      SQL_C_NUMERIC: if Bind.SQLType = stCurrency then begin
+      SQL_C_NUMERIC: if BindValue.SQLType = stCurrency then begin
                         RawToFloatDef(Value, AnsiChar('.'), 0, PCurrency(fByteBuffer)^);
                         Curr2ODBCNumeric(PCurrency(fByteBuffer)^, PSQL_NUMERIC_STRUCT(Bind.ParameterValuePtr));
                       end else begin
@@ -2620,18 +2614,38 @@ begin
   end;
 end;
 
+procedure TZAbstractODBCPreparedStatement.SetParamCount(NewParamCount: Integer);
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
+    I, J: Integer;
+begin
+  for i := BindList.Count-1 downto NewParamCount do begin
+    BindValue := BindList[I];
+    Bind.ParamName := '';
+    if not Bind.ExternalMem and (Bind.ParameterValuePtr <> nil) then begin
+      if Ord(BindValue.SQLType) >= Ord(stAsciiStream) then
+        for j := 0 to Bind.ValueCount -1 do
+          {$R-}
+          PLobArray(Bind.ParameterValuePtr)[j] := nil;
+          {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+      FreeMem(Bind.ParameterValuePtr)
+    end;
+    FreeMem(Bind.StrLen_or_IndPtr);
+  end;
+  inherited SetParamCount(NewParamCount);
+end;
+
 procedure TZAbstractODBCPreparedStatement.SetPWideChar(Index: Integer;
   Value: PWideChar; WLen: LengthInt);
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
 begin
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+    BindValue := BindList[Index];
     if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (Bind.BufferLength <= WLen shl 1)) then
-      InitBind(Index, 1, stUnicodeString);
-    if Bind.SQLType in [stAsciiStream, stUnicodeStream] then begin
+      InitBind(Index, 1, stUnicodeString, WLen);
+    if BindValue.SQLType in [stAsciiStream, stUnicodeStream] then begin
       if Value = nil then Value := PEmptyUnicodeString;
       PIZlob(Bind.ParameterValuePtr)^ := TZLocalMemCLob.CreateWithData(Value, WLen, ConSettings);
       Bind.StrLen_or_IndPtr^ := SQL_DATA_AT_EXEC;
@@ -2651,7 +2665,7 @@ begin
       SQL_C_TIMESTAMP, SQL_C_TYPE_TIMESTAMP, SQL_C_SS_TIMESTAMPOFFSET,}
       SQL_C_FLOAT:    PSingle(Bind.ParameterValuePtr)^    := UnicodeToFloatDef(Value, WideChar('.'), 0);
       SQL_C_DOUBLE:   PDouble(Bind.ParameterValuePtr)^    := UnicodeToFloatDef(Value, WideChar('.'), 0);
-      SQL_C_NUMERIC:  if Bind.SQLType = stCurrency then begin
+      SQL_C_NUMERIC:  if BindValue.SQLType = stCurrency then begin
                         ZFastCode.UnicodeToFloatDef(Value, WideChar('.'), 0, PCurrency(fByteBuffer)^);
                         Curr2ODBCNumeric(PCurrency(fByteBuffer)^, PSQL_NUMERIC_STRUCT(Bind.ParameterValuePtr));
                       end else begin
@@ -2751,18 +2765,17 @@ end;
   @param x the parameter value
 }
 procedure TZAbstractODBCPreparedStatement.SetTime(Index: Integer;
-  const Value: TZTime);
-var Bind: PZODBCParamBind;
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime);
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
   DT: TDateTime;
   Len: LengthInt;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (Bind.SQLType <> stTime)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (BindValue.SQLType <> stTime)) then
       InitBind(Index, 1, stTime);
     case Bind.ValueType of
       SQL_C_TYPE_DATE, SQL_C_DATE: FillChar(Bind.ParameterValuePtr^, SizeOf(TSQL_DATE_STRUCT), #0);
@@ -2833,18 +2846,17 @@ end;
   @param x the parameter value
 }
 procedure TZAbstractODBCPreparedStatement.SetTimestamp(Index: Integer;
-  const Value: TZTimeStamp);
-var Bind: PZODBCParamBind;
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp);
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
   DT: TDateTime;
   Len: LengthInt;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (Bind.SQLType <> stTimeStamp)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (BindValue.SQLType <> stTimeStamp)) then
       InitBind(Index, 1, stTimeStamp);
     case Bind.ValueType of
       SQL_C_TYPE_DATE,
@@ -2947,17 +2959,16 @@ procedure TZAbstractODBCPreparedStatement.SetULong(Index: Integer; const Value: 
 begin
   BindUInteger(Index{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stULong, Value)
 {$ELSE}
-var Bind: PZODBCParamBind;
+var BindValue: PZBindValue;
+    Bind: PZODBCBindValue absolute BindValue;
   PW: PWideChar;
   PA: PAnsiChar absolute PW;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index-1;{$ENDIF}
   CheckParameterIndex(Index);
   if fBindImmediat then begin
-    {$R-}
-    Bind := @fParamBindings[Index];
-    {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (stULong <> Bind.SQLType)) then
+    BindValue := BindList[Index];
+    if (Bind.ParameterValuePtr = nil) or (Bind.ValueCount > 1) or (not Bind.Described and (stULong <> BindValue.SQLType)) then
       InitBind(Index, 1, stULong);
     case Bind.ValueType of
       SQL_C_BIT:      PByte(Bind.ParameterValuePtr)^     := Ord(Value <> 0);
@@ -3010,10 +3021,7 @@ begin
   CheckParameterIndex(Index);
   if fBindImmediat
   then SetPWideChar(Index, Pointer(Value), Length(Value))
-  else begin
-    CheckParameterIndex(Index);
-    BindList.Put(Index, stUnicodeString, Value);
-  end;
+  else BindList.Put(Index, stUnicodeString, Value);
 end;
 
 {$IFNDEF NO_UTF8STRING}
@@ -3024,14 +3032,6 @@ begin
 end;
 {$ENDIF}
 
-{**
-  Sets the designated parameter to <code>unsigned 16bit int</code> value.
-  The driver converts this
-  to an SQL <code>WORD</code> value when it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZAbstractODBCPreparedStatement.SetWord(ParameterIndex: Integer; Value: Word);
 begin
   BindUInteger(ParameterIndex{$IFNDEF GENERIC_INDEX}-1{$ENDIF}, stWord, Cardinal(Value))
@@ -3157,6 +3157,13 @@ begin
     FODBCConnection.HandleErrorOrWarning(Result, fHSTMT, SQL_HANDLE_STMT, SQL, lcExecute, Self);
   if DriverManager.HasLoggingListener then
     DriverManager.LogMessage(lcExecute, Self);
+end;
+
+{ TZODBCBindList }
+
+class function TZODBCBindList.GetElementSize: Integer;
+begin
+  Result := SizeOf(TZODBCBindValue);
 end;
 
 initialization

@@ -55,7 +55,7 @@ unit ZDbcSQLAnywhere;
 
 interface
 
-{$IFNDEF ZEOS_DISABLE_ASA}
+{$IFNDEF ZEOS_DISABLE_SQLANY}
 uses
   ZCompatibility, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF}
   SysUtils,
@@ -217,12 +217,14 @@ type
     procedure Open; override;
 
     function AbortOperation: Integer; override;
+    /// <summary>Returns the ServicerProvider for this connection.</summary>
+    /// <returns>the ServerProvider</returns>
     function GetServerProvider: TZServerProvider; override;
   end;
 
-{$ENDIF ZEOS_DISABLE_ASA}
+{$ENDIF ZEOS_DISABLE_SQLANY}
 implementation
-{$IFNDEF ZEOS_DISABLE_ASA}
+{$IFNDEF ZEOS_DISABLE_SQLANY}
 
 uses ZDbcASAMetadata, ZSybaseAnalyser, ZSybaseToken, ZDbcSQLAnywhereStatement,
   ZDbcProperties, ZFastCode, ZSysUtils, ZMessages, ZEncoding, ZClasses;
@@ -834,5 +836,5 @@ finalization
   if Assigned(DriverManager) then
     DriverManager.DeregisterDriver(SQLAynwhereDriver);
   SQLAynwhereDriver := nil;
-{$ENDIF ZEOS_DISABLE_ASA}
+{$ENDIF ZEOS_DISABLE_SQLANY}
 end.

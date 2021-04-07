@@ -252,6 +252,8 @@ type
     procedure GetEscapeString(Buf: PAnsichar; Len: LengthInt; out Result: RawByteString); overload;
 
     function GetDatabaseName: String;
+    /// <summary>Returns the ServicerProvider for this connection.</summary>
+    /// <returns>the ServerProvider</returns>
     function GetServerProvider: TZServerProvider; override;
     function MySQL_FieldType_Bit_1_IsBoolean: Boolean;
     function SupportsFieldTypeBit: Boolean;
@@ -541,13 +543,19 @@ label setuint;
 begin
   if not Closed then
     Exit;
-
   FLogMessage := Format(SConnect2AsUser, [URL.Database, URL.UserName]);;
-  GlobalCriticalSection.Enter;
-  try
-    FHandle := FPlainDriver.mysql_init(FHandle); //is not threadsave!
-  finally
-    GlobalCriticalSection.Leave;
+  if (FHandle <> nil) then begin
+    if (PingServer = 0) then begin
+      inherited Open;
+      Exit;
+    end;
+  end else begin
+    GlobalCriticalSection.Enter;
+    try
+      FHandle := FPlainDriver.mysql_init(FHandle); //is not threadsave!
+    finally
+      GlobalCriticalSection.Leave;
+    end;
   end;
   {EgonHugeist: get current characterset first }
   if Assigned(FPlainDriver.mysql_character_set_name) then begin
@@ -1132,7 +1140,8 @@ procedure TZMySQLConnection.HandleErrorOrWarning(
   const LogMessage: SQLString; const Sender: IImmediatelyReleasable);
 var
   FormatStr, SQLState: String;
-  ErrorCode: Integer;
+  C: Cardinal;
+  ErrorCode: Integer absolute C;
   P, S: PAnsiChar;
   L: NativeUInt;
   Error: EZSQLThrowable;
@@ -1145,17 +1154,17 @@ label jmpErr;
 begin
   S := nil;
   if Assigned(MYSQL_STMT) then begin
-    ErrorCode := FPlainDriver.mysql_stmt_errno(MYSQL_STMT);
+    C := FPlainDriver.mysql_stmt_errno(MYSQL_STMT);
     P := FPlainDriver.mysql_stmt_error(MYSQL_STMT);
     if Assigned(FPlainDriver.mysql_stmt_sqlstate) then
       S := FPlainDriver.mysql_stmt_sqlstate(MYSQL_STMT);
   end else begin
-    ErrorCode := FPlainDriver.mysql_errno(FHandle);
+    C := FPlainDriver.mysql_errno(FHandle);
     P := FPlainDriver.mysql_error(FHandle);
     if Assigned(FPlainDriver.mysql_stmt_sqlstate) then
       S := FPlainDriver.mysql_sqlstate(FHandle);
   end;
-  if (ErrorCode <> 0) then begin
+  if (ErrorCode > 0) then begin
     if (ConSettings <> nil) and (ConSettings.ClientCodePage <> nil)
     then msgCP := ConSettings.ClientCodePage.CP
     else msgCP := {$IFDEF WITH_DEFAULTSYSTEMCODEPAGE}DefaultSystemCodePage{$ELSE}

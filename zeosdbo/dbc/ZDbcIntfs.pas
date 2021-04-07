@@ -57,12 +57,14 @@ interface
 {$Z-}
 
 uses
-  {$IFDEF USE_SYNCOMMONS}
+  {$IFDEF MORMOT2}
+  mormot.db.core, mormot.core.datetime,
+  {$ELSE MORMOT2} {$IFDEF USE_SYNCOMMONS}
   SynCommons, SynTable,
-  {$ENDIF USE_SYNCOMMONS}
+  {$ENDIF USE_SYNCOMMONS} {$ENDIF MORMOT2}
   {$IFNDEF DO_NOT_DERIVE_FROM_EDATABASEERROR}DB, {$ENDIF}
   FmtBcd, Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF}SysUtils,
-  {$IFDEF FPC}syncobjs{$ELSE}SyncObjs{$ENDIF},
+  {$IFDEF FPC}syncobjs{$ELSE}SyncObjs{$ENDIF}, {$IFNDEF NO_UNIT_CONTNRS}Contnrs, {$ENDIF}
   ZClasses, ZCollections, ZCompatibility, ZTokenizer, ZSelectSchema, ZSysUtils,
   ZGenericSqlAnalyser, ZDbcLogging, ZVariant, ZPlainDriver;
 
@@ -76,7 +78,7 @@ const
   /// <summary>generic constant for an invalid column/parameter index.</summary>
   /// <remarks>Since zeos 8.0up we use zero based index. Means the
   ///  <c>GENERIC_INDEX</c> will be removed in future releases.</remarks>
-  InvalidDbcIndex = {$IFDEF GENERIC_INDEX}-1{$ELSE}0{$ENDIF};
+  InvalidDbcIndex = FirstDbcIndex-1;
 const
   { Constants from JDBC DatabaseMetadata }
   TypeSearchable            = 3;
@@ -93,7 +95,7 @@ type
     function Clone: TZExceptionSpecificData; virtual; abstract;
   end;
 
-  /// <summary>Defines an Abstract SQL exception.</summary>
+  /// <summary>Implements an abstract SQL exception.</summary>
   EZSQLThrowable = class({$IFDEF DO_NOT_DERIVE_FROM_EDATABASEERROR}Exception{$ELSE}EDatabaseError{$ENDIF})
   private
     FErrorCode: Integer;
@@ -124,11 +126,18 @@ type
     /// <summary>Destroys this object and releases all resources.</summary>
     destructor Destroy; override;
   public
+    /// <summary>Specifies the ErrorCode value of the EZSQLThrowable.</summary>
     property ErrorCode: Integer read FErrorCode;
-    property StatusCode: string read FStatuscode; // The "String" Errocode // FirmOS
+    /// <author>FirmOS</summary>
+    /// <summary>Specifies the StatusCode value of the EZSQLThrowable.</summary>
+    property StatusCode: string read FStatuscode;
+    /// <author>Fr0sT</summary>
+    /// <summary>Specifies the Provider SpecificData of the EZSQLThrowable.</summary>
     property SpecificData: TZExceptionSpecificData read FSpecificData; // Engine-specific data
   end;
 
+  /// <author>EgonHugeist</summary>
+  /// <summary>Specifies a class of EZSQLThrowable.</summary>
   EZSQLThrowableClass = class of EZSQLThrowable;
 
   /// <summary>Generic SQL exception.</summary>
@@ -159,21 +168,21 @@ type
   /// <summary>defines a reference to the connection settings record.</summary>
   PZConSettings = ^TZConSettings;
   /// <author>EgonHugeist</author>
-  /// <summary>defines the connection settings record.</summary>
+  /// <summary>Defines the connection settings record.</summary>
   TZConSettings = record
     /// <summary>Target/Source CP of raw string conversion.</summary>
-    W2A2WEncodingSource: TZW2A2WEncodingSource; //
+    W2A2WEncodingSource: TZW2A2WEncodingSource;
     /// <summary>A reference to the database characterset information.</summary>
     ClientCodePage: PZCodePage;
     /// <summary>The database ReadFormatSettings.</summary>
-    ReadFormatSettings: TZFormatSettings;
+    ReadFormatSettings: TZClientFormatSettings;
     /// <summary>The database WriteFormatSettings.</summary>
-    WriteFormatSettings: TZFormatSettings;
+    WriteFormatSettings: TZClientFormatSettings;
   end;
 
   /// <author>EgonHugeist</author>
-  /// <summary>defines an interfaceds object containing the connection settings.
-  /// </summary>
+  /// <summary>Implements an interfaced object containing the connection
+  ///  settings reference.</summary>
   TZCodePagedObject = Class(TInterfacedObject)
   private
     FConSettings: PZConSettings;
@@ -181,6 +190,7 @@ type
     /// <summary>Fills the ConSettings record from a given parameter list.</summary>
     /// <param>"Info" the Parameter list.</param>
     procedure SetConSettingsFromInfo(Info: TStrings);
+    /// <summary>Specifies the Connection settings reference.</summary>
     property ConSettings: PZConSettings read FConSettings write FConSettings;
   public
     /// <summary>Get a reference to the actual connection settings.</summary>
@@ -188,28 +198,37 @@ type
     function GetConSettings: PZConSettings;
   end;
 
-  {** a base class for most dbc-layer objects }
-
-  { TZImmediatelyReleasableObject }
-
   /// <author>EgonHugeist</author>
   /// <summary>Implements an abstract immediately releasable object.</summary>
   TZImmediatelyReleasableObject = Class(TZCodePagedObject)
   protected
     FWeakImmediatRelPtr: Pointer;
   public
+    /// <summary>Responds after the last constructor has executed.
+    ///  AfterConstruction is called automatically after the object's last
+    ///  constructor has executed. Do not call it explicitly in your applications.
+    ///  The AfterConstruction method implemented in TInterfacedObject
+    ///  decrements the class constructors RefCount. So don't forget to call
+    ///  the inherited Afterconstruction which is triggered as an OnCreate event.
+    /// </summary>
     procedure AfterConstruction; override;
   end;
 
-  // List of URL properties that could operate with URL-escaped strings
+  /// <summary>Implements an URL String List</summary>
   TZURLStringList = Class(TStringList)
   protected
+    /// <summary>Get the URL text as escaped String.</summary>
+    /// <returns>the as escaped URL String.</returns>
     function GetURLText: String;
+    /// <summary>Set an URL and unascapes the String.</summary>
+    /// <param>"Value" the escaped URL String.</param>
     procedure SetURLText(const Value: string);
   public
+    /// <summary>Represents an escaped URL String property.</summary>
     property URLText: String read GetURLText write SetURLText;
   end;
 
+  /// <summary>Implements an URL object used for generating the URL strings.</summary>
   TZURL = class
   private
     FPrefix: string;
@@ -261,7 +280,6 @@ type
     property OnPropertiesChange: TNotifyEvent read FOnPropertiesChange write FOnPropertiesChange;
   end;
 
-  // Data types
 type
   /// <summary>Defines ZDBC supported SQL types.</summary>
   TZSQLType = (stUnknown,
@@ -301,7 +319,58 @@ type
   TZFetchDirection = (fdForward, fdReverse, fdUnknown);
 
   /// <summary>Defines a type of result set.</summary>
-  TZResultSetType = (rtForwardOnly, rtScrollInsensitive, rtScrollSensitive);
+  TZResultSetType = (
+    /// <summary>The result set cannot be scrolled; its cursor moves forward
+    ///  only, from first row to last row. The rows contained in the result set
+    ///  depend on how the underlying database generates the results. That is,
+    ///  it contains the rows that satisfy the query at either the time the
+    ///  query is executed or as the rows are retrieved.</summary>
+    rtForwardOnly,
+    /// <summary>The result can be scrolled; its cursor can move both forward
+    ///  and backward relative to the current position, and it can move to an
+    ///  absolute position. The result set is insensitive to changes made to the
+    ///  underlying data source while it is open. It contains the rows that
+    ///  satisfy the query at either the time the query is executed or as the
+    ///  rows are retrieved.</summary>
+    rtScrollInsensitive,
+    /// <summary>Deprecated not implemented enymore. Yet it's the same as
+    ///  <c>rtScrollInsensitive</c>. Purpose: The result set reflects changes
+    ///  made to the underlying data source while the result set remains open.</summary>
+    /// <remarks>Use the IZResultSet RefreshCurrentRow method instead.</remarks>
+    rtScrollSensitive);
+
+  /// <author>EgonHugeist</author>
+  /// <remarks>please fix the documentation, i just reflect the purpose of the
+  ///  enums</remarks>
+  /// <summary>Defines a cursor type of result set. it's one of:
+  ///   <c>rctDriver</c>,<c>rctClient</c>,<c>rctServer</c></summary>
+  TZCursorLocation = (
+    /// <summary>The driver dicides if a Client or a Server cursor is used.</summary>
+    rctDefault,
+    /// <summary>The results are copied into a client buffer handled by provider.
+    ///  This mode is default for <c>libpq</c> or <c>libmariadb/libmysql</c>. see
+    ///  <c>mysql_store_result;mysql_stmt_store_result</c>. This usually is done
+    ///  to break the tabular streamed lock of the protocol. That than means the
+    ///  server can process the next query. If the library doesn't support it
+    ///  a server cursor will be used instead. It's drivers implementation task
+    ///  to dicide if a fetchall needs to be performed. This mode is valid
+    ///  for ResultSets having a ReadOnly ResultSetConcurrency. If the
+    ///  ResultSetConcurrency is set to rcUpdatable a CachedResultSet will be
+    ///  created. If a driver supports a ServerCursor the underlaying native
+    ///  resultset uses a ServerCursor. Drivers having a lob-descriptor in any
+    ///  kind do not load the lobs to local memory.</summary>
+    rctClient,
+    /// <summary>Use a forward only server cursor. This usually is the fastest
+    ///  way to read the data from a server. Drivers having no multiple active
+    ///  resultset support usually require read data to end or discard the
+    ///  results to query another request. This mode is available
+    ///  only for ResultSets having a ReadOnly ResultSetConcurrency. If the
+    ///  ResultSetConcurrency is set to rcUpdatable a or the ResultSetType is
+    ///  not ForwardOnly a CachedResultSet will be created consumes the input
+    ///  from the underlaying native resultset having a server cursor. Drivers
+    ///  having a lob-descriptor in any kind do not load the lobs to local
+    ///  memory.</summary>
+    rctServer);
 
   /// <summary>Defines a result set concurrency type.</summary>
   TZResultSetConcurrency = (rcReadOnly, rcUpdatable);
@@ -356,12 +425,12 @@ type
   /// <summary>Defines a reference to the static TByteBuffer.</summary>
   PByteBuffer = ^TByteBuffer;
   /// <summary>Defines a static TByteBuffer.</summary>
-  TByteBuffer = array[0..1024] of Byte;
+  TByteBuffer = array[0..1023] of Byte; //1 kb
 
   /// <summary>Defines a reference to the static TWordBuffer.</summary>
   PWordBuffer = ^TWordBuffer;
   /// <summary>Defines a static TWordBuffer.</summary>
-  TWordBuffer = array[0..512] of Word;
+  TWordBuffer = array[0..511] of Word; //1 kb
 
 
 // Interfaces
@@ -581,7 +650,7 @@ type
   end;
 
   /// <author>EgonHugeist</author>
-  /// <summary>Implements a transaction interface.</summary>
+  /// <summary>Defines a transaction interface.</summary>
   IZTransaction = interface(IImmediatelyReleasable)
     ['{501FDB3C-4D44-4BE3-8BB3-547976E6500E}']
     /// <summary>If the current transaction is saved the current savepoint get's
@@ -622,8 +691,9 @@ type
     ///  possible transaction isolation levels. </summary>
     /// <remarks>This method cannot be called while a explicit transaction is
     ///  started.</remarks>
-    /// <param>"Value" one of the TRANSACTION_* isolation values with the
-    ///  exception of TRANSACTION_NONE; some databases may not support other
+    /// <param>"Value" one of <c>tiNone, tiReadUncommitted, tiReadCommitted,
+    ///  tiRepeatableRead, tiSerializable</c> isolation values with the
+    ///  exception of <c>tiNone</c>; some databases may not support other
     ///  values. See DatabaseInfo.SupportsTransactionIsolationLevel</param>
     procedure SetTransactionIsolation(Value: TZTransactIsolationLevel);
     /// <summary>Gets the current auto-commit state. See setAutoCommit.</summary>
@@ -662,10 +732,11 @@ type
     /// <summary>Creates a <c>Transaction</c></summary>
     /// <param>"AutoCommit" the AutoCommit mode.</param>
     /// <param>"ReadOnly" the ReadOnly mode.</param>
-    /// <param>"TransactIsolationLevel" the TransactIsolationLevel one of the
-    ///  TRANSACTION_* isolation values with the exception of TRANSACTION_NONE;
+    /// <param>"TransactIsolationLevel" the TransactIsolationLevel one of of
+    ///  <c>tiNone, tiReadUncommitted, tiReadCommitted, tiRepeatableRead,
+    ///  tiSerializable</c> isolation values with the exception of <c>tiNone</c>;
     ///  some databases may not support other values see
-    ///  DatabaseInfo.supportsTransactionIsolationLevel</param>
+    ///  DatabaseInfo.SupportsTransactionIsolationLevel</param>
     /// <param>"Params" a list of properties used for the transaction.</param>
     /// <returns>returns the Transaction interface.</returns>
     function CreateTransaction(AutoCommit, ReadOnly: Boolean;
@@ -903,9 +974,10 @@ type
     /// <author>firmos</author>
     /// <summary>Rolls back the two phase transaction.</summary>
     procedure RollbackPrepared(const transactionid: string);
-    /// <author>firmos</author>
-    /// <summary>Pings the server.</summary>
-    /// <returns>0 if the connection is OK; non zero otherwise.</returns>
+    /// <author>firmos (initially for MySQL 27032006)</author>
+    /// <summary>Ping Current Connection's server, if client was disconnected,
+    ///  the connection is resumed.</summary>
+    /// <returns>0 if succesfull or error code if any error occurs</returns>
     function PingServer: Integer;
     /// <author>aehimself</author>
     /// <summary>Immediately abort any kind of queries.</summary>
@@ -977,8 +1049,9 @@ type
     ///  given. The constants defined in the interface <c>Connection</c> are the
     ///  possible transaction isolation levels. Note: This method cannot be
     ///  called while in the middle of a transaction.
-    /// <param>"value" one of the TRANSACTION_* isolation values with the
-    ///  exception of TRANSACTION_NONE; some databases may not support other
+    /// <param>"value" one of <c>tiNone, tiReadUncommitted, tiReadCommitted,
+    ///  tiRepeatableRead, tiSerializable</c> isolation values with the
+    ///  exception of <c>tiNone</c>; some databases may not support other
     ///  values. See DatabaseInfo.SupportsTransactionIsolationLevel</param>
     procedure SetTransactionIsolation(Value: TZTransactIsolationLevel);
     /// <summary>Gets this Connection's current transaction isolation level.</summary>
@@ -992,20 +1065,41 @@ type
     ///  After a call to this method, the method <c>getWarnings</c> returns nil
     ///  until a new warning is reported for this Connection.</summary>
     procedure ClearWarnings;
-
+    /// <summary>Are metadata used? If <c>True</c> then we can determine if
+    ///  columns are writeable or not. This is required for generating automatic
+    ///  updates.</summary>
+    /// <returns><c>True</c> if metainformations are turned on; <c>False</c>
+    ///  otherwise.</returns>
     function UseMetadata: boolean;
+    /// <summary>Sets the use of metadata informations. This is required for
+    ///  generating automatic updates.</summary>
+    /// <param>"Value" enables or disables the metadata loading.</param>
     procedure SetUseMetadata(Value: Boolean);
 
     function GetBinaryEscapeString(const Value: TBytes): String; overload;
 
+    /// <summary>Escape a string so it's acceptable for the Connection's server.</summary>
+    /// <param>"value" a string that should be escaped</param>
+    /// <returns>an escaped string</returns>
     function GetEscapeString(const Value: UnicodeString): UnicodeString; overload;
+    /// <summary>Escape a string so it's acceptable for the Connection's server.</summary>
+    /// <param>"value" a string that should be escaped</param>
+    /// <returns>an escaped string</returns>
     function GetEscapeString(const Value: RawByteString): RawByteString; overload;
+
     function EscapeString(const Value: RawByteString): RawByteString;
 
-
     function GetEncoding: TZCharEncoding;
+    /// <summary>Gets a VariantManager object which is able to convert values
+    ///  according the client character set informations.</summary>
+    /// <returns>The variant manager object; never <c>nil</c>.</returns>
     function GetClientVariantManager: IZClientVariantManager;
+    /// <summary>Get's the escaped URL used for establishing this connection.</summary>
+    /// <returns>the escaped URL.</returns>
     function GetURL: String;
+    /// <summary>Returns the ServicerProvider for this connection. For some
+    ///  drivers the connection mist be opened to determine the provider.</summary>
+    /// <returns>the ServerProvider or spUnknown if not known.</returns>
     function GetServerProvider: TZServerProvider;
   end;
 
@@ -1016,35 +1110,322 @@ type
     //function GetURL: string;
     //function GetUserName: string;
 
+    /// <author>technobot</author>
+    /// <summary>Returns general information about the database (version,
+    ///  capabilities,  policies, etc).</summary>
+    /// <returns>the database information object as interface.</returns>
     function GetDatabaseInfo: IZDatabaseInfo;
+    /// <author>EgonHugeist</author>
     function GetTriggers(const Catalog: string; const SchemaPattern: string;
-      const TableNamePattern: string; const TriggerNamePattern: string): IZResultSet; //EgonHugeist 30.03.2011
-    function GetCollationAndCharSet(const Catalog, Schema, TableName, ColumnName: String): IZResultSet; //EgonHugeist 10.01.2012
-    function GetCharacterSets: IZResultSet; //EgonHugeist 19.01.2012
+      const TableNamePattern: string; const TriggerNamePattern: string): IZResultSet;
+    /// <author>EgonHugeist</author>
+    function GetCollationAndCharSet(const Catalog, Schema, TableName, ColumnName: String): IZResultSet;
+    /// <author>EgonHugeist</author>
+    function GetCharacterSets: IZResultSet;
+    /// <summary>Gets a description of the stored procedures available in a
+    ///  catalog.
+    ///  Only procedure descriptions matching the schema and procedure name
+    ///  criteria are returned. They are ordered by
+    ///  PROCEDURE_SCHEM, and PROCEDURE_NAME.
+    ///  Each procedure description has the the following columns:
+    ///  <c>PROCEDURE_CAT</c> String => procedure catalog (may be null)
+    ///  <c>PROCEDURE_SCHEM</c> String => procedure schema (may be null)
+    ///  <c>PROCEDURE_NAME</c> String => procedure name
+    ///  <c>PROCEDURE_OVERLOAD</c> => a overload indicator (may be null)
+    ///  <c>RESERVED1</c> => for future use
+    ///  <c>RESERVED2</c> => for future use
+    ///  <c>REMARKS</c> String => explanatory comment on the procedure
+    ///  <c>PROCEDURE_TYPE</c> short => kind of procedure:
+    ///   procedureResultUnknown - May return a result
+    ///   procedureNoResult - Does not return a result
+    ///   procedureReturnsResult - Returns a result</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema
+    ///  pattern from the selection criteria</param>
+    /// <param>"ProcedureNamePattern" a procedure name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a procedure description.</returns>
+    /// <remarks>see getSearchStringEscape</remarks>
     function GetProcedures(const Catalog: string; const SchemaPattern: string;
       const ProcedureNamePattern: string): IZResultSet;
+    /// <summary>Gets a description of a catalog's stored procedure parameters
+    ///  and result columns.
+    ///  Only descriptions matching the schema, procedure and
+    ///  parameter name criteria are returned.  They are ordered by
+    ///  PROCEDURE_SCHEM and PROCEDURE_NAME. Within this, the return value,
+    ///  if any, is first. Next are the parameter descriptions in call
+    ///  order. The column descriptions follow in column number order.
+    ///  Each row in the <c>ResultSet</c> is a parameter description or
+    ///  column description with the following fields:
+ 	  ///  <c>PROCEDURE_CAT</c> String => procedure catalog (may be null)
+ 	  ///  <c>PROCEDURE_SCHEM</c> String => procedure schema (may be null)
+ 	  ///  <c>PROCEDURE_NAME</c> String => procedure name
+ 	  ///  <c>COLUMN_NAME</c> String => column/parameter name
+ 	  ///  <c>COLUMN_TYPE</c> Short => kind of column/parameter:
+    ///      Ord(pctUnknown) - nobody knows
+    ///      Ord(pctIn) - IN parameter
+    ///      Ord(pctInOut) - INOUT parameter
+    ///      Ord(pctOut) - OUT parameter
+    ///      Ord(pctReturn) - procedure return value
+    ///      Ord(pctResultSet) - result column in <c>ResultSet</c>
+    ///  <c>DATA_TYPE</c> short => ZDBC SQL type
+ 	  ///  <c>TYPE_NAME</c> String => SQL type name, for a UDT type the
+    ///   type name is fully qualified
+ 	  ///  <c>PRECISION</c> int => precision
+ 	  ///  <c>LENGTH</c> int => length in bytes of data
+ 	  ///  <c>SCALE</c> short => scale, second fractions
+ 	  ///  <c>RADIX</c> short => radix
+ 	  ///  <c>NULLABLE</c> short => can it contain NULL?
+    ///     Ord(ntNoNulls) - does not allow NULL values
+    ///     Ord(ntNullable) - allows NULL values
+    ///     Ord(ntNullableUnknown) - nullability unknown
+ 	  ///  <c>REMARKS</c> String => comment describing parameter/column</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop
+    ///  schema pattern from the selection criteria</param>
+    /// <param>"ProcedureNamePattern" a procedure name pattern</param>
+    /// <param>"columnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row describes a stored procedure
+    ///  parameter or column</returns>
+    /// <remarks>Some databases may not return the column descriptions for a
+    ///  procedure. Additional columns beyond REMARKS can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function GetProcedureColumns(const Catalog: string; const SchemaPattern: string;
       const ProcedureNamePattern: string; const ColumnNamePattern: string): IZResultSet;
-
+    /// <summary>Gets a description of tables available in a catalog.
+    ///  Only table descriptions matching the catalog, schema, table
+    ///  name and type criteria are returned.  They are ordered by
+    ///  TABLE_TYPE, TABLE_SCHEM and TABLE_NAME.
+    ///  Each table description has the following columns:
+ 	  ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+ 	  ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+ 	  ///  <c>TABLE_NAME</c> String => table name
+ 	  ///  <c>TABLE_TYPE</c> String => table type.  Typical types are "TABLE",
+ 	  ///  		"VIEW",	"SYSTEM TABLE", "GLOBAL TEMPORARY",
+ 	  ///  		"LOCAL TEMPORARY", "ALIAS", "SYNONYM".
+ 	  ///  <c>REMARKS</c> String => explanatory comment on the table</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema
+    ///  pattern from the selection criteria</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <param>"Types" an array of table types to include; nil returns all
+    ///  types.</param>
+    /// <returns><c>ResultSet</c> - each row is a table description</returns>
+    /// <remarks>Some databases may not return information for
+    ///  all tables. Additional columns beyond REMARKS can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function GetTables(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string; const Types: TStringDynArray): IZResultSet;
+    /// <summary>Gets the schema names available in this database. The results
+    ///  are ordered by schema name.
+    ///  The schema column is:
+    ///  <C>TABLE_SCHEM</C> String => schema name</summary>
+    /// <returns><c>ResultSet</c> - each row has a single String column that is
+    ///  a schema name</returns>
     function GetSchemas: IZResultSet;
+    /// <summary>Gets the catalog names available in this database. The results
+    ///  are ordered by catalog name.
+    ///  The catalog column is:
+    ///  <C>TABLE_CAT</C> String => catalog name</summary>
+    /// <returns><c>ResultSet</c> - each row has a single String column that is
+    ///  a catalog name</returns>
     function GetCatalogs: IZResultSet;
+    /// <summary>Gets the table types available in this database. The results
+    ///  are ordered by table type.
+    ///  The table type is:
+    ///  <c>TABLE_TYPE</c> String => table type. Typical types are "TABLE",
+    ///  "VIEW", "SYSTEM TABLE", "GLOBAL TEMPORARY","LOCAL TEMPORARY", "ALIAS",
+    ///  "SYNONYM".</summary>
+    /// <returns><c>ResultSet</c> - each row has a single String column that is
+    ///  a table type</returns>
     function GetTableTypes: IZResultSet;
+    /// <summary>Gets a description of table columns available in
+    ///  the specified catalog.
+    ///  Only column descriptions matching the catalog, schema pattern, table
+    ///  name pattern and column name criteria are returned. They are ordered by
+    ///  TABLE_SCHEM, TABLE_NAME and ORDINAL_POSITION.
+    ///  Each column description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>COLUMN_NAME</c> String => column name
+    ///  <c>DATA_TYPE</c> short => SQL type from java.sql.Types
+    ///  <c>TYPE_NAME</c> String => Data source dependent type name,
+    ///   for a UDT the type name is fully qualified
+    ///  <c>COLUMN_SIZE</c> int => column size.  For char or date
+    ///      types this is the maximum number of characters, for numeric or
+    ///      decimal types this is precision.
+    ///  <c>BUFFER_LENGTH</c> is not used.
+    ///  <c>DECIMAL_DIGITS</c> int => the number of fractional digits
+    ///  <c>NUM_PREC_RADIX</c> int => Radix (typically either 10 or 2)
+    ///  <c>NULLABLE</c> int => is NULL allowed?
+    ///     Ord(ntNoNulls) - does not allow NULL values
+    ///     Ord(ntNullable) - allows NULL values
+    ///     Ord(ntNullableUnknown) - nullability unknown
+    ///  <c>REMARKS</c> String => comment describing column (may be null)
+    ///  <c>COLUMN_DEF</c> String => default value (may be null)
+    ///  <c>SQL_DATA_TYPE</c> int => unused
+    ///  <c>SQL_DATETIME_SUB</c> int => unused
+    ///  <c>CHAR_OCTET_LENGTH</c> int => for char types the
+    ///        maximum number of bytes in the column
+    ///  <c>ORDINAL_POSITION</c> int	=> index of column in table
+    ///       (starting at 1)
+    ///  <c>IS_NULLABLE</c> String => "NO" means column definitely
+    ///       does not allow NULL values; "YES" means the column might
+    ///       allow NULL values. An empty string means nobody knows.</summary>
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" retrieves those
+    ///  without a schema</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <param>"ColumnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a column description</returns>
+    /// <remarks>Some databases may not return information for
+    ///  all tables. Additional columns beyond IS_NULLABLE can be defined by the
+    ///  database.
+    /// see GetSearchStringEscape</remarks>
     function GetColumns(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string; const ColumnNamePattern: string): IZResultSet;
+    /// <summary>Gets a description of the access rights for a table's columns.
+    ///
+    ///  Only privileges matching the column name criteria are
+    ///  returned. They are ordered by COLUMN_NAME and PRIVILEGE.
+    ///
+    ///  Each privilige description has the following columns:
+ 	  ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+ 	  ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+ 	  ///  <c>TABLE_NAME</c> String => table name
+ 	  ///  <c>COLUMN_NAME</c> String => column name
+ 	  ///  <c>GRANTOR</c> => grantor of access (may be null)
+ 	  ///  <c>GRANTEE</c> String => grantee of access
+ 	  ///  <c>PRIVILEGE</c> String => name of access (SELECT,
+    ///     INSERT, UPDATE, REFRENCES, ...)
+ 	  ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
+    ///   to grant to others; "NO" if not; null if unknown</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <param>"ColumnNamePattern" a column name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a privilege description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function GetColumnPrivileges(const Catalog: string; const Schema: string;
       const Table: string; const ColumnNamePattern: string): IZResultSet;
-
+    /// <summary>Gets a description of the access rights for each table
+    ///  available in a catalog from a cache. Note that a table privilege
+    ///  applies to one or more columns in the table. It would be wrong to
+    ///  assume that this priviledge applies to all columns (this may be true
+    ///  for some systems but is not true for all.)
+    ///
+    ///  Only privileges matching the schema and table name
+    ///  criteria are returned. They are ordered by TABLE_SCHEM,
+    ///  TABLE_NAME, and PRIVILEGE.
+    ///
+    ///  Each privilige description has the following columns:
+    ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+    ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+    ///  <c>TABLE_NAME</c> String => table name
+    ///  <c>GRANTOR</c> => grantor of access (may be null)
+    ///  <c>GRANTEE</c> String => grantee of access
+    ///  <c>PRIVILEGE</c> String => name of access (SELECT,
+    ///      INSERT, UPDATE, REFRENCES, ...)
+    ///  <c>IS_GRANTABLE</c> String => "YES" if grantee is permitted
+    ///   to grant to others; "NO" if not; null if unknown</summary>
+    ///
+    /// <param>"Catalog" a catalog name; "" means drop catalog name from the
+    ///  selection criteria</param>
+    /// <param>"SchemaPattern" a schema name pattern; "" means drop schema from
+    ///  the selection criteria</param>
+    /// <param>"TableNamePattern" a table name pattern</param>
+    /// <returns><c>ResultSet</c> - each row is a table privilege description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function GetTablePrivileges(const Catalog: string; const SchemaPattern: string;
       const TableNamePattern: string): IZResultSet;
     function GetBestRowIdentifier(const Catalog: string; const Schema: string;
       const Table: string; Scope: Integer; Nullable: Boolean): IZResultSet;
     function GetVersionColumns(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet;
-
+    /// <summary>Gets a description of a table's primary key columns from a
+    ///  cache. They are ordered by COLUMN_NAME.
+    ///  Each primary key column description has the following columns:
+ 	  ///  <c>TABLE_CAT</c> String => table catalog (may be null)
+ 	  ///  <c>TABLE_SCHEM</c> String => table schema (may be null)
+ 	  ///  <c>TABLE_NAME</c> String => table name
+ 	  ///  <c>COLUMN_NAME</c> String => column name
+ 	  ///  <c>KEY_SEQ</c> short => sequence number within primary key
+ 	  ///  <c>PK_NAME</c> String => primary key name (may be null)</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <returns><c>ResultSet</c> - each row is a primary key column description</returns>
+    /// <remarks>see GetSearchStringEscape</remarks>
     function GetPrimaryKeys(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet;
+    /// <summary>Gets a description of the primary key columns that are
+    ///  referenced by a table's foreign key columns (the primary keys
+    ///  imported by a table) from a cache.  They are ordered by PKTABLE_CAT,
+    ///  PKTABLE_SCHEM, PKTABLE_NAME, and KEY_SEQ.
+    ///  Each primary key column description has the following columns:
+    ///  <c>PKTABLE_CAT</c> String => primary key table catalog
+    ///       being imported (may be null)
+    ///  <c>PKTABLE_SCHEM</c> String => primary key table schema
+    ///       being imported (may be null)
+    ///  <c>PKTABLE_NAME</c> String => primary key table name
+    ///       being imported
+    ///  <c>PKCOLUMN_NAME</c> String => primary key column name
+    ///       being imported
+    ///  <c>FKTABLE_CAT</c> String => foreign key table catalog (may be null)
+    ///  <c>FKTABLE_SCHEM</c> String => foreign key table schema (may be null)
+    ///  <c>FKTABLE_NAME</c> String => foreign key table name
+    ///  <c>FKCOLUMN_NAME</c> String => foreign key column name
+    ///  <c>KEY_SEQ</c> short => sequence number within foreign key
+    ///  <c>UPDATE_RULE</c> short => What happens to
+    ///        foreign key when primary is updated:
+    ///        importedNoAction - do not allow update of primary
+    ///                key if it has been imported
+    ///        importedKeyCascade - change imported key to agree
+    ///                with primary key update
+    ///        importedKeySetNull - change imported key to NULL if
+    ///                its primary key has been updated
+    ///        importedKeySetDefault - change imported key to default values
+    ///                if its primary key has been updated
+    ///        importedKeyRestrict - same as importedKeyNoAction
+    ///                                  (for ODBC 2.x compatibility)
+    ///  <c>DELETE_RULE</c> short => What happens to
+    ///       the foreign key when primary is deleted.
+    ///        importedKeyNoAction - do not allow delete of primary
+    ///                key if it has been imported
+    ///        importedKeyCascade - delete rows that import a deleted key
+    ///       importedKeySetNull - change imported key to NULL if
+    ///                its primary key has been deleted
+    ///        importedKeyRestrict - same as importedKeyNoAction
+    ///                                  (for ODBC 2.x compatibility)
+    ///        importedKeySetDefault - change imported key to default if
+    ///                its primary key has been deleted
+    ///  <c>FK_NAME</c> String => foreign key name (may be null)
+    ///  <c>PK_NAME</c> String => primary key name (may be null)
+    ///  <c>DEFERRABILITY</c> short => can the evaluation of foreign key
+    ///       constraints be deferred until commit
+    ///        importedKeyInitiallyDeferred - see SQL92 for definition
+    ///        importedKeyInitiallyImmediate - see SQL92 for definition
+    ///        importedKeyNotDeferrable - see SQL92 for definition</summary>
+    /// <param>"Catalog" a catalog name; An empty catalog means drop catalog
+    ///  name from the selection criteria</param>
+    /// <param>"schema" a schema name; An empty schema means drop schema
+    ///  name from the selection criteria</param>
+    /// <param>"table" a table name; An empty table means drop table
+    ///  name from the selection criteria</param>
+    /// <returns><c>ResultSet</c> - each row is imported key column description</returns>
+    /// <remarks>see GetSearchStringEscape;GetExportedKeys</remarks>
     function GetImportedKeys(const Catalog: string; const Schema: string;
       const Table: string): IZResultSet;
     function GetExportedKeys(const Catalog: string; const Schema: string;
@@ -1063,7 +1444,9 @@ type
 
     function GetUDTs(const Catalog: string; const SchemaPattern: string;
       const TypeNamePattern: string; const Types: TIntegerDynArray): IZResultSet;
-
+    /// <summary>Get's the owner connection that produced that object instance.
+    /// </summary>
+    /// <returns>the connection object interface.</returns>
     function GetConnection: IZConnection;
     function GetIdentifierConvertor: IZIdentifierConvertor; deprecated;
     function GetIdentifierConverter: IZIdentifierConverter; //typo fixed
@@ -1143,6 +1526,9 @@ type
     /// <returns><c>true</c> if so; <c>false</c> otherwise.</returns>
     function SupportsConvertForTypes(FromType: TZSQLType; ToType: TZSQLType):
       Boolean;
+    /// <summary>Are table correlation names supported?
+    /// A Zeos Compliant <c>TM</c> driver always returns true.</summary>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
     function SupportsTableCorrelationNames: Boolean;
     function SupportsDifferentTableCorrelationNames: Boolean;
     function SupportsExpressionsInOrderBy: Boolean;
@@ -1330,6 +1716,7 @@ type
     ///  <c>false</c> if it is an update count or there are no more results.</returns>
     function Execute(const SQL: RawByteString): Boolean; overload;
     /// <summary>get the current SQL string</summary>
+    /// <returns>the SQL string</returns>
     function GetSQL : String;
     /// <summary>Releases this <c>Statement</c> object's database
     ///  resources immediately instead of waiting for this to happen when it is
@@ -1412,15 +1799,12 @@ type
     ///  the result is an update count or there are no more results.</returns>
     /// <seealso cref="Execute">Execute</seealso>
     function GetResultSet: IZResultSet;
-    /// <summary>
-    ///  Returns the current result as an update count;
+    /// <summary>Returns the current result as an update count;
     ///  if the result is a <c>ResultSet</c> object or there are no more results, -1
     ///  is returned. This method should be called only once per result.
     /// </summary>
-    /// <returns>
-    ///  the current result as an update count; -1 if the current result is a
-    ///  <c>ResultSet</c> object or there are no more results
-    /// </returns>
+    /// <returns>the current result as an update count; -1 if the current result is a
+    ///  <c>ResultSet</c> object or there are no more results</returns>
     /// <seealso cref="Execute">Execute</seealso>
     function GetUpdateCount: Integer;
     /// <summary>Moves to a <c>Statement</c> object's next result.  It returns
@@ -1436,7 +1820,6 @@ type
     /// </returns>
     /// <seealso cref="Execute">Execute</seealso>
     function GetMoreResults: Boolean;
-
     /// <summary>
     ///  Gives the driver a hint as to the direction in which
     ///  the rows in a result set
@@ -1463,7 +1846,6 @@ type
     ///  from this <c>Statement</c> object
     /// </returns>
     function GetFetchDirection: TZFetchDirection;
-
     /// <summary>
     ///  Gives the DBC driver a hint as to the number of rows that should
     ///  be fetched from the database when more rows are needed.  The number
@@ -1513,6 +1895,15 @@ type
     ///  Sets a new value for post updates.</summary>
     /// <param>"Value" a new value for post updates.</param>
     procedure SetPostUpdates(Value: TZPostUpdatesMode);
+    /// <author>EgonHugeist</author>
+    /// <summary>Set the cursor type of the resultset to be genarated if any.</summary>
+    /// <param>"Value" one of <c>rctClient</c>, <c>rctServer</c>,
+    ///  or <c>rctLocalMemory</c></param>
+    procedure SetCursorLocation(Value: TZCursorLocation);
+    /// <author>EgonHugeist</author>
+    /// <summary>Get the cursor type of this resultset</summary>
+    /// <returns>the CursorLocation of this resultset</returns>
+    function GetCursorLocation: TZCursorLocation;
     /// <summary>Note yet implemented. Propably omitted in future.
     ///  Gets the current value for post updates.</summary>
     /// <returns>the current value for post updates.</returns>
@@ -1574,29 +1965,16 @@ type
     ///  command in the batch. The elements of the array are ordered according
     ///  to the order in which commands were added to the batch.</returns>
     function ExecuteBatch: TIntegerDynArray;
-    /// <summary>
-    ///  Returns the <c>Connection</c> object
-    ///  that produced this <c>Statement</c> object.
-    /// </summary>
-    /// <returns>
-    /// <see cref="IZConnection"></see>
-    ///  the connection that produced this statement
-    /// </returns>
+    /// <summary>Returns the <c>Connection</c> object that produced this
+    ///  <c>Statement</c> object.</summary>
+    /// <returns>the connection that produced this statement</returns>
     function GetConnection: IZConnection;
-
-    /// <summary>
-    ///  Gets statement parameters.
-    /// </summary>
-    /// <returns>
-    ///  a list with statement parameters.
-    /// </returns>
+    /// <summary>Gets statement parameters.</summary>
+    /// <returns>a list with statement parameters.</returns>
     function GetParameters: TStrings;
-    /// <summary>
-    ///  Returns the ChunkSize for reading/writing large lobs
-    /// </summary>
+    /// <summary>Returns the ChunkSize for reading/writing large lobs</summary>
     /// <returns>the chunksize in bytes.</returns>
     function GetChunkSize: Integer;
-
     /// <summary>
     ///  Retrieves the first warning reported by calls on this <c>Statement</c> object.
     ///  Subsequent <c>Statement</c> object warnings will be chained to this
@@ -1750,7 +2128,7 @@ type
     ///  the second is 1. This will change in future to a zero based index.
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"Value" the parameter value</param>
-    procedure SetBigDecimal(ParameterIndex: Integer; const Value: TBCD);
+    procedure SetBigDecimal(ParameterIndex: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD);
     /// <summary>Sets the designated parameter to a <c>TZCharRec</c> value.
     ///  The references need to be valid until the statement is executed.</summary>
     /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
@@ -1758,7 +2136,7 @@ type
     ///  the second is 1. This will change in future to a zero based index.
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"Value" the parameter value</param>
-    procedure SetCharRec(ParameterIndex: Integer; const Value: TZCharRec);
+    procedure SetCharRec(ParameterIndex: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZCharRec);
     /// <summary>Sets the designated parameter to a <c>String</c> value.
     ///  This method equals to SetUnicodeString on Unicode-Compilers. For
     ///  Raw-String compilers the encoding is defined by W2A2WEncodingSource of
@@ -1800,7 +2178,7 @@ type
     ///  the second is 1. This will change in future to a zero based index.
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"Value" the parameter value</param>
-    procedure SetGuid(ParameterIndex: Integer; const Value: TGUID);
+    procedure SetGuid(ParameterIndex: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TGUID);
     {$IFNDEF NO_ANSISTRING}
     /// <summary>Sets the designated parameter to a <c>AnsiString</c> value.
     ///  The string must be GET_ACP encoded. The driver will convert the value
@@ -1813,7 +2191,7 @@ type
     procedure SetAnsiString(ParameterIndex: Integer; const Value: AnsiString);
     {$ENDIF}
     {$IFNDEF NO_UTF8STRING}
-    /// <summary>Sets the designated parameter to a <c>AnsiString</c> value.
+    /// <summary>Sets the designated parameter to a <c>RawByteString</c> value.
     ///  The string must be UTF8 encoded. The driver will convert the value
     ///  if the driver uses an different encoding.</summary>
     /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
@@ -1849,7 +2227,7 @@ type
     ///  the second is 1. This will change in future to a zero based index.
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"Value" the parameter value</param>
-    procedure SetDate(ParameterIndex: Integer; const Value: TZDate); overload;
+    procedure SetDate(ParameterIndex: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate); overload;
     /// <summary>Sets the designated parameter to a <c>Time(TDateTime)</c> value.
     ///  This method is obsolate and left for compatibility. The method always
     ///  decodes the value and calls the <c>SetTime(Index: Integer; Value: TZtime)</c>
@@ -1866,7 +2244,7 @@ type
     ///  the second is 1. This will change in future to a zero based index.
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"Value" the parameter value</param>
-    procedure SetTime(ParameterIndex: Integer; const Value: TZTime); overload;
+    procedure SetTime(ParameterIndex: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime); overload;
     /// <summary>Sets the designated parameter to a <c>TDateTime</c> value.
     ///  This method is obsolate and left for compatibility. The method always
     ///  decodes the value and calls the
@@ -1883,7 +2261,7 @@ type
     ///  the second is 1. This will change in future to a zero based index.
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"Value" the parameter value</param>
-    procedure SetTimestamp(ParameterIndex: Integer; const Value: TZTimeStamp); overload;
+    procedure SetTimestamp(ParameterIndex: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp); overload;
     /// <summary>Sets the designated parameter to a raw character stream value.
     ///  The stream must be DB-CodePage encoded. If the driver uses an UTF16
     ///  encoding, the driver will convert the value using the conversion rules
@@ -1935,7 +2313,7 @@ type
     ///  the second is 1. This will change in future to a zero based index.
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"Value" the parameter blob wrapper object to be set.</param>
-    procedure SetValue(ParameterIndex: Integer; const Value: TZVariant);
+    procedure SetValue(ParameterIndex: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZVariant);
     /// <summary>Sets the designated parameter to a null array value. A null
     ///  array can not be bound if not data array has been bound before. So
     ///  SetDataArray() needs to be called first.</summary>
@@ -2162,8 +2540,8 @@ type
     ///  as InOut,Out,Result registered parameters can be accessed after the
     ///  statement has been executed and the out params are available.
     ///  Otherwise an EZSQLException is thrown.</param>
-    /// <returns>if the value is SQL <c>NULL</c>, the value returned is
-    ///  <c>NULL-BCD</c>. The value otherwise.</returns>
+    /// <param>"Result" if the value is SQL <c>NULL</c>, the value returned is
+    ///  <c>NULL-BCD</c>. The value otherwise.</param>
     procedure GetBigDecimal(ParameterIndex: Integer; var Result: TBCD);
     /// <summary>Gets the value of the designated parameter as a TGUID value.
     ///  The driver will try to convert the value if it's not a TGUID value.
@@ -2175,8 +2553,8 @@ type
     ///  as InOut,Out,Result registered parameters can be accessed after the
     ///  statement has been executed and the out params are available.
     ///  Otherwise an EZSQLException is thrown.</param>
-    /// <returns>if the value is SQL <c>NULL</c>, the value returned is
-    ///  <c>NULL-GUID</c>. The value otherwise.</returns>
+    /// <param>"Result" if the value is SQL <c>NULL</c>, the value returned is
+    ///  <c>NULL-GUID</c>. The value otherwise.</param>
     procedure GetGUID(Index: Integer; var Result: TGUID);
     /// <summary>Gets the value of the designated parameter as a TBytes value.
     ///  The driver will try to convert the value if it's not a TBytes value.
@@ -2191,11 +2569,80 @@ type
     /// <returns>if the value is SQL <c>NULL</c>, the value returned is
     ///  <c>nil</c>. The value otherwise.</returns>
     function GetBytes(ParameterIndex: Integer): TBytes; overload;
+    /// <summary>Obsolate use overload instead. Gets the value of the designated
+    ///  parameter as a TDate value. The driver will try to convert the value if
+    ///  it's not a TDateTime value. </summary>
+    /// <param>"ParameterIndex" the first Parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first Parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index. It's
+    ///  recommented to use an incrementation of FirstDbcIndex. <c>Note</c> only
+    ///  as InOut,Out,Result registered parameters can be accessed after the
+    ///  statement has been executed and the out params are available.
+    ///  Otherwise an EZSQLException is thrown.</param>
+    /// <returns>if the value is SQL <c>NULL</c>, the value returned is
+    ///  <c>0</c>. The value otherwise.</returns>
     function GetDate(ParameterIndex: Integer): TDateTime; overload;
+    /// <summary>Gets the value of the designated parameter as a TZDate value.
+    ///  The driver will try to convert the value if it's not a Date value. </summary>
+    /// <param>"ParameterIndex" the first Parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first Parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index. It's
+    ///  recommented to use an incrementation of FirstDbcIndex. <c>Note</c> only
+    ///  as InOut,Out,Result registered parameters can be accessed after the
+    ///  statement has been executed and the out params are available.
+    ///  Otherwise an EZSQLException is thrown.</param>
+    /// <param>"Result" a reference to the TZDate record. If the value is SQL
+    ///  <c>NULL</c> or the conversion fails, the value get's zero filled.</param>
     procedure GetDate(ParameterIndex: Integer; Var Result: TZDate); overload;
+    /// <summary>Obsolate use overload instead. Gets the value of the designated
+    ///  parameter as a TTime value. The driver will try to convert the value if
+    ///  it's not a TDateTime value. </summary>
+    /// <param>"ParameterIndex" the first Parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first Parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index. It's
+    ///  recommented to use an incrementation of FirstDbcIndex. <c>Note</c> only
+    ///  as InOut,Out,Result registered parameters can be accessed after the
+    ///  statement has been executed and the out params are available.
+    ///  Otherwise an EZSQLException is thrown.</param>
+    /// <returns>if the value is SQL <c>NULL</c>, the value returned is
+    ///  <c>0</c>. The value otherwise.</returns>
     function GetTime(ParameterIndex: Integer): TDateTime; overload;
+    /// <summary>Gets the value of the designated parameter as a TZTime value.
+    ///  The driver will try to convert the value if it's not a Time value. </summary>
+    /// <param>"ParameterIndex" the first Parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first Parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index. It's
+    ///  recommented to use an incrementation of FirstDbcIndex. <c>Note</c> only
+    ///  as InOut,Out,Result registered parameters can be accessed after the
+    ///  statement has been executed and the out params are available.
+    ///  Otherwise an EZSQLException is thrown.</param>
+    /// <param>"Result" a reference to the TZTime record. If the value is SQL
+    ///  <c>NULL</c> or the conversion fails, the value get's zero filled.</param>
     procedure GetTime(ParameterIndex: Integer; Var Result: TZTime); overload;
+    /// <summary>Obsolate use overload instead. Gets the value of the designated
+    ///  parameter as a TDateTime value. The driver will try to convert the
+    ///  value if it's not a TDateTime value. </summary>
+    /// <param>"ParameterIndex" the first Parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first Parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index. It's
+    ///  recommented to use an incrementation of FirstDbcIndex. <c>Note</c> only
+    ///  as InOut,Out,Result registered parameters can be accessed after the
+    ///  statement has been executed and the out params are available.
+    ///  Otherwise an EZSQLException is thrown.</param>
+    /// <returns>if the value is SQL <c>NULL</c>, the value returned is
+    ///  <c>0</c>. The value otherwise.</returns>
     function GetTimestamp(ParameterIndex: Integer): TDateTime; overload;
+    /// <summary>Gets the value of the designated parameter as a TZTimeStamp value.
+    ///  The driver will try to convert the value if it's not a timestamp value.</summary>
+    /// <param>"ParameterIndex" the first Parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first Parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index. It's
+    ///  recommented to use an incrementation of FirstDbcIndex. <c>Note</c> only
+    ///  as InOut,Out,Result registered parameters can be accessed after the
+    ///  statement has been executed and the out params are available.
+    ///  Otherwise an EZSQLException is thrown.</param>
+    /// <param>"Result" a reference to the TZTimeStamp record. If the value is SQL
+    ///  <c>NULL</c> or the conversion fails, the value get's zero filled.</param>
     procedure GetTimeStamp(Index: Integer; var Result: TZTimeStamp); overload;
     function GetValue(ParameterIndex: Integer): TZVariant;
 
@@ -2211,7 +2658,12 @@ type
 
     function GetBLob(ParameterIndex: Integer): IZBlob;
     function GetCLob(ParameterIndex: Integer): IZClob;
-
+    /// <summary>Clears the current parameter values immediately.
+    ///  In general, parameter values remain in force for repeated use of a
+    ///  statement. Setting a parameter value automatically clears its
+    ///  previous value.  However, in some cases it is useful to immediately
+    ///  release the resources used by the current parameter values; this can
+    ///  be done by calling the method <c>ClearParameters</c>.</summary>
     procedure ClearParameters;
   end;
 
@@ -2242,7 +2694,7 @@ type
   /// <summary>Defines an array of compaison kinds.</summary>
   TComparisonKindArray = Array of TComparisonKind;
 
-  {$IFDEF USE_SYNCOMMONS}
+  {$IFDEF WITH_COLUMNS_TO_JSON}
   /// <summary>Defines json compose options.</summary>
   TZJSONComposeOption = (jcoEndJSONObject, jcoDATETIME_MAGIC, jcoMongoISODate,
     jcoMilliseconds, jcsSkipNulls);
@@ -2258,7 +2710,7 @@ type
   ///  - if jcsSkipNulls is included each SQL <c>NULL</c> null field will be
   ///   skipped. This keeps the JSON tiny.</summary>
   TZJSONComposeOptions = set of TZJSONComposeOption;
-  {$ENDIF USE_SYNCOMMONS}
+  {$ENDIF WITH_COLUMNS_TO_JSON}
 
   /// <summary>
   ///   Rows returned by SQL query.
@@ -3427,6 +3879,10 @@ type
 
     procedure SetFetchSize(Value: Integer);
     function GetFetchSize: Integer;
+    /// <author>EgonHugeist</author>
+    /// <summary>Get the cursor type of this resultset</summary>
+    /// <returns>the CursorLocation of this resultset</returns>
+    function GetCursorLocation: TZCursorLocation;
 
     function GetType: TZResultSetType;
     function GetConcurrency: TZResultSetConcurrency;
@@ -3457,7 +3913,29 @@ type
     procedure UpdateCurrency(ColumnIndex: Integer; const Value: Currency);
     procedure UpdateBigDecimal(ColumnIndex: Integer; const Value: TBCD);
     procedure UpdateGUID(ColumnIndex: Integer; const Value: TGUID);
+    /// <summary>Updates the designated column with a <c>PAnsiChar</c> buffer
+    ///  value. The <c>updateXXX</c> methods are used to update column values in
+    ///  the current row or the insert row.  The <c>updateXXX</c> methods do not
+    ///  update the underlying database; instead the <c>updateRow</c> or
+    ///  <c>insertRow</c> methods are called to update the database.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" an address of the value buffer</param>
+    /// <param>"Len" a reference of the buffer Length variable in bytes.</param>
     procedure UpdatePAnsiChar(ColumnIndex: Integer; Value: PAnsiChar; var Len: NativeUInt);
+    /// <summary>Updates the designated column with a <c>PWideChar</c> buffer
+    ///  value. The <c>updateXXX</c> methods are used to update column values in
+    ///  the current row or the insert row.  The <c>updateXXX</c> methods do not
+    ///  update the underlying database; instead the <c>updateRow</c> or
+    ///  <c>insertRow</c> methods are called to update the database.</summary>
+    /// <param>"ColumnIndex" the first Column is 1, the second is 2, ... unless
+    ///  <c>GENERIC_INDEX</c> is defined. Then the first column is 0, the second
+    ///  is 1. This will change in future to a zero based index. It's recommented
+    ///  to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" an address of the value buffer</param>
+    /// <param>"Len" a reference of the buffer Length variable in words.</param>
     procedure UpdatePWideChar(ColumnIndex: Integer; Value: PWideChar; var Len: NativeUInt);
     procedure UpdateString(ColumnIndex: Integer; const Value: String);
     {$IFNDEF NO_ANSISTRING}
@@ -3530,6 +4008,18 @@ type
     procedure DeleteRow;
     procedure RefreshRow;
     procedure CancelRowUpdates;
+    /// <summary>Moves the cursor to the insert row.  The current cursor
+    ///  position is remembered while the cursor is positioned on the insert
+    ///  row.
+    ///  The insert row is a special row associated with an updatable result
+    ///  set. It is essentially a buffer where a new row may be constructed by
+    ///  calling the <c>updateXXX</c> methods prior to inserting the row into
+    ///  the result set.
+    ///  Only the <c>updateXXX</c>, <c>getXXX</c> and <c>insertRow</c>
+    ///  methods may be called when the cursor is on the insert row. All of the
+    ///  columns in a result set must be given a value each time this method is
+    ///  called before calling <c>insertRow</c>. An <c>updateXXX</c> method must
+    ///  be called before a <c>getXXX</c> method can be called on a column value.</summary>
     procedure MoveToInsertRow;
     procedure MoveToCurrentRow;
 
@@ -3540,14 +4030,23 @@ type
 
     function GetStatement: IZStatement;
 
-    {$IFDEF USE_SYNCOMMONS}
+    {$IFDEF WITH_COLUMNS_TO_JSON}
     procedure ColumnsToJSON(JSONWriter: TJSONWriter; JSONComposeOptions: TZJSONComposeOptions);
-    {$ENDIF USE_SYNCOMMONS}
+    {$ENDIF WITH_COLUMNS_TO_JSON}
   end;
 
   /// <summary>Defines the ResultSet metadata interface.</summary>
   IZResultSetMetadata = interface(IZInterface)
     ['{47CA2144-2EA7-42C4-8444-F5154369B2D7}']
+    /// <author>EgonHugeist</author>
+    procedure AssignColumnInfosTo(ColumnsInfo: TObjectList);
+    /// <summary>Sets the databasemetadata to this object.</summary>
+    /// <param>"Value" a new IZDatabaseMetadata interface</param>
+    procedure SetMetadata(const Value: IZDatabaseMetadata);
+    /// <author>EgonHugeist</author>
+    /// <summary>Indicates whether the metainformations are loaded.</summary>
+    /// <returns><c>true</c> if so; <c>false</c> otherwise</returns>
+    function IsMetadataLoaded: Boolean;
     /// <summary>Maps the given <c>Metadata</c> column name to its
     ///  <c>Metadata</c> column index. First searches with case-sensivity then,
     ///  if nothing matches, a case.insensitive search is performed.
@@ -3829,7 +4328,8 @@ type
 
   TOnLobUpdate = procedure(Field: NativeInt) of object;
   /// <author>EgonHugeist</author>
-  /// <summary>External or internal blob wrapper object.</summary>
+  /// <summary>Defines a external or internal large object (LOB) wrapper
+  ///  interface.</summary>
   IZLob = interface(IZInterface)
     ['{DCF816A4-F21C-4FBB-837B-A12DCF886A6F}']
     function IsEmpty: Boolean;
@@ -3857,6 +4357,10 @@ type
     function GetBuffer(var LocalBuffer: RawByteString; Out Len: NativeUInt): Pointer;
     procedure SetBuffer(Buffer: Pointer; Length: NativeUInt);
 
+    /// <summary>Clones this blob object.</summary>
+    /// <param>"LobStreamMode" the mode the cloned object is used for is one of:
+    ///  <c>lsmRead, lsmWrite, lsmReadWrite</c></param>
+    /// <returns> a cloned blob object.</returns>
     function Clone(LobStreamMode: TZLobStreamMode = lsmRead): IZBlob;
 
     {Clob operations}
@@ -3906,11 +4410,17 @@ type
   /// <summary>Defines the Database notification interface.</summary>
   IZNotification = interface(IZInterface)
     ['{BF785C71-EBE9-4145-8DAE-40674E45EF6F}']
-
+    /// <summary>Gets the event name.</summary>
+    /// <returns>the event name for this notification.</returns>
     function GetEvent: string;
+    /// <summary>Sets a listener to the specified event.</summary>
     procedure Listen;
+    /// <summary>Removes a listener to the specified event.</summary>
     procedure Unlisten;
+    /// <summary>Sends a notification string.</summary>
     procedure DoNotify;
+    /// <summary>Checks for any pending events.</summary>
+    /// <returns>a string with incoming events??</summary>
     function CheckEvents: string;
     /// <summary>Returns the <c>Connection</c> interface
     ///  that produced this <c>Notification</c> object.</summary>

@@ -61,16 +61,15 @@
 {.$DEFINE ZEOS_DISABLE_SQLITE}
 {.$DEFINE ZEOS_DISABLE_ORACLE}
 {.$DEFINE ZEOS_DISABLE_ASA}
+{.$DEFINE ZEOS_DISABLE_SQLANY}
 {.$DEFINE ZEOS_DISABLE_POOLED}
 {.$DEFINE ZEOS_DISABLE_OLEDB}
 {.$DEFINE ZEOS_DISABLE_ODBC}
-// Activate this driver only if you know what you are doing.
-// Currently it only was tested with Delphi XE 7 on Windows.
-{$DEFINE ZEOS_DISABLE_PROXY}
-// Use this only if you know what you are doing. The internal proxy doesn't work.
+{.$DEFINE ZEOS_DISABLE_PROXY}
 {.$DEFINE ZEOS_PROXY_USE_INTERNAL_PROXY}
 
-{.$DEFINE USE_SYNCOMMONS} //enable JSON content support by using SynCommons.pas from Synopse project 
+{.$DEFINE USE_SYNCOMMONS} //enable JSON content support by using SynCommons.pas from Synopse project v1.18
+{.$DEFINE MORMOT2} //enable JSON content support by using mormot.db.core.pas from Synopse project v2+
 
 {.$DEFINE DO_NOT_DERIVE_FROM_EDATABASEERROR} //don't derive Zeos Exceptions from EDatabaseError
 
@@ -168,7 +167,6 @@
           {$UNDEF WITH_UINT64_C1118_ERROR}            //2006+ has no problems to assign code constants for UInt64
           {$UNDEF WITH_MILLISECONDOFTHEYEAR_BUG}      //D7-D005 Bug -> a Int64 Cast of SecondOfTheYear(AValue) is fixed
           {$UNDEF Use_FastCodeFillChar}               //FastCode FillChar() is included since D2006
-          {$DEFINE WITH_DEPRECATED_MESSAGE}            //Compiler supports deprecated messages
           {$DEFINE WITH_DEPRECATED_EXTRACTFIELDNAME}  //DB.pas proc ExtractFieldName String overload is deprecated}
           {$DEFINE BCC32_vtDateTime_ERROR}            //[BCC32 Error] Zvariant.hpp(81): E2019 'TZVariant:: :: :: ()' cannot be declared in an anonymous union http://zeoslib.sourceforge.net/viewtopic.php?f=40&t=3795&start=180
           {$DEFINE WITH_WIDESTRUTILS}                 //WideStrUtils unit introduced.
@@ -187,6 +185,7 @@
 
           {$IF CompilerVersion >= 18.5} //Delphi 2007+
             {$UNDEF VER150BELOW}      //found in ZTestBugCompPostgreSql.pas
+            {$DEFINE WITH_TCOLLECTION_CAPACITY}         //TCollection supports the capacity property
             {$IF CompilerVersion >= 20} //Delphi 2009+
               {$DEFINE TBLOBDATA_IS_TBYTES}             //TBlobdata is an alias for TBytes (FPC uses an AnsiString)
               {$DEFINE WITH_CLASS_CONST}                //compiler supports contants in class type declarations 
@@ -200,6 +199,7 @@
               {$UNDEF USE_FAST_CHARPOS}                 // Since Unicode this function is useless
               {$DEFINE HAVE_UNICODESTRING}
               {$DEFINE WITH_TBOOKMARK}                  // Have TBookmark
+              {$DEFINE WITH_TSTRINGS_TENCODING_LOADFROM}// TStrings.LoadFromFile/LoadFromStream have TEncoding
               {$DEFINE WITH_STSTRINGUNICODE}            // stString is unicodestring.
               {$DEFINE WITH_NEWTOBJECT}                 // allows new methods in TObject (D2009+/FPC 2.4.4)
               {$DEFINE WITH_CHARINSET}                  // D2009's poor substitute for character specific "xx in yy"
@@ -227,6 +227,7 @@
                 {$WEAKLINKRTTI ON}                    //suppress extended RTTI
                 {.$RTTI EXPLICIT METHODS([]) PROPERTIES([]) FIELDS([])} //suppress extended RTTI for some unknown reason we've compilation issues. So enable this define manually!
                 {$DEFINE WITH_TSQLTimeStampOffset}    //The TSQLTimeStampOffset is declared in SqlTimSt.pas
+                {$DEFINE WITH_DEPRECATED_MESSAGE}     //Compiler supports deprecated messages
                 {$UNDEF WITH_INLINE_ANSICOMPARETEXT}  // AnsiCompareText is no more inline declared
                 {$UNDEF WITH_C5242_OR_C4963_INTERNAL_ERROR} //those inlineing errors are resolved 
                 {$DEFINE WITH_PWIDECHAR_STRLEN}       // SysUtils.StrLen supports PWideChar
@@ -238,7 +239,7 @@
                 {$IF CompilerVersion >= 22} //Delphi XE+
                   {$DEFINE WITH_tagVARIANT_UINT64}          // ActivX.tagVariant supports UInt64 Values
                   {$DEFINE TENCODING_HAS_CODEPAGE}          //TEncoding has property CodePage  
-                  {$DEFINE WITH_FORMATSETTINGS}
+                  {$DEFINE WITH_FORMATSETTINGS}             //Unit SysUtils have global FormatSettings
                   {$DEFINE WITH_UNICODEFROMLOCALECHARS}
                   {$DEFINE WITH_RTLCONSTS_SInvalidGuidArray}
                   {$DEFINE HAVE_BCDTOSTR_FORMATSETTINGS} //(Try)BCDToStr/StrToBCD has parameter FormatSettings
@@ -338,6 +339,7 @@
                           {$ENDIF}  
                           {$IF CompilerVersion >= 27} //Delphi XE6+
                             {$IF CompilerVersion >= 28} //Delphi XE7+
+							  {$DEFINE WITH_NETENCODING}
                               {$DEFINE WITH_OMNIXML}
                               {$UNDEF WITH_DBTABLES} //M.A. In Delphi XE7 no BDE
                               {$DEFINE WITH_LIFECYCLES} //TDataSet.DefaultFields is deprecated use LifeCycles instead							  
@@ -526,6 +528,11 @@
 {$DEFINE ENABLE_ASA}
 {$ENDIF}
 
+// Enables SQLAnywhere support in TZConnection/TZDataset
+{$IFNDEF ZEOS_DISABLE_SQLANY}
+{$DEFINE ENABLE_SQLANY}
+{$ENDIF}
+
 // Enables OleDB support in TZConnection/TZDataset
 {$IF defined(MSWINDOWS)}
   {$IF not defined(ZEOS_DISABLE_OLEDB)}
@@ -543,6 +550,13 @@
 // Enables Pooled connection support for all enabled db drivers in TZConnection/TZDataset
 {$IFNDEF ZEOS_DISABLE_POOLED}
 {$DEFINE ENABLE_POOLED}
+{$ENDIF}
+
+// Enables Webservice connection support
+{$IFNDEF ZEOS_DISABLE_PROXY}
+  {$IF NOT DEFINED(FPC) AND DEFINED(WITH_NETENCODING)}
+    {$DEFINE ENABLE_PROXY}
+  {$IFEND}
 {$ENDIF}
 
 // Prevents loading default libmysql.dll
@@ -597,6 +611,11 @@
 //run ZSysUtils benchmarks
 {.$DEFINE BENCHMARK}
 
-//stop incrementing column/param index -> always start on [0]
-{.$DEFINE GENERIC_INDEX}
+{$IF defined(USE_SYNCOMMONS) and defined(MORMOT2)}
+  {$UNDEF USE_SYNCOMMONS}
+{$IFEND}
+
+{$IF defined(USE_SYNCOMMONS) or defined(MORMOT2)}
+  {$DEFINE WITH_COLUMNS_TO_JSON} //enable JSON content support serialization used by mORMot
+{$IFEND}
 

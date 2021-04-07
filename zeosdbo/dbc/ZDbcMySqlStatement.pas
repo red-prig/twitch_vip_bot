@@ -65,7 +65,37 @@ uses
 type
   TMySQLPreparable = (myDelete, myInsert, myUpdate, mySelect, mySet, myCall);
   TOpenCursorCallback = procedure of Object;
-  TMyStmtHandleStatus = (myhsUnknown, myhsAllocated, myhsFailed, myhsExecutedPrepared, myhsExecutedOnce);
+  TMyStmtHandleStatus = (myhsUnknown, myhsAllocated, myhsPrepared, myhsExecutedPrepared, myhsExecutedOnce);
+
+  /// <author>EgonHugeist</author>
+  /// <summary>Defines a reference of the TZMySQLBindValue record</summary>
+  PZMySQLBindValue = ^TZMySQLBindValue;
+  /// <author>EgonHugeist</author>
+  /// <summary>Defines a BindValue record which widened the TZBindValue by a
+  ///  question mark position indicator</summary>
+  TZMySQLBindValue = record
+    /// <summary>the TZQMarkPosBindValue record</summary>
+    BindValue:  TZQMarkPosBindValue;
+    /// <summary>Represents the value as a raw string</summary>
+    EmulatedValue: RawByteString;
+  end;
+
+  /// <author>EgonHugeist</author>
+  /// <summary>Implements a MySQL Bindlist object</summary>
+  TZMySQLBindList = class(TZQuestionMarkBindList)
+  protected
+    /// <summary>Get the size of the custom element of this class.</summary>
+    /// <returns>the size of the custom element.</returns>
+    class function GetElementSize: Integer; override;
+    /// <summary>Notify about an action which will or was performed.
+    ///  if ElementNeedsFinalize is False the method will never be called.
+    ///  Otherwise you may finalize managed types beeing part of each element,
+    ///  such as Strings, Objects etc.</summary>
+    /// <param>"Ptr" the address of the element an action happens for.</param>
+    /// <param>"Index" the index of the element.</param>
+    /// <returns>The address or raises an EListError if the Index is invalid.</returns>
+    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
+  end;
 
   TZAbstractMySQLPreparedStatement = class(TZRawParamDetectPreparedStatement)
   private
@@ -88,7 +118,6 @@ type
     FMYSQL_BINDs: Pointer; //a buffer for N-params * mysql_bind-record size which are changing from version to version
     FMYSQL_aligned_BINDs: PMYSQL_aligned_BINDs; //offset structure to set all the mysql info's aligned to it's field-structures
     FOpenCursorCallback: TOpenCursorCallback;
-    FEmulatedValues: TRawByteStringDynArray;
     FEmulatedParams: Boolean; //just use emulated String params?
     FLastWasOutParams: Boolean;
     FMinExecCount2Prepare: Integer; //how many executions must be done to fall into a real prepared mode?
@@ -105,6 +134,8 @@ type
     procedure FlushPendingResults;
     procedure InternalRealPrepare;
     function CheckPrepareSwitchMode: Boolean;
+    ///<summary>Composes an sql query with emultated parameters.</summary>
+    ///<returns>the generated sql.</summary>
     function ComposeRawSQLQuery: RawByteString;
     function IsOutParamResult: Boolean;
     procedure ClearCallResultCache;
@@ -118,6 +149,9 @@ type
     procedure InternalSetInParamCount(NewParamCount: Integer);
     procedure CheckParameterIndex(var Value: Integer); override;
     procedure SetBindCapacity(Capacity: Integer); override;
+    procedure SetParamCount(NewParamCount: Integer); override;
+    /// <summary>Removes the current connection reference from this object.</summary>
+    /// <remarks>This method will be called only if the object is garbage.</remarks>
     procedure ReleaseConnection; override;
   public
     constructor Create(const Connection: IZMySQLConnection;
@@ -135,19 +169,69 @@ type
     ///  generating method. So we start from the premisse you have your own
     ///  error handling in any kind.</param>
     procedure ReleaseImmediat(const Sender: IImmediatelyReleasable; var AError: EZSQLConnectionLost); override;
+    /// <summary>Register the parameter properties. This method is required for
+    ///  all InOut, Out or Result parameters to access them afterwards. It's not
+    ///  requiered to register In params.</summary>
+    /// <param>"ParameterIndex" the first parameter is 0, the second is 1, ...
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"SQLType" the parameters SQLType.</param>
+    /// <param>"ParamType" the TZProcedureColumnType of the parameter.</param>
+    /// <param>"PrecisionOrSize" either the Precision for Numeric types or the
+    ///  Length for strings or bytes. The value is ignored for all other types.</param>
+    /// <param>"Scale" the numeric or second-fraction scale of the parameter.</param>
     procedure RegisterParameter(ParameterIndex: Integer; SQLType: TZSQLType;
-      ParamType: TZProcedureColumnType; const Name: String = ''; {%H-}PrecisionOrSize: LengthInt = 0;
-      {%H-}Scale: LengthInt = 0); override;
-
+      ParamType: TZProcedureColumnType; const Name: String = ''; PrecisionOrSize: LengthInt = 0;
+      Scale: LengthInt = 0); override;
+    /// <summary>prepares the statement on the server if minimum execution
+    ///  count have been reached</summary>
     procedure Prepare; override;
+    /// <summary>Unprepares the statement, deallocates all bindings and handles</summary>
     procedure Unprepare; override;
+    /// <summary>Clears the current parameter values immediately.
+    ///  In general, parameter values remain in force for repeated use of a
+    ///  statement. Setting a parameter value automatically clears its
+    ///  previous value.  However, in some cases it is useful to immediately
+    ///  release the resources used by the current parameter values; this can
+    ///  be done by calling the method <c>ClearParameters</c>.</summary>
     procedure ClearParameters; override;
-
+    /// <summary>Executes the SQL query in this <c>PreparedStatement</c> object
+    ///  and returns the result set generated by the query.</summary>
+    /// <returns>a <c>IZResultSet</c> interface that contains the data produced
+    ///  by the query; never <c>nil</c></returns>
     function ExecuteQueryPrepared: IZResultSet; override;
+    /// <summary>Executes the SQL INSERT, UPDATE or DELETE statement in this
+    ///  <c>PreparedStatement</c> object. In addition, SQL statements that
+    ///  return nothing, such as SQL DDL statements, can be executed.</summary>
+    /// <returns>either the row count for INSERT, UPDATE or DELETE statements;
+    ///  or -1 for SQL statements that return nothing</returns>
     function ExecuteUpdatePrepared: Integer; override;
+    /// <summary>Executes any kind of SQL statement. Some prepared statements
+    ///  return multiple results; the <c>ExecutePrepared</c> method handles these
+    ///  complex statements as well as the simpler form of statements handled
+    ///  by the methods <c>ExecuteQuery</c> and <c>ExecuteUpdate</c>.
+    ///  see IStatement.execute</summary>
+    /// <returns>True if a ResultSet is available otherwise false.</returns>
     function ExecutePrepared: Boolean; override;
-
+    /// <summary>Moves to a <c>Statement</c> object's next result.  It returns
+    ///  <c>true</c> if this result is a <c>ResultSet</c> object.
+    ///  This method also implicitly closes any current <c>ResultSet</c>
+    ///  object obtained with the method <c>getResultSet</c>.
+    ///
+    ///  There are no more results when the following is true:
+    ///  <code>(not GetMoreResults and (GetUpdateCount = -1)</code>
+    /// </summary>
+    /// <returns><c>true</c> if the next result is a <c>ResultSet</c> object;
+    ///  <c>false</c> if it is an update count or there are no more results
+    /// </returns>
+    /// <seealso cref="Execute">Execute</seealso>
     function GetMoreResults: Boolean; override;
+    /// <summary>Returns the current result as an update count;
+    ///  if the result is a <c>ResultSet</c> object or there are no more results, -1
+    ///  is returned. This method should be called only once per result.
+    /// </summary>
+    /// <returns>the current result as an update count; -1 if the current result is a
+    ///  <c>ResultSet</c> object or there are no more results</returns>
+    /// <seealso cref="Execute">Execute</seealso>
     function GetUpdateCount: Integer; override;
   end;
 
@@ -157,6 +241,7 @@ type
     procedure BindUInteger(Index: Integer; SQLType: TZSQLType; Value: NativeUInt);
     procedure InternalBindDouble(Index: Integer; SQLType: TZSQLType; const Value: Double);
   protected
+    class function GetBindListClass: TZBindListClass; override;
     procedure BindBinary(Index: Integer; SQLType: TZSQLType; Buf: Pointer; Len: LengthInt); override;
     procedure BindLob(Index: Integer; SQLType: TZSQLType; const Value: IZBlob); override;
     procedure BindRawStr(Index: Integer; Buf: PAnsiChar; Len: LengthInt); override;
@@ -166,6 +251,15 @@ type
   public
     //a performance thing: direct dispatched methods for the interfaces :
     //https://stackoverflow.com/questions/36137977/are-interface-methods-always-virtual
+  public
+    /// <summary>Sets the designated parameter to a <c>boolean</c> value.
+    ///  The driver converts this to a SQL <c>Ordinal</c> value when it sends it
+    ///  to the database.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
     procedure SetBoolean(Index: Integer; Value: Boolean);
     /// <summary>Sets the designated parameter to SQL <c>NULL</c>.
     ///  <B>Note:</B> You must specify the parameter's SQL type. </summary>
@@ -175,8 +269,22 @@ type
     ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
     /// <param>"SQLType" the SQL type code defined in <c>ZDbcIntfs.pas</c></param>
     procedure SetNull(ParameterIndex: Integer; SQLType: TZSQLType);
+    /// <summary>Sets the designated parameter to a <c>Byte</c> value.
+    ///  If not supported by provider, the driver converts this to a SQL
+    ///  <c>Ordinal</c> value when it sends it to the database.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
     procedure SetByte(ParameterIndex: Integer; Value: Byte);
     procedure SetShort(ParameterIndex: Integer; Value: ShortInt);
+    /// <summary>Sets the designated parameter to a <c>Word</c> value.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
     procedure SetWord(ParameterIndex: Integer; Value: Word);
     procedure SetSmall(ParameterIndex: Integer; Value: SmallInt);
     procedure SetUInt(ParameterIndex: Integer; Value: Cardinal);
@@ -187,11 +295,17 @@ type
     procedure SetFloat(Index: Integer; Value: Single);
     procedure SetDouble(Index: Integer; const Value: Double);
     procedure SetCurrency(Index: Integer; const Value: Currency);
-    procedure SetBigDecimal(Index: Integer; const Value: TBCD);
+    /// <summary>Sets the designated parameter to a <c>BigDecimal(TBCD)</c> value.</summary>
+    /// <param>"ParameterIndex" the first parameter is 1, the second is 2, ...
+    ///  unless <c>GENERIC_INDEX</c> is defined. Then the first parameter is 0,
+    ///  the second is 1. This will change in future to a zero based index.
+    ///  It's recommented to use an incrementation of FirstDbcIndex.</param>
+    /// <param>"Value" the parameter value</param>
+    procedure SetBigDecimal(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD);
 
-    procedure SetDate(Index: Integer; const Value: TZDate); overload;
-    procedure SetTime(Index: Integer; const Value: TZTime); overload;
-    procedure SetTimestamp(Index: Integer; const Value: TZTimeStamp); overload;
+    procedure SetDate(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate); overload;
+    procedure SetTime(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime); overload;
+    procedure SetTimestamp(Index: Integer; {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp); overload;
     procedure SetBytes(Index: Integer; Value: PByte; Len: NativeUInt); reintroduce; overload;
 
     procedure SetDataArray(ParameterIndex: Integer; const Value; const SQLType: TZSQLType; const VariantType: TZVariantType = vtNull); override;
@@ -209,16 +323,46 @@ type
     function CreateExecutionStatement(const StoredProcName: String): TZAbstractPreparedStatement; override;
   end;
 
+  /// <author>EgonHugeist</author>
+  /// <summary>Defines a reference of the TZMySQLBindValue record</summary>
+  PZMySQLBindValue56down = ^TZMySQLBindValue56down;
+  /// <author>EgonHugeist</author>
+  /// <summary>Defines a BindValue record which widened the TZMySQLBindValue56
+  ///  by a parameter name</summary>
+  TZMySQLBindValue56down = record
+    /// <summary>the TZMySQLBindValue record</summary>
+    BindValue:  TZMySQLBindValue;
+    /// <summary>The Parametername</summary>
+    ParamName: String;
+    PrecisionOrLen: Integer;
+    Scale: Integer;
+  end;
+
+  /// <author>EgonHugeist</author>
+  /// <summary>Implements a MySQL Bindlist object</summary>
+  TZMySQLBindList56down = class(TZMySQLBindList)
+  protected
+    /// <summary>Get the size of the custom element of this class.</summary>
+    /// <returns>the size of the custom element.</returns>
+    class function GetElementSize: Integer; override;
+    /// <summary>Notify about an action which will or was performed.
+    ///  if ElementNeedsFinalize is False the method will never be called.
+    ///  Otherwise you may finalize managed types beeing part of each element,
+    ///  such as Strings, Objects etc.</summary>
+    /// <param>"Ptr" the address of the element an action happens for.</param>
+    /// <param>"Index" the index of the element.</param>
+    /// <returns>The address or raises an EListError if the Index is invalid.</returns>
+    procedure Notify(Ptr: Pointer; Action: TListNotification); override;
+  end;
+
   TZMySQLCallableStatement56down = class(TZAbstractCallableStatement_A,
     IZCallableStatement)
   private
     FPlainDriver: TZMySQLPLainDriver;
-    FInParamNames: TStringDynArray;
-    FInParamPrecisionArray, FInParamScaleArray: TIntegerDynArray;
     FStmt, FGetOutParmStmt: TZMySQLPreparedStatement;
     procedure CreateOutParamResultSet;
   protected
-    procedure SetParamCount(NewParamCount: Integer); override;
+    class function GetBindListClass: TZBindListClass; override;
     function CreateExecutionStatement(const StoredProcName: String): TZAbstractPreparedStatement; override;
     procedure BindInParameters; override;
   public
@@ -326,27 +470,39 @@ end;
 
 function TZAbstractMySQLPreparedStatement.ComposeRawSQLQuery: RawByteString;
 var
-  I: Integer;
-  ParamIndex: Integer;
+  I, LastPos, L: Cardinal;
   SQLWriter: TZRawSQLStringWriter;
+  P: PAnsiChar;
+  BindValue: PZBindValue;
+  QMarkBindValue: PZQMarkPosBindValue absolute BindValue;
+  MySQLBindValue: PZMySQLBindValue absolute BindValue;
 begin
-  if (BindList.Count > 0) and (BindList[0].ParamType = pctReturn)
-  then ParamIndex := 1
-  else ParamIndex := 0;
-  Result := '';
-  SQLWriter := TZRawSQLStringWriter.Create(Length(FASQL)+(BindList.Count shl 5));
-  try
-    for I := 0 to High(FCachedQueryRaw) do
-      if IsParamIndex[i] then begin
-        if BindList[ParamIndex].BindType = zbtNull
-        then SQLWriter.AddText('null', Result)
-        else SQLWriter.AddText(FEmulatedValues[ParamIndex], Result);
-        Inc(ParamIndex);
-      end else
-        SQLWriter.AddText(FCachedQueryRaw[I], Result);
-    SQLWriter.Finalize(Result);
-  finally
-    FreeAndNil(SQLWriter);
+  if BindList.Count = 0
+  then Result := FASQL
+  else begin
+    Result := EmptyRaw;
+    P := Pointer(FASQL);
+    L := Length(FASQL);
+    LastPos := 0;
+    I := L + Cardinal(BindList.Count) shl 5; //add 32 bytes/param by default
+    SQLWriter := TZRawSQLStringWriter.Create(I);
+    try
+      for I := 0 to BindList.Count -1 do begin
+        BindValue := BindList[I];
+        if QMarkBindValue.QMarkPosition > 0 then begin
+          SQLWriter.AddText(P+LastPos, QMarkBindValue.QMarkPosition - LastPos, Result);
+          LastPos := QMarkBindValue.QMarkPosition + 1;
+        end;
+        if BindValue.ParamType <> pctReturn then
+          if BindValue.BindType = zbtNull
+          then SQLWriter.AddText('null', Result)
+          else SQLWriter.AddText(MySQLBindValue.EmulatedValue, Result);
+      end;
+      SQLWriter.AddText(P+LastPos, L - LastPos, Result);
+      SQLWriter.Finalize(Result);
+    finally
+      FreeAndNil(SQLWriter);
+    end;
   end;
 end;
 
@@ -392,10 +548,6 @@ begin
   FChunkSize := StrToInt(DefineStatementParameter(Self, DSProps_ChunkSize, '4096'));
 end;
 
-{**
-  prepares the statement on the server if minimum execution
-  count have been reached
-}
 procedure TZAbstractMySQLPreparedStatement.Prepare;
 begin
   FlushPendingResults;
@@ -405,11 +557,8 @@ begin
     InternalRealPrepare;
 end;
 
-{**
-  unprepares the statement, deallocates all bindings and handles
-}
 procedure TZAbstractMySQLPreparedStatement.Unprepare;
-var status: Integer;
+var //status: Integer;
   ParamCount: Integer;
 begin
   if FCallResultCache <> nil then
@@ -424,18 +573,19 @@ begin
     if not FEmulatedParams and (FMYSQL_STMT <> nil) then begin
       //cancel all pending results:
       //https://mariadb.com/kb/en/library/mysql_stmt_close/
-      status := FPlainDriver.mysql_stmt_close(FMYSQL_STMT);
-      try
+      {status := EH: Commented out, this leads to some memleaks if libmariadb is vinny nilly with its own handles}
+        FPlainDriver.mysql_stmt_close(FMYSQL_STMT);
+      {try
         if status <> 0 then
           FMySQLConnection.HandleErrorOrWarning(lcUnprepStmt, FMYSQL_STMT,
             'mysql_stmt_close', IImmediatelyReleasable(FWeakImmediatRelPtr));
-      finally
+      finally}
         FMYSQL_STMT := nil;
         FMyHandleStatus := myhsUnknown;
         if ParamCount > 0 then
           ReallocBindBuffer(FMYSQL_BINDs, FMYSQL_aligned_BINDs, FBindOffset,
             ParamCount*Ord(FMYSQL_aligned_BINDs<>nil), 0, 1);
-      end;
+      //end;
     end else if (ParamCount > 0) and (FMYSQL_BINDs <> nil) then //switch mode did alloc mem
       ReallocBindBuffer(FMYSQL_BINDs, FMYSQL_aligned_BINDs, FBindOffset,
         ParamCount*Ord(FMYSQL_aligned_BINDs<>nil), 0, 1);
@@ -451,21 +601,6 @@ begin
   end;
 end;
 
-{**
-  Moves to a <code>Statement</code> object's next result.  It returns
-  <code>true</code> if this result is a <code>ResultSet</code> object.
-  This method also implicitly closes any current <code>ResultSet</code>
-  object obtained with the method <code>getResultSet</code>.
-
-  <P>There are no more results when the following is true:
-  <PRE>
-        <code>(!getMoreResults() && (getUpdateCount() == -1)</code>
-  </PRE>
-
- @return <code>true</code> if the next result is a <code>ResultSet</code> object;
-   <code>false</code> if it is an update count or there are no more results
- @see #execute
-}
 function TZAbstractMySQLPreparedStatement.GetMoreResults: Boolean;
 var status: Integer;
   FieldCount: UInt;
@@ -568,8 +703,7 @@ begin
       Result.BeforeFirst;
     end;
   end else begin
-    { circumvent a mysql bug: the use_result has fetch error on the outparams for the lob types }
-    if (TokenMatchIndex <> Ord(myCall)) and (FUseResult and not FLastWasOutParams)//server cursor?
+    if FUseResult //server cursor?
     then NativeResultSet := TZMySQL_Use_ResultSet.Create(Self, SQL, FMySQLConnection,
       False, @FMYSQL_STMT, MYSQL_ColumnsBinding , nil, FOpenCursorCallback)
     else NativeResultSet := TZMySQL_Store_ResultSet.Create(Self, SQL, FMySQLConnection,
@@ -631,15 +765,21 @@ begin
     SQLType := TZSQLType(Ord(SQLType)-1);
   inherited RegisterParameter(ParameterIndex, SQLType, ParamType, Name, PrecisionOrSize, Scale);
   CheckParameterIndex(ParameterIndex);
-  if OldCount <> BindList.Count then
-    if not FEmulatedParams then begin
+  if not FEmulatedParams then begin
+    if OldCount <> BindList.Count then begin
       ReallocBindBuffer(FMYSQL_BINDs, FMYSQL_aligned_BINDs, FBindOffset,
         OldCount, BindList.Count, 1);
       {$R-}
       FMYSQL_aligned_BINDs[ParameterIndex].is_null_address^ := 1;
       {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
-    end else
-      SetLength(FEmulatedValues, BindList.Count);
+    end;
+    if ParamType = pctOut then
+      if SQLType in [stString, stUnicodestring] then
+        PrecisionOrSize := PrecisionOrSize * ConSettings.ClientCodePage.CharWidth;
+      {$R-}
+      InitBuffer(SQLType, ParameterIndex, @FMYSQL_aligned_BINDs[ParameterIndex], PrecisionOrSize);
+      {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
+  end;
 end;
 
 procedure TZAbstractMySQLPreparedStatement.ReleaseConnection;
@@ -664,10 +804,17 @@ begin
   OldCapacity := Bindlist.Capacity;
   inherited SetBindCapacity(Capacity);
   if OldCapacity <> BindList.Capacity then
-    if (FMYSQL_STMT = nil)
-    then SetLength(FEmulatedValues, BindList.Capacity)
-    else ReallocBindBuffer(FMYSQL_BINDs, FMYSQL_aligned_BINDs, FBindOffset,
+    if (FMYSQL_STMT <> nil) then
+      ReallocBindBuffer(FMYSQL_BINDs, FMYSQL_aligned_BINDs, FBindOffset,
         OldCapacity, BindList.Capacity, 1);
+end;
+
+procedure TZAbstractMySQLPreparedStatement.SetParamCount(
+  NewParamCount: Integer);
+begin
+  if (BindList.Capacity > 0) and (NewParamCount = BindList.Capacity +1)
+  then TZMySQLBindList(BindList).Insert(0)
+  else inherited SetParamCount(NewParamCount);
 end;
 
 procedure TZAbstractMySQLPreparedStatement.UnPrepareInParameters;
@@ -706,13 +853,6 @@ begin
       end;
 end;
 
-{**
-  Executes the SQL query in this <code>PreparedStatement</code> object
-  and returns the result set generated by the query.
-
-  @return a <code>ResultSet</code> object that contains the data produced by the
-    query; never <code>null</code>
-}
 function TZAbstractMySQLPreparedStatement.ExecuteQueryPrepared: IZResultSet;
 var
   FieldCount: UInt;
@@ -757,33 +897,35 @@ begin
   RestartTimer;
   if FEmulatedParams or (FMYSQL_STMT = nil)
   then Result := ExecuteEmulated
-  else begin
-    FMyHandleStatus := myhsFailed;
-    if (FPlainDriver.mysql_stmt_execute(FMYSQL_STMT) = 0) then begin
-      FMyHandleStatus := myhsExecutedPrepared;
-      FieldCount := FPlainDriver.mysql_stmt_field_count(FMYSQL_STMT);
-      if FieldCount = 0
-      then LastUpdateCount := FPlainDriver.mysql_stmt_affected_rows(FMYSQL_STMT)
-      else LastUpdateCount := -1;
-      { Logging Execution }
-      if DriverManager.HasLoggingListener then
-        DriverManager.LogMessage(lcExecPrepStmt,Self);
-      if (TokenMatchIndex = Ord(myCall)) or BindList.HasOutParam or BindList.HasInOutParam then begin
-        FetchCallResults(FieldCount,LastUpdateCount);
-        Result := GetFirstResultSet;
-        if BindList.HasOutParam or BindList.HasInOutParam then
-          FOutParamResultSet := GetLastResultSet;
-      end else if FieldCount = 0 then begin
-        while GetMoreResults do
-          if FLastResultSet <> nil then begin
-            Result := FLastResultSet;
-            FLastResultSet := nil;
-            FOpenResultset := Pointer(Result);
-          end
-      end else
-        Result := CreateResultSet(SQL, 0, FieldCount);
-      FOpenResultSet := Pointer(Result);
+  else if (FPlainDriver.mysql_stmt_execute(FMYSQL_STMT) = 0) then begin
+    if (FMyHandleStatus = myhsPrepared)
+    then FMyHandleStatus := myhsExecutedPrepared
+    else FMyHandleStatus := myhsExecutedOnce;
+    FieldCount := FPlainDriver.mysql_stmt_field_count(FMYSQL_STMT);
+    if FieldCount = 0
+    then LastUpdateCount := FPlainDriver.mysql_stmt_affected_rows(FMYSQL_STMT)
+    else LastUpdateCount := -1;
+    { Logging Execution }
+    if DriverManager.HasLoggingListener then
+      DriverManager.LogMessage(lcExecPrepStmt,Self);
+    if (TokenMatchIndex = Ord(myCall)) or BindList.HasOutParam or BindList.HasInOutParam then begin
+      FetchCallResults(FieldCount,LastUpdateCount);
+      Result := GetFirstResultSet;
+      if BindList.HasOutParam or BindList.HasInOutParam then
+        FOutParamResultSet := GetLastResultSet;
+    end else if FieldCount = 0 then begin
+      while GetMoreResults do
+        if FLastResultSet <> nil then begin
+          Result := FLastResultSet;
+          FLastResultSet := nil;
+          FOpenResultset := Pointer(Result);
+        end
     end else
+      Result := CreateResultSet(SQL, 0, FieldCount);
+    FOpenResultSet := Pointer(Result);
+  end else begin
+    Result := nil;
+    if not FMySQLConnection.IsSilentError then
       FMySQLConnection.HandleErrorOrWarning(lcExecPrepStmt, FMYSQL_STMT,
         SQL, IImmediatelyReleasable(FWeakImmediatRelPtr));
   end;
@@ -793,16 +935,6 @@ begin
     FOutParamResultSet := Result;
 end;
 
-{**
-  Executes the SQL INSERT, UPDATE or DELETE statement
-  in this <code>PreparedStatement</code> object.
-  In addition,
-  SQL statements that return nothing, such as SQL DDL statements,
-  can be executed.
-
-  @return either the row count for INSERT, UPDATE or DELETE statements;
-  or 0 for SQL statements that return nothing
-}
 function TZAbstractMySQLPreparedStatement.ExecuteUpdatePrepared: Integer;
   procedure ExecEmulated;
   var FieldCount: ULong;
@@ -836,29 +968,29 @@ begin
   RestartTimer;
   if FEmulatedParams or (FMYSQL_STMT = nil)
   then ExecEmulated
-  else begin
-    FMyHandleStatus := myhsFailed;
-    if (FPlainDriver.mysql_stmt_execute(FMYSQL_STMT) = 0) then begin
-      FMyHandleStatus := myhsExecutedPrepared;
-      FieldCount := FplainDriver.mysql_stmt_field_count(FMYSQL_STMT);
-      if FieldCount = 0
-      then LastUpdateCount := FPlainDriver.mysql_stmt_affected_rows(FMYSQL_STMT)
-      else LastUpdateCount := -1;
-      { Logging Execution }
-      if DriverManager.HasLoggingListener then
-        DriverManager.LogMessage(lcExecPrepStmt,Self);
-      if (TokenMatchIndex = Ord(myCall)) or BindList.HasOutParam or BindList.HasInOutParam then begin
-        FetchCallResults(FieldCount,LastUpdateCount);
-        if BindList.HasOutParam or BindList.HasInOutParam then
-          FOutParamResultSet := GetLastResultSet;
-      end else if FieldCount > 0 then
-        if BindList.HasReturnParam //retrieve outparam
-        then FOutParamResultSet := CreateResultSet(SQL, 0, FieldCount)
-        else LastResultSet := CreateResultSet(SQL, 0, FieldCount);
-    end else
-      FMySQLConnection.HandleErrorOrWarning(lcExecPrepStmt, FMYSQL_STMT,
-        SQL, IImmediatelyReleasable(FWeakImmediatRelPtr));
-  end;
+  else if (FPlainDriver.mysql_stmt_execute(FMYSQL_STMT) = 0) then begin
+    if FMyHandleStatus = myhsPrepared
+    then FMyHandleStatus := myhsExecutedPrepared
+    else FMyHandleStatus := myhsExecutedOnce;
+
+    FieldCount := FplainDriver.mysql_stmt_field_count(FMYSQL_STMT);
+    if FieldCount = 0
+    then LastUpdateCount := FPlainDriver.mysql_stmt_affected_rows(FMYSQL_STMT)
+    else LastUpdateCount := -1;
+    { Logging Execution }
+    if DriverManager.HasLoggingListener then
+      DriverManager.LogMessage(lcExecPrepStmt,Self);
+    if (TokenMatchIndex = Ord(myCall)) or BindList.HasOutParam or BindList.HasInOutParam then begin
+      FetchCallResults(FieldCount,LastUpdateCount);
+      if BindList.HasOutParam or BindList.HasInOutParam then
+        FOutParamResultSet := GetLastResultSet;
+    end else if FieldCount > 0 then
+      if BindList.HasReturnParam //retrieve outparam
+      then FOutParamResultSet := CreateResultSet(SQL, 0, FieldCount)
+      else LastResultSet := CreateResultSet(SQL, 0, FieldCount);
+  end else
+    FMySQLConnection.HandleErrorOrWarning(lcExecPrepStmt, FMYSQL_STMT,
+      SQL, IImmediatelyReleasable(FWeakImmediatRelPtr));
   Result := LastUpdateCount;
 end;
 
@@ -930,14 +1062,6 @@ jmpCheckErr:
     end;
 end;
 
-{**
-  Executes any kind of SQL statement.
-  Some prepared statements return multiple results; the <code>execute</code>
-  method handles these complex statements as well as the simpler
-  form of statements handled by the methods <code>executeQuery</code>
-  and <code>executeUpdate</code>.
-  @see Statement#execute
-}
 function TZAbstractMySQLPreparedStatement.ExecutePrepared: Boolean;
 var
   FieldCount: UInt;
@@ -972,30 +1096,29 @@ begin
   RestartTimer;
   if FEmulatedParams or (FMYSQL_STMT = nil)
   then ExecuteEmulated
-  else begin
-    FMyHandleStatus := myhsFailed;
-    if FPlainDriver.mysql_stmt_execute(FMYSQL_STMT) = 0 then begin
-      FMyHandleStatus := myhsExecutedPrepared;
-      FieldCount := FPlainDriver.mysql_stmt_field_count(FMYSQL_STMT);
-      if FieldCount = 0 // we can call this function if fielcount is zero only
-      then LastUpdateCount := FPlainDriver.mysql_stmt_affected_rows(FMYSQL_STMT)
-      else LastUpdateCount := -1;
-      if DriverManager.HasLoggingListener then
-        DriverManager.LogMessage(lcExecPrepStmt,Self);
-      if (TokenMatchIndex = Ord(myCall)) or BindList.HasOutParam or BindList.HasInOutParam then begin
-        FetchCallResults(FieldCount,LastUpdateCount);
-        if BindList.HasOutParam or BindList.HasInOutParam then
-          FOutParamResultSet := GetLastResultSet;
-        if FieldCount > 0
-        then LastResultSet := GetFirstResultSet
-        else LastResultSet := nil;
-      end else begin if FieldCount > 0
-        then LastResultSet := CreateResultSet(SQL, 0, FieldCount)
-        else LastResultSet := nil;
-      end;
-    end else FMySQLConnection.HandleErrorOrWarning(lcExecPrepStmt, FMYSQL_STMT,
-      SQL, IImmediatelyReleasable(FWeakImmediatRelPtr));
-  end;
+  else if FPlainDriver.mysql_stmt_execute(FMYSQL_STMT) = 0 then begin
+    if FMyHandleStatus = myhsPrepared
+    then FMyHandleStatus := myhsExecutedPrepared
+    else FMyHandleStatus := myhsExecutedOnce;
+    FieldCount := FPlainDriver.mysql_stmt_field_count(FMYSQL_STMT);
+    if FieldCount = 0 // we can call this function if fielcount is zero only
+    then LastUpdateCount := FPlainDriver.mysql_stmt_affected_rows(FMYSQL_STMT)
+    else LastUpdateCount := -1;
+    if DriverManager.HasLoggingListener then
+      DriverManager.LogMessage(lcExecPrepStmt,Self);
+    if (TokenMatchIndex = Ord(myCall)) or BindList.HasOutParam or BindList.HasInOutParam then begin
+      FetchCallResults(FieldCount,LastUpdateCount);
+      if BindList.HasOutParam or BindList.HasInOutParam then
+        FOutParamResultSet := GetLastResultSet;
+      if FieldCount > 0
+      then LastResultSet := GetFirstResultSet
+      else LastResultSet := nil;
+    end else begin if FieldCount > 0
+      then LastResultSet := CreateResultSet(SQL, 0, FieldCount)
+      else LastResultSet := nil;
+    end;
+  end else FMySQLConnection.HandleErrorOrWarning(lcExecPrepStmt, FMYSQL_STMT,
+    SQL, IImmediatelyReleasable(FWeakImmediatRelPtr));
   if BindList.HasReturnParam then begin
     FOutParamResultset := Connection.GetMetadata.CloneCachedResultSet(FLastResultSet);
     if FLastResultSet.GetType = rtForwardOnly then
@@ -1004,15 +1127,6 @@ begin
   Result := Assigned(LastResultSet);
 end;
 
-{**
-  Returns the current result as an update count;
-  if the result is a <code>ResultSet</code> object or there are no more results, -1
-  is returned. This method should be called only once per result.
-
-  @return the current result as an update count; -1 if the current result is a
-    <code>ResultSet</code> object or there are no more results
-  @see #execute
-}
 function TZAbstractMySQLPreparedStatement.GetUpdateCount: Integer;
 begin
   Result := inherited GetUpdateCount;
@@ -1146,6 +1260,7 @@ begin
 end;
 
 procedure TZAbstractMySQLPreparedStatement.InternalRealPrepare;
+var I: Integer;
 begin
   if (FMYSQL_STMT = nil) then
     FMYSQL_STMT := FPlainDriver.mysql_stmt_init(FPMYSQL^);
@@ -1154,6 +1269,7 @@ begin
   if (FPlainDriver.mysql_stmt_prepare(FMYSQL_STMT, Pointer(FASQL), length(FASQL)) <> 0) then
     FMySQLConnection.HandleErrorOrWarning(lcPrepStmt, FMYSQL_STMT, SQL,
       IImmediatelyReleasable(FWeakImmediatRelPtr));
+  FMyHandleStatus := myhsPrepared;
   //see user comment: http://dev.mysql.com/doc/refman/5.0/en/mysql-stmt-fetch.html
   //"If you want work with more than one statement simultaneously, anidated select,
   //for example, you must declare CURSOR_TYPE_READ_ONLY the statement after just prepared this.!"
@@ -1163,14 +1279,14 @@ begin
       if Assigned(FPlainDriver.mysql_stmt_attr_set517UP) //we need this to be able to use more than !one! stmt -> keep cached
       then FPlainDriver.mysql_stmt_attr_set517UP(FMYSQL_STMT, STMT_ATTR_CURSOR_TYPE, @CURSOR_TYPE_READ_ONLY)
       else FPlainDriver.mysql_stmt_attr_set(FMYSQL_STMT, STMT_ATTR_CURSOR_TYPE, @CURSOR_TYPE_READ_ONLY);
-
   if (FClientVersion >= 50060) and (FPrefetchRows <> 1) and ((TokenMatchIndex = Ord(mySelect)) or (TokenMatchIndex = Ord(myCall))) then //supported since 5.0.6
     //try achieve best performnce. No idea how to calculate it
     if Assigned(FPlainDriver.mysql_stmt_attr_set517UP) and (FPrefetchRows <> 1)
     then FPlainDriver.mysql_stmt_attr_set517UP(FMYSQL_STMT, STMT_ATTR_PREFETCH_ROWS, @FPrefetchRows)
     else FPlainDriver.mysql_stmt_attr_set(FMYSQL_STMT, STMT_ATTR_PREFETCH_ROWS, @FPrefetchRows);
   FEmulatedParams := False;
-  SetLength(FEmulatedValues, 0);
+  for i := 0 to BindList.Count -1 do
+    PZMySQLBindValue(BindList[i]).EmulatedValue := '';
   if (BindList.Capacity > 0) and (FMYSQL_BINDs = nil) then
     InternalSetInParamCount(BindList.Capacity);
   if DriverManager.HasLoggingListener then
@@ -1231,7 +1347,7 @@ begin
     if FTokenMatchIndex <> -1
     then inherited BindBinary(Index, SQLType, Buf, Len)
     else CheckParameterIndex(Index);
-    FEmulatedValues[Index] := ZDbcUtils.GetSQLHexAnsiString(PAnsiChar(Buf), Len, False);
+    PZMySQLBindValue(BindList[Index]).EmulatedValue := ZDbcUtils.GetSQLHexAnsiString(PAnsiChar(Buf), Len, False);
   end else begin
     CheckParameterIndex(Index);
     {$R-}
@@ -1260,7 +1376,7 @@ var
   Bind: PMYSQL_aligned_BIND;
   BindValue: PZBindValue;
   { move the string conversions into a own proc -> no (U/L)StrClear}
-  procedure EmulatedAsRaw; begin FEmulatedValues[Index] := IntToRaw(Value) end;
+  procedure EmulatedAsRaw; begin PZMySQLBindValue(BindList[Index]).EmulatedValue  := IntToRaw(Value) end;
 begin
   CheckParameterIndex(Index);
   if FEmulatedParams then begin
@@ -1273,7 +1389,7 @@ begin
           BindList.Put(Index, Value <> 0);
           if FMySQL_FieldType_Bit_1_IsBoolean
           then EmulatedAsRaw
-          else FEmulatedValues[Index] := EnumBool[Value <> 0]
+          else PZMySQLBindValue(BindList[Index]).EmulatedValue  := EnumBool[Value <> 0]
         end;
       stShort, stSmall, stInteger{$IFDEF CPU64},stLong{$ENDIF}:
         BindSInteger(Index, BindValue.SQLType, Value);
@@ -1294,7 +1410,7 @@ begin
         end;
       else begin
         EmulatedAsRaw;
-        SetRawByteString(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, FEmulatedValues[Index]);
+        SetRawByteString(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZMySQLBindValue(BindList[Index]).EmulatedValue);
       end;
     end;
   end else begin
@@ -1328,13 +1444,18 @@ begin
   end;
 end;
 
+class function TZMySQLPreparedStatement.GetBindListClass: TZBindListClass;
+begin
+  Result := TZMySQLBindList;
+end;
+
 procedure TZMySQLPreparedStatement.BindSInteger(Index: Integer; SQLType: TZSQLType;
   Value: NativeInt);
 var
   Bind: PMYSQL_aligned_BIND;
   BindValue: PZBindValue;
   { move the string conversions into a own proc -> no (U/L)StrClear}
-  procedure EmulatedAsRaw; begin FEmulatedValues[Index] := IntToRaw(Value) end;
+  procedure EmulatedAsRaw; begin PZMySQLBindValue(BindValue).EmulatedValue := IntToRaw(Value) end;
 begin
   CheckParameterIndex(Index);
   if FEmulatedParams then begin
@@ -1347,7 +1468,7 @@ begin
           BindList.Put(Index, Value <> 0);
           if FMySQL_FieldType_Bit_1_IsBoolean
           then EmulatedAsRaw
-          else FEmulatedValues[Index] := EnumBool[Value <> 0]
+          else PZMySQLBindValue(BindList[Index]).EmulatedValue := EnumBool[Value <> 0]
         end;
       stShort, stSmall, stInteger{$IFDEF CPU64},stLong{$ENDIF}:
         BindList.Put(Index, BindValue.SQLType, {$IFNDEF CPU64}P4Bytes{$ELSE}P8Bytes{$ENDIF}(@Value));
@@ -1368,7 +1489,7 @@ begin
         end;
       else begin
         EmulatedAsRaw;
-        SetRawByteString(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, FEmulatedValues[Index]);
+        SetRawByteString(Index{$IFNDEF GENERIC_INDEX}+1{$ENDIF}, PZMySQLBindValue(BindList[Index]).EmulatedValue);
       end;
     end;
   end else begin
@@ -1466,8 +1587,8 @@ begin
   else if FEmulatedParams then begin
     P := Value.GetBuffer(FRawTemp, L);
     if SQLType = stBinaryStream
-    then FEmulatedValues[Index] := ZDbcUtils.GetSQLHexAnsiString(P, L, False)
-    else FMySQLConnection.GetEscapeString(P, L, FEmulatedValues[Index])
+    then PZMySQLBindValue(BindList[Index]).EmulatedValue := ZDbcUtils.GetSQLHexAnsiString(P, L, False)
+    else FMySQLConnection.GetEscapeString(P, L, PZMySQLBindValue(BindList[Index]).EmulatedValue)
   end else begin
     FChunkedData := True;
     {$R-}
@@ -1496,7 +1617,7 @@ begin
   else SQLType := BindValue.SQLType;
   if FEmulatedParams then begin
     BindList.Put(Index, SQLType, Value, FClientCP); //localize
-    FMySQLConnection.GetEscapeString(Pointer(Value), Len, FEmulatedValues[Index]);
+    FMySQLConnection.GetEscapeString(Pointer(Value), Len, PZMySQLBindValue(BindList[Index]).EmulatedValue);
   end else begin
     {$R-}
     Bind := @FMYSQL_aligned_BINDs[Index];
@@ -1529,7 +1650,7 @@ var
       stTimestamp: Len := DateTimeToRawSQLTimeStamp(Value, PAnsiChar(FByteBuffer), ConSettings^.WriteFormatSettings, True)
       else Len := FloatToSQLRaw(Value, PAnsiChar(FByteBuffer));
     end;
-    ZSetString(PAnsiChar(FByteBuffer), Len, FEmulatedValues[Index]);
+    ZSetString(PAnsiChar(FByteBuffer), Len, PZMySQLBindValue(BindList[Index]).EmulatedValue);
   end;
 begin
   CheckParameterIndex(Index);
@@ -1594,7 +1715,7 @@ begin
   else SQLType := BindValue.SQLType;
   if FEmulatedParams then begin
     BindList.Put(Index, SQLType, Buf, Len, FClientCP); //localize
-    FMySQLConnection.GetEscapeString(Buf, Len, FEmulatedValues[Index]);
+    FMySQLConnection.GetEscapeString(Buf, Len, PZMySQLBindValue(BindList[Index]).EmulatedValue);
   end else begin
     {$R-}
     Bind := @FMYSQL_aligned_BINDs[Index];
@@ -1642,20 +1763,12 @@ begin
 end;
 {$IFDEF FPC} {$POP} {$ENDIF}
 
-{**
-  Sets the designated parameter to a <code>java.math.BigDecimal</code> value.
-  The driver converts this to an SQL <code>NUMERIC</code> value when
-  it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZMySQLPreparedStatement.SetBigDecimal(Index: Integer;
-  const Value: TBCD);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TBCD);
 var
   Bind: PMYSQL_aligned_BIND;
   { move the string conversions into a own proc -> no (U/L)StrClear}
-  procedure EmulatedAsRaw; begin FEmulatedValues[Index] := BcdToSQLRaw(Value) end;
+  procedure EmulatedAsRaw; begin PZMySQLBindValue(BindList[Index]).EmulatedValue := BcdToSQLRaw(Value) end;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index -1;{$ENDIF}
   CheckParameterIndex(Index);
@@ -1681,14 +1794,6 @@ begin
   end;
 end;
 
-{**
-  Sets the designated parameter to a Java <code>boolean</code> value.
-  The driver converts this
-  to an SQL <code>BIT</code> value when it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZMySQLPreparedStatement.SetBoolean(Index: Integer;
   Value: Boolean);
 begin
@@ -1697,14 +1802,6 @@ begin
   else SetRawByteString(Index, EnumBool[Value]);
 end;
 
-{**
-  Sets the designated parameter to a Java <code>unsigned 8Bit int</code> value.
-  The driver converts this
-  to an SQL <code>BYTE</code> value when it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZMySQLPreparedStatement.SetByte(ParameterIndex: Integer;
   Value: Byte);
 begin
@@ -1733,7 +1830,7 @@ begin
     if FTokenMatchIndex <> -1
     then BindList.Put(Index, stBytes, Value, Len)
     else CheckParameterIndex(Index);
-    FEmulatedValues[Index] := ZDbcUtils.GetSQLHexAnsiString(PAnsiChar(Value), Len, False);
+    PZMySQLBindValue(BindList[Index]).EmulatedValue := ZDbcUtils.GetSQLHexAnsiString(PAnsiChar(Value), Len, False);
   end else begin
     CheckParameterIndex(Index);
     {$R-}
@@ -1769,7 +1866,7 @@ var
   Bind: PMYSQL_aligned_BIND;
   PEnd: PAnsiChar;
   { move the string conversions into a own proc -> no (U/L)StrClear}
-  procedure EmulatedAsRaw; begin FEmulatedValues[Index] := CurrToRaw(Value, '.') end;
+  procedure EmulatedAsRaw; begin PZMySQLBindValue(BindList[Index]).EmulatedValue := CurrToRaw(Value, '.') end;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index -1;{$ENDIF}
   CheckParameterIndex(Index);
@@ -2195,7 +2292,7 @@ end;
   @param x the parameter value
 }
 procedure TZMySQLPreparedStatement.SetDate(Index: Integer;
-  const Value: TZDate);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZDate);
 var
   Bind: PMYSQL_aligned_BIND;
   P: PMYSQL_TIME;
@@ -2205,7 +2302,7 @@ var
   begin
     L := DateToRaw(Value.Year, Value.Month, Value.Day,
       PAnsiChar(FByteBuffer), ConSettings^.WriteFormatSettings.DateFormat, True, Value.IsNegative);
-    ZSetString(PAnsiChar(FByteBuffer), L, FEmulatedValues[Index]);
+    ZSetString(PAnsiChar(FByteBuffer), L, PZMySQLBindValue(BindList[Index]).EmulatedValue);
   end;
 begin
   {$IFNDEF GENERIC_INDEX}Index := Index -1;{$ENDIF}
@@ -2267,28 +2364,31 @@ procedure TZMySQLPreparedStatement.AddParamLogValue(ParamIndex: Integer;
   SQLWriter: TZSQLStringWriter; var Result: SQLString);
 var
   Bind: PMYSQL_aligned_BIND;
+  BindValue: PZBindValue;
+  MySQLBindValue: PZMySQLBindValue absolute BindValue;
   TmpDateTime, TmpDateTime2: TDateTime;
 begin
   CheckParameterIndex(ParamIndex);
-  if FEmulatedParams then
-    if BindList[ParamIndex].SQLType in [stAsciiStream, stUnicodeStream]
+  if FEmulatedParams then begin
+    BindValue := BindList[ParamIndex];
+    if BindValue.SQLType in [stAsciiStream, stUnicodeStream]
     then SQLWriter.AddText('(CLOB)', Result)
-    else if BindList[ParamIndex].SQLType = stBinaryStream then
+    else if BindValue.SQLType = stBinaryStream then
       SQLWriter.AddText('(BLOB)', Result)
-    else if BindList[ParamIndex].SQLType = stAsciiStream then
+    else if BindValue.SQLType = stAsciiStream then
       SQLWriter.AddText('(CLOB)', Result)
     {$IFDEF UNICODE}
-    else if Ord(BindList[ParamIndex].SQLType) < Ord(stString) then
-      SQLWriter.AddAscii7Text(Pointer(FEmulatedValues[ParamIndex]), Length(FEmulatedValues[ParamIndex]), Result)
+    else if Ord(BindValue.SQLType) < Ord(stString) then
+      SQLWriter.AddAscii7Text(Pointer(MySQLBindValue.EmulatedValue), Length(MySQLBindValue.EmulatedValue), Result)
     else begin
-      FUniTemp := ZRawToUnicode(FEmulatedValues[ParamIndex], FClientCP);
+      FUniTemp := ZRawToUnicode(MySQLBindValue.EmulatedValue, FClientCP);
       SQLWriter.AddText(FUniTemp, Result);
       FUniTemp := '';
     end
     {$ELSE}
-    else SQLWriter.AddText(FEmulatedValues[ParamIndex], Result)
+    else SQLWriter.AddText(MySQLBindValue.EmulatedValue, Result)
     {$ENDIF}
-  else begin
+  end else begin
     {$R-}
     Bind := @FMYSQL_aligned_BINDs[ParamIndex];
     {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
@@ -2398,7 +2498,7 @@ begin
 var
   Bind: PMYSQL_aligned_BIND;
   { move the string conversions into a own proc -> no (U/L)StrClear}
-  procedure EmulatedAsRaw; begin FEmulatedValues[ParameterIndex] := IntToRaw(Value) end;
+  procedure EmulatedAsRaw; begin PZMySQLBindValue(BindList[ParameterIndex]).EmulatedValue := IntToRaw(Value) end;
 begin
   {$IFNDEF GENERIC_INDEX}ParameterIndex := ParameterIndex -1;{$ENDIF}
   CheckParameterIndex(ParameterIndex);
@@ -2450,7 +2550,7 @@ begin
     if FTokenMatchIndex <> -1
     then BindList.SetNull(ParameterIndex, SQLType);
     //we always need a new copy of the defult values else we'll write into the metadata default values for the non unicode compilers
-    FEmulatedValues[ParameterIndex] := 'null'
+    PZMySQLBindValue(BindList[ParameterIndex]).EmulatedValue := 'null'
   end else begin
     {$R-}
     Bind := @FMYSQL_aligned_BINDs[ParameterIndex];
@@ -2533,7 +2633,7 @@ end;
   @param x the parameter value
 }
 procedure TZMySQLPreparedStatement.SetTime(Index: Integer;
-  const Value: TZTime);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTime);
 var
   Bind: PMYSQL_aligned_BIND;
   P: PMYSQL_TIME;
@@ -2545,7 +2645,7 @@ begin
     BindList.Put(Index, Value);
     L := TimeToRaw(Value.Hour, Value.Minute, Value.Second, Value.Fractions,
       PAnsiChar(FByteBuffer), ConSettings^.WriteFormatSettings.TimeFormat, True, Value.IsNegative);
-    ZSetString(PAnsiChar(FByteBuffer), L, FEmulatedValues[Index]);
+    ZSetString(PAnsiChar(FByteBuffer), L, PZMySQLBindValue(BindList[Index]).EmulatedValue);
   end else begin
     {$R-}
     Bind := @FMYSQL_aligned_BINDs[Index];
@@ -2571,7 +2671,7 @@ end;
   @param x the parameter value
 }
 procedure TZMySQLPreparedStatement.SetTimestamp(Index: Integer;
-  const Value: TZTimeStamp);
+  {$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} Value: TZTimeStamp);
 var
   Bind: PMYSQL_aligned_BIND;
   P: PMYSQL_TIME;
@@ -2584,7 +2684,7 @@ begin
     L := DateTimeToRaw(Value.Year, Value.Month, Value.Day,
       Value.Hour, Value.Minute, Value.Second, Value.Fractions,
       PAnsiChar(FByteBuffer), ConSettings^.WriteFormatSettings.DateTimeFormat, True, Value.IsNegative);
-    ZSetString(PAnsiChar(FByteBuffer), L, FEmulatedValues[Index]);
+    ZSetString(PAnsiChar(FByteBuffer), L, PZMySQLBindValue(BindList[Index]).EmulatedValue);
   end else begin
     {$R-}
     Bind := @FMYSQL_aligned_BINDs[Index];
@@ -2635,7 +2735,7 @@ begin
 var
   Bind: PMYSQL_aligned_BIND;
   { move the string conversions into a own proc -> no (U/L)StrClear}
-  procedure EmulatedAsRaw; begin FEmulatedValues[ParameterIndex] := IntToRaw(Value) end;
+  procedure EmulatedAsRaw; begin PZMySQLBindValue(BindList[ParameterIndex]).EmulatedValue := IntToRaw(Value) end;
 begin
   {$IFNDEF GENERIC_INDEX}ParameterIndex := ParameterIndex -1;{$ENDIF}
   CheckParameterIndex(ParameterIndex);
@@ -2674,14 +2774,6 @@ begin
 {$ENDIF}
 end;
 
-{**
-  Sets the designated parameter to a Java <code>unsigned 16bit int</code> value.
-  The driver converts this
-  to an SQL <code>WORD</code> value when it sends it to the database.
-
-  @param parameterIndex the first parameter is 1, the second is 2, ...
-  @param x the parameter value
-}
 procedure TZMySQLPreparedStatement.SetWord(ParameterIndex: Integer;
   Value: Word);
 begin
@@ -2738,6 +2830,9 @@ var SQL: RawByteString;
   I: Integer;
   Stmt: TZMySQLPreparedStatement;
   SQLWriter: TZRawSQLStringWriter;
+  BindValue: PZBindValue;
+  MySQLBindValue: PZMySQLBindValue absolute BindValue;
+  MySQLBindValue56Down: PZMySQLBindValue56down absolute BindValue;
 begin
   inherited BindInParameters;
   if (BindList.Count = 0) then
@@ -2745,18 +2840,20 @@ begin
   SQL := 'SET ';
   SQLWriter := TZRawSQLStringWriter.Create(4+BindList.Count shl 5);
   Stmt := TZMySQLPreparedStatement(FExecStatement);
-  for I := 0 to BindList.Count -1 do
-    if Ord(BindList[i].ParamType) < Ord(pctOut) then begin
+  for I := 0 to BindList.Count -1 do begin
+    BindValue := BindList[i];
+    if Ord(BindValue.ParamType) < Ord(pctOut) then begin
       SQLWriter.AddChar(AnsiChar('@'), SQL);
       {$IFDEF UNICODE}
-      SQLWriter.AddText(ZUnicodeToRaw(FInParamNames[i], FClientCP), SQL);
+      SQLWriter.AddText(ZUnicodeToRaw(MySQLBindValue56Down.ParamName, FClientCP), SQL);
       {$ELSE}
-      SQLWriter.AddText(FInParamNames[i], SQL);
+      SQLWriter.AddText(MySQLBindValue56Down.ParamName, SQL);
       {$ENDIF}
       SQLWriter.AddChar(AnsiChar('='), SQL);
-      SQLWriter.AddText(Stmt.FEmulatedValues[i], SQL);
+      SQLWriter.AddText(MySQLBindValue.EmulatedValue, SQL);
       SQLWriter.AddChar(AnsiChar(','), SQL);
     end;
+  end;
   SQLWriter.Finalize(SQL);
   I := Length(SQL);
   if i = 4 then //no inparams ?
@@ -2779,6 +2876,7 @@ var
   I: Integer;
   SQL: {$IF defined(FPC) and defined(WITH_RAWBYTESTRING)}RawByteString{$ELSE}String{$IFEND};
   SQLWriter: TZSQLStringWriter;
+  BindValue: PZMySQLBindValue56down;
 begin
   I := Length(StoredProcName);
   i := I + 20+BindList.Count shl 1;
@@ -2791,8 +2889,9 @@ begin
     if BindList.Count-Ord(BindList.HasReturnParam) > 0 then
       SQLWriter.AddChar('(', SQL);
     for i := Ord(BindList.HasReturnParam) to BindList.Count-1 do begin
+      BindValue := PZMySQLBindValue56down(BindList[i]);
       SQLWriter.AddChar('@', SQL);
-      SQLWriter.AddText(FInParamNames[i], SQL);
+      SQLWriter.AddText(BindValue.ParamName, SQL);
       SQLWriter.AddChar(',', SQL);
     end;
     if BindList.Count-Ord(BindList.HasReturnParam) > 0 then begin
@@ -2813,8 +2912,9 @@ begin
     SQL := 'SELECT ';
     for i := Ord(BindList.HasReturnParam) to BindList.Count-1 do
       if Ord(BindList[I].ParamType) >= Ord(pctInOut) then begin
+        BindValue := PZMySQLBindValue56down(BindList[i]);
         SQLWriter.AddChar('@', SQL);
-        SQLWriter.AddText(FInParamNames[i], SQL);
+        SQLWriter.AddText(BindValue.ParamName, SQL);
         SQLWriter.AddChar(',', SQL);
       end;
     SQLWriter.CancelLastComma(SQL);
@@ -2840,6 +2940,7 @@ var
   BCD: TBCD;
   L: NativeUInt;
   Bind: PZBindValue;
+  BindValue: PZMySQLBindValue56down absolute Bind;
   Result: IZResultSet;
 begin
   if BindList.HasInOutParam or BindList.HasOutParam then begin
@@ -2851,10 +2952,10 @@ begin
         if Ord(Bind.ParamType) >= Ord(pctInOut) then begin
           ColumnInfo := TZColumnInfo.Create;
           with ColumnInfo do begin
-            ColumnLabel := FInParamNames[i];
+            ColumnLabel := BindValue.ParamName;
             ColumnType := Bind.SQLType;
-            Precision := FInParamPrecisionArray[i];
-            Scale := FInParamScaleArray[i];
+            Precision := BindValue.PrecisionOrLen;
+            Scale := BindValue.Scale;
           end;
           ColumnsInfo.Add(ColumnInfo);
         end;
@@ -2929,25 +3030,24 @@ begin
   CreateOutParamResultSet;
 end;
 
+class function TZMySQLCallableStatement56down.GetBindListClass: TZBindListClass;
+begin
+  Result := TZMySQLBindList56down;
+end;
+
 procedure TZMySQLCallableStatement56down.RegisterParameter(
   ParameterIndex: Integer; SQLType: TZSQLType; ParamType: TZProcedureColumnType;
   const Name: String; PrecisionOrSize, Scale: LengthInt);
+var BindValue: PZMySQLBindValue56down ;
 begin
   CheckParameterIndex(ParameterIndex);
   if not FParamsRegistered or FRegisteringParamFromMetadata then begin
     inherited RegisterParameter(ParameterIndex, SQLType, ParamType);
-    FInParamNames[ParameterIndex] := Name;
-    FInParamPrecisionArray[ParameterIndex] := PrecisionOrSize;
-    FInParamScaleArray[ParameterIndex] := Scale;
+    BindValue := PZMySQLBindValue56down(BindList[ParameterIndex]);
+    BindValue.ParamName := Name;
+    BindValue.PrecisionOrLen := PrecisionOrSize;
+    BindValue.Scale := Scale;
   end;
-end;
-
-procedure TZMySQLCallableStatement56down.SetParamCount(NewParamCount: Integer);
-begin
-  inherited SetParamCount(NewParamCount);
-  SetLength(FInParamNames, BindList.Count);
-  SetLength(FInParamPrecisionArray, BindList.Count);
-  SetLength(FInParamScaleArray, BindList.Count);
 end;
 
 procedure TZMySQLCallableStatement56down.Unprepare;
@@ -2959,6 +3059,34 @@ begin
   end;
   FStmt := nil;
   inherited Unprepare;
+end;
+
+{ TZMySQLBindList }
+
+class function TZMySQLBindList.GetElementSize: Integer;
+begin
+  Result := SizeOf(TZMySQLBindValue);
+end;
+
+procedure TZMySQLBindList.Notify(Ptr: Pointer; Action: TListNotification);
+begin
+  if (Action = lnDeleted) then
+    PZMySQLBindValue(Ptr).EmulatedValue := '';
+  inherited Notify(Ptr, Action);
+end;
+
+{ TZMySQLBindList56down }
+
+class function TZMySQLBindList56down.GetElementSize: Integer;
+begin
+  Result := SizeOf(TZMySQLBindValue56down);
+end;
+
+procedure TZMySQLBindList56down.Notify(Ptr: Pointer; Action: TListNotification);
+begin
+  if (Action = lnDeleted) then
+    PZMySQLBindValue56down(Ptr).ParamName := '';
+  inherited Notify(Ptr, Action);
 end;
 
 initialization

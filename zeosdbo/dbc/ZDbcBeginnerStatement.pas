@@ -51,6 +51,8 @@
 
 unit ZDbcBeginnerStatement;
 
+{$INCLUDE ZDbc.inc}
+
 interface
 
 uses Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} FmtBCD, SysUtils,
@@ -81,7 +83,7 @@ type
     procedure SetInParamCount(const NewParamCount: Integer); virtual;
     procedure SetInParam(ParameterIndex: Integer; SQLType: TZSQLType;
       const Value: TZVariant); virtual;
-    procedure LogPrepStmtMessage(Category: TZLoggingCategory; const Msg: RawByteString = EmptyRaw);
+    procedure LogPrepStmtMessage(Category: TZLoggingCategory; const Msg: String = EmptyRaw);
     function GetInParamLogValue(Value: TZVariant): RawByteString;
     function GetOmitComments: Boolean; virtual;
     function GetCompareFirstKeywordStrings: TPreparablePrefixTokens; virtual;
@@ -209,7 +211,7 @@ type
     function GetUnicodeString(ParameterIndex: Integer): ZWideString;
 
     function GetBLob(ParameterIndex: Integer): IZBlob;
-    //function GetCLob(ParameterIndex: Integer): IZClob;
+    function GetCLob(ParameterIndex: Integer): IZClob;
 
     procedure ClearParameters; virtual;
 
@@ -381,6 +383,22 @@ begin
   Result := FClientVariantManger;
 end;
 
+function TZAbstractBeginnerPreparedStatement.GetCLob(
+  ParameterIndex: Integer): IZClob;
+var
+  Idx: Integer;
+  TempBlob: IZClob;
+begin
+  Idx := ParameterIndex - FirstDbcIndex;
+  if (Idx) >= Length(InParamValues) then
+    raise EZSQLException.Create('Paramter index exceeds parameter count.');
+  if (InParamValues[Idx].VType = vtInterface) and (Supports(InParamValues[Idx].VInterface, IZClob, TempBlob)) then begin
+    Result := TempBlob;
+  end else begin
+    EZSQLException.Create('Paramter is not an IZBlob');
+  end;
+end;
+
 {**
   Prepares eventual structures for binding input parameters.
 }
@@ -447,13 +465,13 @@ end;
   @param Msg a description message.
 }
 procedure TZAbstractBeginnerPreparedStatement.LogPrepStmtMessage(Category: TZLoggingCategory;
-  const Msg: RawByteString = EmptyRaw);
+  const Msg: String = EmptyRaw);
 begin
   if DriverManager.HasLoggingListener then
     if msg <> EmptyRaw then
-      DriverManager.LogMessage(Category, Connection.GetIZPlainDriver.GetProtocol, 'Statement '+IntToRaw(FStatementId)+' : '+Msg)
+      DriverManager.LogMessage(Category, Connection.GetIZPlainDriver.GetProtocol, 'Statement '+{$IFDEF UNICODE}IntToUnicode{$ELSE}IntToRaw{$ENDIF}(FStatementId)+' : '+Msg)
     else
-      DriverManager.LogMessage(Category, Connection.GetIZPlainDriver.GetProtocol, 'Statement '+IntToRaw(FStatementId));
+      DriverManager.LogMessage(Category, Connection.GetIZPlainDriver.GetProtocol, 'Statement '+{$IFDEF UNICODE}IntToUnicode{$ELSE}IntToRaw{$ENDIF}(FStatementId));
 end;
 
 
@@ -1005,7 +1023,11 @@ begin
 
     if MyMemoryStream.Memory = nil
     then SetBlob(ParameterIndex, stAsciiStream, TZAbstractClob.CreateWithData(PEmptyAnsiString, Value.Size, ConSettings^.ClientCodePage^.CP, ConSettings))
-    else SetBlob(ParameterIndex, stAsciiStream, TZAbstractClob.CreateWithData(MyMemoryStream.Memory, Value.Size, ConSettings^.ClientCodePage^.CP, ConSettings));
+    else
+      if ConSettings^.ClientCodePage^.CP = zCP_UTF16 then
+        SetBlob(ParameterIndex, stAsciiStream, TZAbstractClob.CreateWithData(MyMemoryStream.Memory, Value.Size, DefaultSystemCodePage, ConSettings))
+      else
+        SetBlob(ParameterIndex, stAsciiStream, TZAbstractClob.CreateWithData(MyMemoryStream.Memory, Value.Size, ConSettings^.ClientCodePage^.CP, ConSettings));
   finally
     if NeedToRelease then
       FreeAndNil(MyMemoryStream);
@@ -1184,7 +1206,7 @@ begin
               raise EZSQLException.Create('Invalid Variant-Type for String-Array binding!');
           end;
         stArray:          raise EZSQLException.Create('Invalid SQL-Type for Array binding!');
-        stDataSet: ;
+        stResultSet: ;
       end;
     V.VType := vtArray;
     V.VArray.VArray := Pointer(Value);
@@ -1532,7 +1554,7 @@ function TZAbstractBeginnerPreparedStatement.CreateLogEvent(
   const Category: TZLoggingCategory): TZLoggingEvent;
 var
   I : integer;
-  LogString : RawByteString;
+  LogString : String;
 begin
   LogString := '';
   case Category of
@@ -1542,7 +1564,7 @@ begin
         else
           begin { Prepare Log Output}
             For I := 0 to InParamCount - 1 do
-              LogString := LogString + GetInParamLogValue(InParamValues[I])+',';
+              LogString := LogString + String(GetInParamLogValue(InParamValues[I])+',');
             result := CreateStmtLogEvent(Category, Logstring);
           end;
   else

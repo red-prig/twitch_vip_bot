@@ -58,7 +58,7 @@ interface
 
 uses
   Types, SysUtils, Classes, {$IFDEF MSEgui}mclasses, mdb{$ELSE}DB{$ENDIF},
-  ZDbcIntfs, ZAbstractDataset, ZCompatibility
+  ZDbcIntfs, ZAbstractRODataset, ZCompatibility
   {$IFNDEF DISABLE_ZPARAM},ZDatasetParam{$ENDIF};
 
 type
@@ -66,7 +66,7 @@ type
   {**
     Abstract dataset to access to stored procedures.
   }
-  TZStoredProc = class(TZAbstractDataset)
+  TZStoredProc = class(TZAbstractRODataset)
   private
     FMetaResultSet: IZResultset;
     function GetStoredProcName: string;
@@ -102,6 +102,7 @@ type
     function BOR: Boolean;
     function EOR: Boolean;
   published
+    property Connection;
     property Active;
     property ParamCheck;
     property Params;
@@ -109,12 +110,12 @@ type
     property Options;
     property StoredProcName: string read GetStoredProcName
       write SetStoredProcName;
+    property Transaction;
   end;
 
 implementation
 
 uses
-  ZAbstractRODataset,
   ZMessages, ZDatasetUtils, ZDbcMetadata
   {$IFDEF WITH_ASBYTES}, ZSysUtils{$ENDIF} ,FmtBCD
   {$IFDEF WITH_INLINE_ANSICOMPARETEXT}, Windows{$ENDIF};
@@ -205,6 +206,7 @@ begin
       try
         SplitQualifiedObjectName(Value, DatabaseInfo.SupportsCatalogsInProcedureCalls,
           DatabaseInfo.SupportsSchemasInProcedureCalls, Catalog, Schema, ObjectName);
+        If Catalog = '' Then Catalog := Self.Connection.Catalog;
         Schema := Metadata.AddEscapeCharToWildcards(Schema);
         ObjectName := Metadata.AddEscapeCharToWildcards(ObjectName);
         FMetaResultSet := Metadata.GetProcedureColumns(Catalog, Schema, ObjectName, '');

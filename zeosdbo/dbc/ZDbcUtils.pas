@@ -55,7 +55,6 @@ interface
 
 {$I ZDbc.inc}
 uses
-  {$IFDEF USE_SYNCOMMONS}SynCommons, {$ENDIF}
   Types, Classes, {$IFDEF MSEgui}mclasses,{$ENDIF} SysUtils,
   {$IFNDEF NO_UNIT_CONTNRS}Contnrs{$ELSE}ZClasses{$ENDIF}, TypInfo, FmtBcd,
   ZCompatibility, ZDbcIntfs, ZTokenizer, ZVariant, ZSysUtils,
@@ -240,16 +239,6 @@ function SQLServerProductToHostVersion(const ProductVersion: String): Integer;
 
 procedure MoveReverseByteOrder(Dest, Src: PAnsiChar; Len: LengthInt);
 
-function TokenizeSQLQueryRaw(const SQL: SQLString; {$IFDEF UNICODE}RawCP: Word;{$ENDIF}
-  const Tokenizer: IZTokenizer; var IsParamIndex: TBooleanDynArray;
-  IsNCharIndex: PBooleanDynArray; ComparePrefixTokens: PPreparablePrefixTokens;
-  var TokenMatchIndex: Integer): TRawByteStringDynArray;
-
-function TokenizeSQLQueryUni(const SQL: SQLString; Const ConSettings: PZConSettings;
-  const Tokenizer: IZTokenizer; var IsParamIndex: TBooleanDynArray;
-  IsNCharIndex: PBooleanDynArray; ComparePrefixTokens: PPreparablePrefixTokens;
-  var TokenMatchIndex: Integer): TUnicodeStringDynArray;
-
 function ExtractFields(const FieldNames: string; const SepChars: Array of Char): TStrings;
 
 function CreateUnsupportedParameterTypeException(Index: Integer; ParamType: TZSQLType): EZSQLException;
@@ -269,9 +258,9 @@ function ArrayValueToUInt64(ZArray: PZArray; Index: Integer): UInt64;
 function ArrayValueToCurrency(ZArray: PZArray; Index: Integer): Currency;
 function ArrayValueToDouble(ZArray: PZArray; Index: Integer): Double;
 function ArrayValueToBoolean(ZArray: PZArray; Index: Integer): Boolean;
-function ArrayValueToDate(ZArray: PZArray; Index: Integer; const FormatSettings: TZFormatSettings): TDateTime;
-function ArrayValueToTime(ZArray: PZArray; Index: Integer; const FormatSettings: TZFormatSettings): TDateTime;
-function ArrayValueToDateTime(ZArray: PZArray; Index: Integer; const FormatSettings: TZFormatSettings): TDateTime;
+function ArrayValueToDate(ZArray: PZArray; Index: Integer; const FormatSettings: TZClientFormatSettings): TDateTime;
+function ArrayValueToTime(ZArray: PZArray; Index: Integer; const FormatSettings: TZClientFormatSettings): TDateTime;
+function ArrayValueToDateTime(ZArray: PZArray; Index: Integer; const FormatSettings: TZClientFormatSettings): TDateTime;
 procedure ArrayValueToGUID(ZArray: PZArray; Index: Integer; GUID: PGUID);
 procedure ArrayValueToBCD(ZArray: PZArray; Index: Integer; var BCD: TBCD);
 
@@ -1195,7 +1184,7 @@ begin
         SubVersion := {$IFDEF UNICODE}UnicodeToIntDef{$ELSE}RawToIntDef{$ENDIF}(P, PDot, 0);
       end;
     end;
-    Result := MajorVersion*1000000 + MiniorVersion * 100{0} + SubVersion;
+    Result := EncodeSQLVersioning(Majorversion, MiniorVersion, SubVersion);
   end else
     Result := 0;
 end;
@@ -1223,211 +1212,6 @@ begin
       dec(Len);
     end;
   end;
-end;
-
-{**
-  Splits a SQL query into a list of sections.
-  @returns a list of splitted sections.
-}
-function TokenizeSQLQueryRaw(const SQL: SQLString;
-  {$IFDEF UNICODE}RawCP: Word;{$ENDIF}
-  const Tokenizer: IZTokenizer; var IsParamIndex: TBooleanDynArray;
-  IsNCharIndex: PBooleanDynArray; ComparePrefixTokens: PPreparablePrefixTokens;
-  var TokenMatchIndex: Integer): TRawByteStringDynArray;
-var
-  I, C, N, FirstComposePos: Integer;
-  NextIsNChar, ParamFound: Boolean;
-  Tokens: TZTokenList;
-  Token: PZToken;
-  Tmp: RawByteString;
-
-  procedure Add(const Value: RawByteString; const Param: Boolean = False);
-  begin
-    SetLength(Result, Length(Result)+1);
-    Result[High(Result)] := Value;
-    SetLength(IsParamIndex, Length(Result));
-    IsParamIndex[High(IsParamIndex)] := Param;
-    if IsNCharIndex <> nil then begin
-      SetLength(IsNCharIndex^, Length(Result));
-      if Param and NextIsNChar then
-      begin
-        IsNCharIndex^[High(IsNCharIndex^)] := True;
-        NextIsNChar := False;
-      end else
-        IsNCharIndex^[High(IsNCharIndex^)] := False;
-    end;
-  end;
-begin
-  ParamFound := (ZFastCode.{$IFDEF USE_FAST_CHARPOS}CharPos{$ELSE}Pos{$ENDIF}('?', SQL) > 0);
-  if ParamFound or Assigned(ComparePrefixTokens) then begin
-    Tokens := Tokenizer.TokenizeBufferToList(SQL, [toSkipEOF]);
-    try
-      NextIsNChar := False;
-      N := -1;
-      FirstComposePos := 0;
-      TokenMatchIndex := -1;
-      Tmp := '';
-      for I := 0 to Tokens.Count -1 do begin
-        Token := Tokens[I];
-        {check if we've a preparable statement. If ComparePrefixTokens = nil then
-          comparing is not required or already done }
-        if (Token.TokenType = ttWord) and Assigned(ComparePrefixTokens) then
-          if N = -1 then begin
-            for C := 0 to high(ComparePrefixTokens^) do
-              if Tokens.IsEqual(I, ComparePrefixTokens^[C].MatchingGroup,  tcInsensitive) then begin
-                if Length(ComparePrefixTokens^[C].ChildMatches) = 0
-                then TokenMatchIndex := C
-                else N := C; //save group
-                Break;
-              end;
-            if N = -1 then //no sub-tokens ?
-              ComparePrefixTokens := nil; //stop compare sequence
-          end else begin //we already got a group
-            for C := 0 to high(ComparePrefixTokens^[N].ChildMatches) do
-              if Tokens.IsEqual(I, ComparePrefixTokens^[N].ChildMatches[C], tcInsensitive) then begin
-                TokenMatchIndex := N;
-                Break;
-              end;
-            ComparePrefixTokens := nil; //stop compare sequence
-          end;
-      if ParamFound and Tokens.IsEqual(I, Char('?')) then begin
-        if (FirstComposePos < Tokens.Count-1) then
-          {$IFDEF UNICODE}
-          Tmp := PUnicodeToRaw(Tokens[FirstComposePos].P, Tokens[I-1].P-Tokens[FirstComposePos].P+Tokens[I-1].L, RawCP);
-          {$ELSE}
-          Tmp := Tokens.AsString(FirstComposePos, I-1);
-          {$ENDIF}
-          Add(Tmp, False);
-          {$IFDEF WITH_TBYTES_AS_RAWBYTESTRING}
-          Add(ZUnicodeToRaw(Tokens.AsString(I, I), RawCP), True);
-          {$ELSE}
-          Add('?', True);
-          {$ENDIF}
-          Tmp := EmptyRaw;
-          FirstComposePos := i +1;
-        end else if ParamFound and (IsNCharIndex<> nil) and Tokens.IsEqual(I, Char('N')) and
-            (Tokens.Count > i) and Tokens.IsEqual(i+1, Char('?')) then
-          NextIsNChar := True;
-      end;
-      I := Tokens.Count -1;
-      if (FirstComposePos <= Tokens.Count-1) then begin
-        {$IFDEF UNICODE}
-        Tmp := PUnicodeToRaw(Tokens[FirstComposePos].P, Tokens[I].P-Tokens[FirstComposePos].P+Tokens[I].L, RawCP);
-        {$ELSE}
-        Tmp := Tokens.AsString(FirstComposePos, I);
-        {$ENDIF}
-        Add(Tmp, False);
-      end;
-    finally
-      Tokens.Free;
-    end;
-  end else
-    {$IFDEF UNICODE}
-    begin
-      Tmp := ZUnicodeToRaw(SQL, RawCP);
-      Add(Tmp);
-    end;
-    {$ELSE}
-      Add(SQL);
-    {$ENDIF}
-end;
-
-{**
-  Splits a SQL query into a list of sections.
-  @returns a list of splitted sections.
-}
-function TokenizeSQLQueryUni(const SQL: SQLString; Const ConSettings: PZConSettings;
-  const Tokenizer: IZTokenizer; var IsParamIndex: TBooleanDynArray;
-  IsNCharIndex: PBooleanDynArray; ComparePrefixTokens: PPreparablePrefixTokens;
-  var TokenMatchIndex: Integer): TUnicodeStringDynArray;
-var
-  I, C, N: Integer;
-  Tokens: TZTokenList;
-  Token: PZToken;
-  Temp: UnicodeString;
-  FirstComposePos: Integer;
-  NextIsNChar, ParamFound: Boolean;
-  procedure Add(const Value: UnicodeString; Const Param: Boolean = False);
-  begin
-    SetLength(Result, Length(Result)+1);
-    Result[High(Result)] := Value;
-    SetLength(IsParamIndex, Length(Result));
-    IsParamIndex[High(IsParamIndex)] := Param;
-    if IsNCharIndex <> nil then begin
-      SetLength(IsNCharIndex^, Length(Result));
-      if Param and NextIsNChar then begin
-        IsNCharIndex^[High(IsNCharIndex^)] := True;
-        NextIsNChar := False;
-      end else
-        IsNCharIndex^[High(IsNCharIndex^)] := False;
-    end;
-  end;
-begin
-  ParamFound := (ZFastCode.{$IFDEF USE_FAST_CHARPOS}CharPos{$ELSe}Pos{$ENDIF}('?', SQL) > 0);
-  if ParamFound or Assigned(ComparePrefixTokens) then begin
-    Tokens := Tokenizer.TokenizeBufferToList(SQL, [toSkipEOF]);
-    try
-      Temp := '';
-      NextIsNChar := False;
-      N := -1;
-      TokenMatchIndex := -1;
-      FirstComposePos := 0;
-      for I := 0 to Tokens.Count -1 do begin
-        Token := Tokens[I];
-        {check if we've a preparable statement. If ComparePrefixTokens = nil then
-          comparing is not required or already done }
-        if (Token.TokenType = ttWord) and Assigned(ComparePrefixTokens) then
-          if N = -1 then begin
-            for C := 0 to high(ComparePrefixTokens^) do
-              if Tokens.IsEqual(I, ComparePrefixTokens^[C].MatchingGroup, tcInsensitive) then begin
-                if Length(ComparePrefixTokens^[C].ChildMatches) = 0 then
-                  TokenMatchIndex := C
-                else
-                  N := C; //save group
-                Break;
-              end;
-            if N = -1 then //no sub-tokens ?
-              ComparePrefixTokens := nil; //stop compare sequence
-          end else begin //we already got a group
-            for C := 0 to high(ComparePrefixTokens^[N].ChildMatches) do
-              if Tokens.IsEqual(I, ComparePrefixTokens^[N].ChildMatches[C], tcInsensitive) then begin
-                TokenMatchIndex := N;
-                Break;
-              end;
-            ComparePrefixTokens := nil; //stop compare sequence
-          end;
-        if ParamFound and Tokens.IsEqual(I, Char('?')) then begin
-          {$IFDEF UNICODE}
-          Temp := Tokens.AsString(FirstComposePos, I-1);
-          {$ELSE}
-          Temp := PRawToUnicode(Tokens[FirstComposePos].P, Tokens[I-1].P-Tokens[FirstComposePos].P+Tokens[I-1].L, GetW2A2WConversionCodePage(ConSettings));
-          {$ENDIF}
-          Add(Temp, False);
-          Add('?', True);
-          Temp := '';
-          FirstComposePos := i +1;
-        end else if ParamFound and (IsNCharIndex <> nil) and Tokens.IsEqual(I, Char('N')) and
-          (Tokens.Count > i) and Tokens.IsEqual(I+1, Char('?')) then
-            NextIsNChar := True
-      end;
-      I := Tokens.Count -1;
-      if (FirstComposePos <= Tokens.Count-1) then begin
-        {$IFDEF UNICODE}
-        Temp := Tokens.AsString(FirstComposePos, I);
-        {$ELSE}
-        Temp := PRawToUnicode(Tokens[FirstComposePos].P, Tokens[I].P-Tokens[FirstComposePos].P+Tokens[I].L, GetW2A2WConversionCodePage(ConSettings));
-        {$ENDIF}
-        Add(Temp, False);
-      end;
-    finally
-      Tokens.Free;
-    end;
-  end else
-    {$IFDEF UNICODE}
-    Add(SQL);
-    {$ELSE}
-    Add(ZRawToUnicode(SQL, GetW2A2WConversionCodePage(ConSettings)));
-    {$ENDIF}
 end;
 
 {**
@@ -1972,6 +1756,7 @@ begin
   {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
 
+{$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "$result" does not seem to be initialized} {$ENDIF}
 function ArrayValueToCurrency(ZArray: PZArray; Index: Integer): Currency;
 var P: Pointer;
 begin
@@ -2018,7 +1803,9 @@ begin
   end;
   {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
+{$IFDEF FPC} {$PUSH} {$WARN 5057 off : Local variable "$result" does not seem to be initialized} {$ENDIF}
 function ArrayValueToDouble(ZArray: PZArray; Index: Integer): Double;
 var P: Pointer;
 begin
@@ -2068,6 +1855,7 @@ begin
   end;
   {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
+{$IFDEF FPC} {$POP} {$ENDIF}
 
 function ArrayValueToBoolean(ZArray: PZArray; Index: Integer): Boolean;
 begin
@@ -2106,7 +1894,7 @@ begin
   {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
 
-function ArrayValueToDate(ZArray: PZArray; Index: Integer; const FormatSettings: TZFormatSettings): TDateTime;
+function ArrayValueToDate(ZArray: PZArray; Index: Integer; const FormatSettings: TZClientFormatSettings): TDateTime;
 var P: Pointer;
   L: LengthInt;
   B: Boolean;
@@ -2153,7 +1941,7 @@ Fail: raise EZSQLException.Create(IntToStr(Ord(ZArray.VArrayVariantType))+' '+SU
   {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
 
-function ArrayValueToTime(ZArray: PZArray; Index: Integer; const FormatSettings: TZFormatSettings): TDateTime;
+function ArrayValueToTime(ZArray: PZArray; Index: Integer; const FormatSettings: TZClientFormatSettings): TDateTime;
 var P: Pointer;
   L: LengthInt;
   B: Boolean;
@@ -2200,7 +1988,7 @@ Fail:  raise EZSQLException.Create(IntToStr(Ord(ZArray.VArrayVariantType))+' '+S
   {$IFDEF RangeCheckEnabled}{$R+}{$ENDIF}
 end;
 
-function ArrayValueToDateTime(ZArray: PZArray; Index: Integer; const FormatSettings: TZFormatSettings): TDateTime;
+function ArrayValueToDateTime(ZArray: PZArray; Index: Integer; const FormatSettings: TZClientFormatSettings): TDateTime;
 var P: Pointer;
   L: LengthInt;
   B: Boolean;
