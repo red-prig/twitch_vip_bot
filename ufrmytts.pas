@@ -544,6 +544,7 @@ begin
      H.VoiceName      :=sapi_param.FVoiceName;
      H.AudioOutputName:=sapi_param.FAudioOutputName;
      H.Send;
+     OnStartPlay(nil);
     end;
  end;
 end;

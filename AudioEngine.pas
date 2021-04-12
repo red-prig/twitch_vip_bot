@@ -267,7 +267,7 @@ begin
  if mp3_rate_count<>0 then
   For i:=0 to mp3_rate_count-1 do
   begin
-   Writeln(mp3_rates[i]);
+   //Writeln(mp3_rates[i]);
    mpg123_format(Result,mp3_rates[i],1,MPG123_ENC_FLOAT_32);
    mpg123_format(Result,mp3_rates[i],2,MPG123_ENC_FLOAT_32);
   end;
@@ -981,8 +981,8 @@ end;
 Procedure TAudioHandle.SetIsMpg(b:Boolean);
 begin
  Case b of
-  True :Node.Ftype:=0;
-  False:Node.Ftype:=1;
+  True :Node.Ftype:=1;
+  False:Node.Ftype:=0;
  end;
 end;
 
