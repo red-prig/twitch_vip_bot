@@ -34,7 +34,7 @@
         <PackageName Value="LCL"/>
       </Item2>
     </RequiredPackages>
-    <Units Count="18">
+    <Units Count="16">
       <Unit0>
         <Filename Value="twitch_vip_bot.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -121,30 +121,22 @@
         <ResourceBaseClass Value="Form"/>
       </Unit12>
       <Unit13>
-        <Filename Value="fpcookie_parse.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit13>
-      <Unit14>
-        <Filename Value="libaudio_static.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit14>
-      <Unit15>
         <Filename Value="ufrmytts.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrmYtts"/>
         <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="UFrmYtts"/>
-      </Unit15>
-      <Unit16>
+      </Unit13>
+      <Unit14>
         <Filename Value="wordfilter.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="WordFilter"/>
-      </Unit16>
-      <Unit17>
+      </Unit14>
+      <Unit15>
         <Filename Value="ReleasesVersion.pas"/>
         <IsPartOfProject Value="True"/>
-      </Unit17>
+      </Unit15>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -204,31 +196,27 @@
 -dLS_NOT_udivdi3
 -dLS_NOT_umoddi3
 -dLS_NOT_imp___iob"/>
-      <OtherDefines Count="24">
-        <Define0 Value="DisableLCLGIF"/>
-        <Define1 Value="DisableLCLJPEG"/>
-        <Define2 Value="DisableLCLPNM"/>
-        <Define3 Value="DisableLCLTIFF"/>
-        <Define4 Value="DisableMemoryLeakReporting"/>
-        <Define5 Value="USE_STATIC_NGHTTP2"/>
-        <Define6 Value="USE_STATIC_PORTAUDIO"/>
-        <Define7 Value="USE_STATIC_SNDFILE"/>
-        <Define8 Value="USE_STATIC_MPG123"/>
-        <Define9 Value="LS_NOT_chkstk_ms"/>
-        <Define10 Value="LS_NOT_assert"/>
-        <Define11 Value="LS_NOT_memset"/>
-        <Define12 Value="LS_NOT_memcpy"/>
-        <Define13 Value="LS_NOT_strlen"/>
-        <Define14 Value="LS_NOT_CMEM"/>
-        <Define15 Value="LS_NOT_qsort"/>
-        <Define16 Value="LS_NOT_abort"/>
-        <Define17 Value="LS_NOT_fprintf"/>
-        <Define18 Value="LS_NOT_memmove"/>
-        <Define19 Value="LS_NOT_memcmp"/>
-        <Define20 Value="LS_NOT_fputc"/>
-        <Define21 Value="LS_NOT_udivdi3"/>
-        <Define22 Value="LS_NOT_umoddi3"/>
-        <Define23 Value="LS_NOT_imp___iob"/>
+      <OtherDefines Count="20">
+        <Define0 Value="DisableMemoryLeakReporting"/>
+        <Define1 Value="USE_STATIC_NGHTTP2"/>
+        <Define2 Value="USE_STATIC_PORTAUDIO"/>
+        <Define3 Value="USE_STATIC_SNDFILE"/>
+        <Define4 Value="LS_NOT_chkstk_ms"/>
+        <Define5 Value="LS_NOT_assert"/>
+        <Define6 Value="LS_NOT_memset"/>
+        <Define7 Value="LS_NOT_memcpy"/>
+        <Define8 Value="LS_NOT_strlen"/>
+        <Define9 Value="LS_NOT_CMEM"/>
+        <Define10 Value="LS_NOT_qsort"/>
+        <Define11 Value="LS_NOT_abort"/>
+        <Define12 Value="LS_NOT_fprintf"/>
+        <Define13 Value="LS_NOT_memmove"/>
+        <Define14 Value="LS_NOT_memcmp"/>
+        <Define15 Value="LS_NOT_fputc"/>
+        <Define16 Value="LS_NOT_udivdi3"/>
+        <Define17 Value="LS_NOT_umoddi3"/>
+        <Define18 Value="LS_NOT_imp___iob"/>
+        <Define19 Value="USE_STATIC_MPG123"/>
       </OtherDefines>
     </Other>
   </CompilerOptions>

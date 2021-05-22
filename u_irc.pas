@@ -117,6 +117,9 @@ procedure reply_irc_reconnect;
 procedure reply_irc_Connect2(const login,oAuth,chat:RawByteString);
 procedure reply_irc_msg2(const msg:RawByteString);
 
+function UIDToString(const GUID: TGUID): RawByteString;
+function TryStringToUID(const S: RawByteString; out Guid: TGUID): Boolean;
+
 implementation
 
 uses
@@ -1208,6 +1211,118 @@ begin
  PByte(@Result)[2]:=b;
 end;
 
+function UIDToString(const GUID: TGUID): RawByteString;
+const
+ HexTbl:array[0..15] of AnsiChar='0123456789abcdef';
+var
+ P:PAnsiChar;
+
+ procedure hexstr_d(val:DWORD); inline;
+ var
+  i:Byte;
+ begin
+  for i:=7 downto 0 do
+  begin
+   P[i]:=HexTbl[val and $f];
+   val:=val shr 4;
+  end;
+  P:=P+8;
+ end;
+
+ procedure hexstr_w(val:WORD); inline;
+ var
+  i:Byte;
+ begin
+  for i:=3 downto 0 do
+  begin
+   P[i]:=HexTbl[val and $f];
+   val:=val shr 4;
+  end;
+  P:=P+4;
+ end;
+
+ procedure hexstr_b(val:Byte); inline;
+ begin
+  P[1]:=HexTbl[val and $f];
+  P[0]:=HexTbl[val shr 4];
+  P:=P+2;
+ end;
+
+ procedure nextChar(c:AnsiChar); inline;
+ begin
+  P^:=C;
+  Inc(P);
+ end;
+
+begin
+ SetLength(Result, 36);
+ P:=PAnsiChar(Result);
+
+ hexstr_d(GUID.D1);
+ nextChar('-');
+ hexstr_w(GUID.D2);
+ nextChar('-');
+ hexstr_w(GUID.D3);
+ nextChar('-');
+ hexstr_b(GUID.D4[0]);
+ hexstr_b(GUID.D4[1]);
+ nextChar('-');
+ hexstr_b(GUID.D4[2]);
+ hexstr_b(GUID.D4[3]);
+ hexstr_b(GUID.D4[4]);
+ hexstr_b(GUID.D4[5]);
+ hexstr_b(GUID.D4[6]);
+ hexstr_b(GUID.D4[7]);
+end;
+
+function TryStringToUID(const S: RawByteString; out Guid: TGUID): Boolean;
+var
+  e: Boolean;
+  p: PChar;
+
+  function rb: Byte;
+  begin
+   case p^ of
+     '0'..'9': Result := Byte(p^) - Byte('0');
+     'a'..'f': Result := Byte(p^) - Byte('a') + 10;
+     'A'..'F': Result := Byte(p^) - Byte('A') + 10;
+     else
+     begin
+       e := False;
+       Result:=0;
+     end;
+   end;
+   Inc(p);
+  end;
+
+  procedure nextChar(c: Char); inline;
+  begin
+    if p^ <> c then e := False;
+    Inc(p);
+  end;
+
+begin
+  if Length(S)<>36 then Exit(False);
+  e := True;
+  p := PChar(S);
+  Guid.D1 := rb shl 28 or rb shl 24 or rb shl 20 or rb shl 16 or rb shl 12 or rb shl 8 or rb shl 4 or rb;
+  nextChar('-');
+  Guid.D2 := rb shl 12 or rb shl 8 or rb shl 4 or rb;
+  nextChar('-');
+  Guid.D3 := rb shl 12 or rb shl 8 or rb shl 4 or rb;
+  nextChar('-');
+  Guid.D4[0] := rb shl 4 or rb;
+  Guid.D4[1] := rb shl 4 or rb;
+  nextChar('-');
+  Guid.D4[2] := rb shl 4 or rb;
+  Guid.D4[3] := rb shl 4 or rb;
+  Guid.D4[4] := rb shl 4 or rb;
+  Guid.D4[5] := rb shl 4 or rb;
+  Guid.D4[6] := rb shl 4 or rb;
+  Guid.D4[7] := rb shl 4 or rb;
+  Result := e;
+end;
+
 procedure Tmsg_parse.parse(var S:RawByteString);
 var
  v,n,
@@ -1305,6 +1420,7 @@ begin
   //Writeln(n,'*',v,'*');
 
   Case n of
+   'id':TryStringToUID(v,PC.uid);
    'msg-id'        :begin
                      msg_id:=v;
                      case msg_id of

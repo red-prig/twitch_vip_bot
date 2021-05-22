@@ -60,6 +60,7 @@ type
   );
   TPrivMsgStates=Set of TPrivMsgState;
   TPrivMsgCfg=record
+   uid:TGUID;
    user_id:QWORD;
    sub_gifter:DWORD;
    subscriber_m:DWORD;

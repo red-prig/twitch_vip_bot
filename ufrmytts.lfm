@@ -9,7 +9,7 @@ object FrmYtts: TFrmYtts
   ClientWidth = 392
   OnCreate = FormCreate
   Position = poMainFormCenter
-  LCLVersion = '2.0.10.0'
+  LCLVersion = '2.0.12.0'
   object BtnCancel: TBitBtn
     Left = 288
     Height = 30
