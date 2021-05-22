@@ -104,8 +104,7 @@ var
     max_msg,
     ready_msg,
     cancel_msg,
-    time_msg,
-    zero_msg:RawByteString;
+    time_msg:RawByteString;
     stand_msg:TStringList;
     vip_msg:TStringList;
     win_msg:TStringList;
@@ -247,7 +246,6 @@ type
   src,dst:TxchgNode;
   time:Int64;
   is_mod:Boolean;
-  is_zero:Byte;
  end;
 
  TxchgNodeCompare=class
@@ -308,7 +306,7 @@ type
 Var
  LockStr:TRawByteStringSet;
  xchgSet:TxchgNodeSet;
- duelSet:TxchgNodeSet;
+ duelSeta:array[0..1] of TxchgNodeSet;
 
 class function TRawStrCompare.c(const a,b:RawByteString):boolean;
 begin
@@ -2581,34 +2579,41 @@ begin
 end;
 
 procedure TFrmVorRpg.check_duel_time;
-var
- i:TxchgNodeSet.TIterator;
- link:PxchgVip;
-begin
- repeat
-  i:=duelSet.Min;
-  if not Assigned(i) then Exit;
+
+ Procedure _check(duelSet:TxchgNodeSet);
+ var
+  i:TxchgNodeSet.TIterator;
+  link:PxchgVip;
+ begin
   repeat
-   link:=PxchgNode(i.Data)^.link;
-   if Assigned(link) then
-   begin
-    if (GetTickCount64>link^.time+vor_rpg.duel.max_time*(1000*60)) then
+   i:=duelSet.Min;
+   if not Assigned(i) then Exit;
+   repeat
+    link:=PxchgNode(i.Data)^.link;
+    if Assigned(link) then
+    begin
+     if (GetTickCount64>link^.time+vor_rpg.duel.max_time*(1000*60)) then
+     begin
+      FreeAndNil(i);
+      duelSet.Delete(@link^.src);
+      duelSet.Delete(@link^.dst);
+      Finalize(link^);
+      FreeMem(link);
+      Break;
+     end;
+    end;
+    if not i.Next then
     begin
      FreeAndNil(i);
-     duelSet.Delete(@link^.src);
-     duelSet.Delete(@link^.dst);
-     Finalize(link^);
-     FreeMem(link);
-     Break;
+     Exit;
     end;
-   end;
-   if not i.Next then
-   begin
-    FreeAndNil(i);
-    Exit;
-   end;
+   until false;
   until false;
- until false;
+ end;
+
+begin
+ _check(duelSeta[0]);
+ _check(duelSeta[1]);
 end;
 
 type
@@ -2749,10 +2754,11 @@ end;
 Procedure TDuelAddScript.OnEvent;
 var
  Points:TPlayer;
+
+ duelSet:TxchgNodeSet;
  P:TxchgNodeSet.PNode;
  Node:TxchgNode;
  link:PxchgVip;
- cur_zero:Boolean;
 
  Procedure _go2duel;
  var
@@ -2796,47 +2802,15 @@ var
   end;
  end;
 
- procedure push_zero_msg(const user:RawByteString);
- begin
-  if (vor_rpg.duel.zero_msg='') then
-  begin
-   vor_rpg.duel.zero_msg:='@%s you exp is zero!';
-  end;
-  push_irc_msg(Format(vor_rpg.duel.zero_msg,[user]));
- end;
-
- function _check_zero:Boolean;
- begin
-  if not vor_rpg.duel.check_zero then Exit(False);
-
-  Result:=(link^.is_zero=0) and cur_zero; //not zero and zero
-  if Result then
-  begin
-   if (link^.is_zero=1) then
-   begin
-    push_zero_msg(user);
-    link^.is_zero:=2;
-   end;
-   OnUnlock(nil);
-   Exit;
-  end;
-
-  Result:=(link^.is_zero<>0) and (not cur_zero); //zero and not zero
-  if Result then
-  begin
-   if (link^.is_zero=1) then
-   begin
-    push_zero_msg(link^.src.user);
-    link^.is_zero:=2;
-   end;
-   OnUnlock(nil);
-   Exit;
-  end;
- end;
-
 begin
  Points.Load(data);
- cur_zero:=(Points.Points.LVL<=0) and (Points.Points.EXP<=0);
+ if vor_rpg.duel.check_zero and (Points.Points.LVL<=0) and (Points.Points.EXP<=0) then
+ begin //is zero
+  duelSet:=duelSeta[0];
+ end else
+ begin
+  duelSet:=duelSeta[1];
+ end;
 
  Node:=Default(TxchgNode);
  Node.user:=user;
@@ -2859,7 +2833,6 @@ begin
   if (nick='') or (link^.src.user=nick) then
   begin
    if _check_time then Exit;
-   if _check_zero then Exit;
    _go2duel;
   end else
   begin
@@ -2889,7 +2862,6 @@ begin
   end else
   begin
    if _check_time then Exit;
-   if _check_zero then Exit;
    _go2duel;
   end;
   OnUnlock(nil);
@@ -2911,10 +2883,6 @@ begin
 
  link:=AllocMem(SizeOf(TxchgVip));
  link^.is_mod:=is_mod;
- Case cur_zero of
-  True :link^.is_zero:=1;
-  False:link^.is_zero:=0;
- end;
 
  link^.src.user:=user;
  link^.src.link:=link;
@@ -2927,7 +2895,7 @@ begin
 
  if (vor_rpg.duel.ready_msg='') then
  begin
-  vor_rpg.duel.ready_msg:='@%s input [!duel] in %smin to begin with %s';
+  vor_rpg.duel.ready_msg:='@%s input [!duel] in %s min to begin with %s';
  end;
 
  if (vor_rpg.duel.any_msg='') then
@@ -3710,7 +3678,8 @@ end;
 initialization
  LockStr:=TRawByteStringSet.Create;
  xchgSet:=TxchgNodeSet.Create;
- duelSet:=TxchgNodeSet.Create;
+ duelSeta[0]:=TxchgNodeSet.Create;
+ duelSeta[1]:=TxchgNodeSet.Create;
  vor_rpg.time_kd:=8;
  vor_rpg.rst.kd:=1800;
 

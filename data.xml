@@ -84,7 +84,6 @@
   <max_msg>   @%s imGlitch слишком много запросов на дуэль    </max_msg>
   <ready_msg> @%s введите [!duel] в течение %sмин чтобы начать дуэль с %s karmikRaid</ready_msg>
   <time_msg>  @%s ожидайте следующей дуэли karmikFeels (%s)</time_msg>
-  <zero_msg>  @%s, на вашем счету нет опыта.</zero_msg>
 
   <stand_msg>
    Результат дуэли %s и %s: ничья! karmikS

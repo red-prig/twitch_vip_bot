@@ -3401,10 +3401,6 @@ begin
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.duel.time_msg);
    end;
-  'zero_msg':
-   begin
-    Node.Push(TLoadStr_Func,@vor_rpg.duel.zero_msg);
-   end;
   'stand_msg':
    begin
     Node.Push(TLoadList_Func,@vor_rpg.duel.stand_msg);
