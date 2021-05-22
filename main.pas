@@ -3189,6 +3189,10 @@ begin
   begin
    Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_AGL);
   end;
+  'MUL_ESC':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_ESC);
+  end;
 
   'DEC_LUK':
   begin
@@ -3206,6 +3210,11 @@ begin
   begin
    Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_AGL);
   end;
+  'DEC_ESC':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_ESC);
+  end;
+
   'PERC_MINUS_VIP':
   begin
    Node.Push(TLoadPerc_Func,@vor_rpg.calc.PERC_MINUS_VIP);

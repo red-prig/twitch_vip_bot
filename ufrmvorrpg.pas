@@ -156,11 +156,13 @@ var
     MUL_DEF:Double;
     MUL_STR:Double;
     MUL_AGL:Double;
+    MUL_ESC:Double;
 
     DEC_LUK:Double;
     DEC_DEF:Double;
     DEC_STR:Double;
     DEC_AGL:Double;
+    DEC_ESC:Double;
 
     PERC_MINUS_VIP:Byte;
    end;
@@ -899,9 +901,9 @@ begin
  _AGL:=AGL;
  if (_AGL=0) then Exit(0) else
  if (_AGL>0) then
-  Result:=Trunc(Log2((_AGL+1)*4-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL)
+  Result:=Trunc(Log2((_AGL+1)*4-2)*vor_rpg.calc.MUL_ESC+vor_rpg.calc.DEC_ESC)
  else
-  Result:=-Trunc(Log2((abs(_AGL)+1)*4-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL);
+  Result:=-Trunc(Log2((abs(_AGL)+1)*4-2)*vor_rpg.calc.MUL_ESC+vor_rpg.calc.DEC_ESC);
 end;
 
 Function TPlayer.GetAGLPercent:Int64;
@@ -911,9 +913,9 @@ begin
  _AGL:=AGL;
  if (_AGL=0) then Exit(0) else
  if (_AGL>0) then
-  Result:=Trunc(Log2((_AGL+1)*4-2)*vor_rpg.calc.MUL_STR+vor_rpg.calc.DEC_STR)
+  Result:=Trunc(Log2((_AGL+1)*4-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL)
  else
-  Result:=-Trunc(Log2((abs(_AGL)+1)*4-2)*vor_rpg.calc.MUL_STR+vor_rpg.calc.DEC_STR);
+  Result:=-Trunc(Log2((abs(_AGL)+1)*4-2)*vor_rpg.calc.MUL_AGL+vor_rpg.calc.DEC_AGL);
 end;
 
 Function TPlayer.GetTime:Int64;
