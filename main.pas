@@ -738,6 +738,10 @@ begin
   Result:=Copy(Result,1,i-1);
  end;
 
+ if (s<>'') and (s[Length(s)]=':') then
+ begin
+  Result:=Copy(Result,1,High(s));
+ end;
 end;
 
 function TFrmMain.try_theif_vip(const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
