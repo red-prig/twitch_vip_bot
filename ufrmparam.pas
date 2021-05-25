@@ -16,6 +16,7 @@ type
     BtnCancel: TBitBtn;
     BtnOk: TBitBtn;
     CBLoginMsg: TCheckBox;
+    CBDontWelcomeMsg: TCheckBox;
     EdtLogin: TLabeledEdit;
     EdtChat: TLabeledEdit;
     EdtLogin2: TLabeledEdit;
@@ -66,6 +67,7 @@ begin
  base.login    :=Trim(Config.ReadString('base','login'  ,base.login));
  base.login2   :=Trim(Config.ReadString('base','login2' ,base.login2));
  base.useLogin2:=Trim(Config.ReadString('base','useLogin2','0'))='1';
+ base.dontWelcome:=Trim(Config.ReadString('base','dontWelcome','0'))='1';
 end;
 
 Procedure TFrmParam.Open;
@@ -77,6 +79,7 @@ begin
   EdtLogin2.Text    :=base.login2;
   EdtPassword2.Text :=Config.ReadString('base','oAuth2','');
   CBLoginMsg.Checked:=base.useLogin2;
+  CBDontWelcomeMsg.Checked:=base.dontWelcome;
  except
   on E:Exception do
   begin
@@ -90,6 +93,7 @@ begin
   base.login    :=EdtLogin.Text;
   base.login2   :=EdtLogin2.Text;
   base.useLogin2:=CBLoginMsg.Checked;
+  base.dontWelcome:=CBDontWelcomeMsg.Checked;
 
   try
    Config.WriteString('base','login'   ,base.login);
@@ -101,6 +105,11 @@ begin
    case base.useLogin2 of
     True :Config.WriteString('base','useLogin2','1');
     False:Config.WriteString('base','useLogin2','0');
+   end;
+
+   case base.dontWelcome of
+    True :Config.WriteString('base','dontWelcome','1');
+    False:Config.WriteString('base','dontWelcome','0');
    end;
 
   except

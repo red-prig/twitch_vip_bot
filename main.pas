@@ -217,6 +217,7 @@ var
   login:RawByteString;
   login2:RawByteString;
   useLogin2:Boolean;
+  dontWelcome:Boolean;
   useLoginState:Byte;
  end;
 
@@ -547,7 +548,8 @@ begin
          if base.useLoginState=1 then
             base.useLoginState:=2;
 
-         push_irc_msg(vip_rnd.login_msg);
+         if not base.dontWelcome then
+          push_irc_msg(vip_rnd.login_msg);
 
          {
          add_reward(
