@@ -1437,23 +1437,26 @@ begin
  param:=Trim(msg);
  cmd:=Trim(FetchAny(param));
 
- if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-  if LowerCase(cmd)='!reconnect' then
-   reply_irc_reconnect;
+ if (cmd<>'') and (cmd[1]='!') then //this is cmd
+ begin
+  if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+   if LowerCase(cmd)='!reconnect' then
+    reply_irc_reconnect;
 
- if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-  FrmVipParam.vip_time_cmd(user,cmd,param);
+  if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+   FrmVipParam.vip_time_cmd(user,cmd,param);
 
- if (sub_mod.Enable) then
-  FrmSubParam.add_sub_mod_cmd(cmd);
+  if (sub_mod.Enable) then
+   FrmSubParam.add_sub_mod_cmd(cmd);
 
- if vol_cmd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-  add_vol_cmd(user,cmd,param);
+  if vol_cmd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+   add_vol_cmd(user,cmd,param);
 
- {$IFDEF VOR_RPG}
- if vor_rpg.Enable then
-  FrmVorRpg.add_to_chat_cmd(PC,user,cmd,param);
- {$ENDIF}
+  {$IFDEF VOR_RPG}
+  if vor_rpg.Enable then
+   FrmVorRpg.add_to_chat_cmd(PC,user,cmd,param);
+  {$ENDIF}
+ end;
 
  FrmYtts.add_to_chat_cmd((pm_highlighted in PC.PS),cmd,param,msg);
 
