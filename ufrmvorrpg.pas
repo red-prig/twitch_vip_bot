@@ -58,8 +58,8 @@ type
     Procedure rpg_theif_vip(const s,dst_user,msg:RawByteString);
     procedure check_xchg_vip_time;
     procedure add2xchgVip(const user,nick:RawByteString);
-    Procedure vip_time(const user:RawByteString);
     procedure catch_vip(const user:RawByteString);
+    Procedure vip_time(const user:RawByteString);
     procedure check_duel_time;
     procedure add2duel(const user,nick:RawByteString;is_mod:Boolean);
     procedure add_to_chat_cmd(PC:TPrivMsgCfg;const user,cmd,param:RawByteString);
@@ -81,6 +81,7 @@ var
 
    xchg:record
     Enable:Boolean;
+    kd_time:Int64;
     max_count:DWORD;
     max_time:DWORD;
     exist1_msg,
@@ -88,7 +89,9 @@ var
     max_msg,
     ready_msg,
     cancel_msg,
-    sucs_msg:RawByteString;
+    sucs_msg,
+    time_msg1,
+    time_msg2:RawByteString;
    end;
 
    duel:record
@@ -2413,13 +2416,106 @@ begin
  until false;
 end;
 
-procedure TFrmVorRpg.add2xchgVip(const user,nick:RawByteString);
+type
+ Tadd2xchgVipScript=class(TDualLockScript)
+  public
+   Procedure OnEvent; override;
+ end;
+
+Procedure Tadd2xchgVipScript.OnEvent;
 var
+ Points1,Points2:TPlayer;
+ Now,time:Int64;
+
  xchgNode:TxchgNode;
  link:PxchgVip;
 begin
+ xchgNode:=Default(TxchgNode);
+ xchgNode.user:=user[0];
+ if xchgSet.NFind(@xchgNode)<>nil then
+ begin
+  OnUnlock(nil);
+  Exit;
+ end;
+
+ xchgNode:=Default(TxchgNode);
+ xchgNode.user:=user[1];
+ if xchgSet.NFind(@xchgNode)<>nil then
+ begin
+  OnUnlock(nil);
+  Exit;
+ end;
+
+ if (xchgSet.Size>vor_rpg.xchg.max_count*2) then
+ begin
+  if (vor_rpg.xchg.max_msg='') then
+  begin
+   vor_rpg.xchg.max_msg:='@%s too many requests for exchange';
+  end;
+  push_irc_msg(Format(vor_rpg.xchg.max_msg,[user[0]]));
+  OnUnlock(nil);
+  Exit;
+ end;
+
+ Points1.Load(data[0]);
+ Points2.Load(data[1]);
+
+ Now:=DateTimeToUnix(sysutils.Now,False);
+
+ time:=data[0].Path['xchg.kd_time'].AsInt(0);
+ if (time<>0) and ((time+vor_rpg.xchg.kd_time)>Now) then
+ begin
+  if (vor_rpg.xchg.time_msg1='') then
+  begin
+   vor_rpg.xchg.time_msg1:='@%s exchange in timeout (%s)';
+  end;
+  time:=(time+vor_rpg.xchg.kd_time)-Now;
+  push_irc_msg(Format(vor_rpg.xchg.time_msg1,[user[0],GetLongStrTime(time)]));
+  OnUnlock(nil);
+  Exit;
+ end;
+
+ time:=data[1].Path['xchg.kd_time'].AsInt(0);
+ if (time<>0) and ((time+vor_rpg.xchg.kd_time)>Now) then
+ begin
+  if (vor_rpg.xchg.time_msg2='') then
+  begin
+   vor_rpg.xchg.time_msg2:='@%s exchange in timeout for %s (%s)';
+  end;
+  time:=(time+vor_rpg.xchg.kd_time)-Now;
+  push_irc_msg(Format(vor_rpg.xchg.time_msg2,[user[0],user[1],GetLongStrTime(time)]));
+  OnUnlock(nil);
+  Exit;
+ end;
+
+ link:=AllocMem(SizeOf(TxchgVip));
+ link^.src.user:=user[0];
+ link^.src.link:=link;
+ link^.dst.user:=user[1];
+ link^.dst.link:=link;
+ link^.time:=GetTickCount64;
+
+ xchgSet.Insert(@link^.src);
+ xchgSet.Insert(@link^.dst);
+
+ if (vor_rpg.xchg.ready_msg='') then
+ begin
+  vor_rpg.xchg.ready_msg:='@%s input [!vip me] in %smin';
+ end;
+ push_irc_msg(Format(vor_rpg.xchg.ready_msg,[user[1],IntToStr(vor_rpg.xchg.max_time)]));
+
+ OnUnlock(nil);
+end;
+
+procedure TFrmVorRpg.add2xchgVip(const user,nick:RawByteString);
+var
+ xchgNode:TxchgNode;
+
+ FDbcScript:TDbcScriptLock;
+ FXchgScript:Tadd2xchgVipScript;
+begin
+
  if (nick='') or (user=nick) then Exit;
- if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
  if (FrmVipParam.FindVipUser(user)=-1) then Exit;
  if (FrmVipParam.FindVipUser(nick)<>-1) then Exit;
@@ -2435,7 +2531,6 @@ begin
    vor_rpg.xchg.exist1_msg:='%s exchange request is exist, for cancel try [!vip моя]'
   end;
   push_irc_msg(Format(vor_rpg.xchg.exist1_msg,[user]));
-  vor_rpg.TickKd:=GetTickCount64;
   Exit;
  end;
 
@@ -2448,38 +2543,78 @@ begin
    vor_rpg.xchg.exist2_msg:='@%s request for %s is exists';
   end;
   push_irc_msg(Format(vor_rpg.xchg.exist2_msg,[user,nick]));
-  vor_rpg.TickKd:=GetTickCount64;
   Exit;
  end;
 
  if (xchgSet.Size>vor_rpg.xchg.max_count*2) then
  begin
-  if vor_rpg.xchg.max_msg='' then
+  if (vor_rpg.xchg.max_msg='') then
   begin
    vor_rpg.xchg.max_msg:='@%s too many requests for exchange';
   end;
   push_irc_msg(Format(vor_rpg.xchg.max_msg,[user]));
-  vor_rpg.TickKd:=GetTickCount64;
   Exit;
  end;
 
- link:=AllocMem(SizeOf(TxchgVip));
- link^.src.user:=user;
- link^.src.link:=link;
- link^.dst.user:=nick;
- link^.dst.link:=link;
- link^.time:=GetTickCount64;
+ FXchgScript:=Tadd2xchgVipScript.Create;
+ FXchgScript.user[0]:=user;
+ FXchgScript.user[1]:=nick;
 
- xchgSet.Insert(@link^.src);
- xchgSet.Insert(@link^.dst);
+ FDbcScript:=TDbcScriptLock.Create;
+ FDbcScript.Prepare(FXchgScript);
+ FDbcScript.AsyncFunc(@FDbcScript.try_start);
+end;
 
- if vor_rpg.xchg.ready_msg='' then
- begin
-  vor_rpg.xchg.ready_msg:='@%s input [!vip забрать] in %smin';
+Procedure IncJInt64(J:TJson;const f:RawByteString;delta:Int64); inline;
+begin
+ J.Values[f]:=J.Path[f].AsInt64(0)+delta;
+end;
+
+type
+ TxchgVipScript=class(TDualLockScript)
+  public
+   Procedure OnEvent; override;
  end;
- push_irc_msg(Format(vor_rpg.xchg.ready_msg,[nick,IntToStr(vor_rpg.xchg.max_time)]));
 
- vor_rpg.TickKd:=GetTickCount64;
+Procedure TxchgVipScript.OnEvent;
+var
+ xchgNode:TxchgNode;
+ link:PxchgVip;
+ Node:TxchgNodeSet.PNode;
+
+ Now:Int64;
+begin
+ xchgNode:=Default(TxchgNode);
+ xchgNode.user:=user[1];
+ Node:=xchgSet.NFind(@xchgNode);
+ if (Node<>nil) then
+ begin
+  link:=PxchgNode(Node^.Data)^.link;
+  if (link^.src.user=user[0]) and (link^.dst.user=user[1]) then
+  begin
+   if (vor_rpg.xchg.sucs_msg='') then
+   begin
+    vor_rpg.xchg.sucs_msg:='@%s vip is exchanged TwitchVotes';
+   end;
+
+   push_irc_msg(Format(vor_rpg.xchg.sucs_msg,[link^.dst.user]));
+   ChangeVip(link^.src.user,link^.dst.user);
+
+   xchgSet.Delete(@link^.src);
+   xchgSet.Delete(@link^.dst);
+   Finalize(link^);
+   FreeMem(link);
+
+   Now:=DateTimeToUnix(sysutils.Now,False);
+   data[0].Values['xchg.kd_time']:=Now;
+   data[1].Values['xchg.kd_time']:=Now;
+   IncJInt64(data[0],'xchg._out',1);
+   IncJInt64(data[1],'xchg._in' ,1);
+   SetDBRpgUser2(user[0],user[1],data[0],data[1],@OnUnlock);
+   Exit;
+  end;
+ end;
+ OnUnlock(nil);
 end;
 
 procedure TFrmVorRpg.catch_vip(const user:RawByteString);
@@ -2487,9 +2622,10 @@ var
  xchgNode:TxchgNode;
  link:PxchgVip;
  Node:TxchgNodeSet.PNode;
-begin
- if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
+ FDbcScript:TDbcScriptLock;
+ FXchgScript:TxchgVipScript;
+begin
  check_xchg_vip_time;
 
  if (FrmVipParam.FindVipUser(user)<>-1) then
@@ -2514,7 +2650,6 @@ begin
     Finalize(link^);
     FreeMem(link);
 
-    vor_rpg.TickKd:=GetTickCount64;
     Exit;
    end;
   end;
@@ -2528,20 +2663,13 @@ begin
   link:=PxchgNode(Node^.Data)^.link;
   if (link^.dst.user=user) then
   begin
-   if vor_rpg.xchg.sucs_msg='' then
-   begin
-    vor_rpg.xchg.sucs_msg:='@%s vip is exchanged TwitchVotes';
-   end;
+   FXchgScript:=TxchgVipScript.Create;
+   FXchgScript.user[0]:=link^.src.user;
+   FXchgScript.user[1]:=link^.dst.user;
 
-   push_irc_msg(Format(vor_rpg.xchg.sucs_msg,[user]));
-   ChangeVip(link^.src.user,link^.dst.user);
-
-   xchgSet.Delete(@link^.src);
-   xchgSet.Delete(@link^.dst);
-   Finalize(link^);
-   FreeMem(link);
-
-   vor_rpg.TickKd:=GetTickCount64;
+   FDbcScript:=TDbcScriptLock.Create;
+   FDbcScript.Prepare(FXchgScript);
+   FDbcScript.AsyncFunc(@FDbcScript.try_start);
   end;
  end;
 
@@ -2553,8 +2681,6 @@ var
  datebeg,dateend:RawByteString;
  D:TDateTime;
 begin
- if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
-
  i:=FrmVipParam.FindVipUser(user);
  datebeg:=GridVips.FieldValue['datebeg',i];
  dateend:=GridVips.FieldValue['dateend',i];
@@ -2574,8 +2700,6 @@ begin
   end;
   push_irc_msg(Format(vip_rnd.viptime_get_info,[user,user,datebeg,dateend]));
  end;
-
- vor_rpg.TickKd:=GetTickCount64;
 end;
 
 procedure TFrmVorRpg.check_duel_time;
@@ -2623,18 +2747,11 @@ type
    nick:RawByteString;
    Procedure OnEvent; override;
  end;
-
-type
  TDuelScript=class(TDualLockScript)
   public
    is_mod:array[0..1] of Boolean;
    Procedure OnEvent; override;
  end;
-
-Procedure IncJInt64(J:TJson;const f:RawByteString;delta:Int64); inline;
-begin
- J.Values[f]:=J.Path[f].AsInt64(0)+delta;
-end;
 
 Procedure TDuelScript.OnEvent;
 var
@@ -2895,7 +3012,7 @@ begin
 
  if (vor_rpg.duel.ready_msg='') then
  begin
-  vor_rpg.duel.ready_msg:='@%s input [!duel] in %s min to begin with %s';
+  vor_rpg.duel.ready_msg:='@%s input [!duel] in %smin to begin with %s';
  end;
 
  if (vor_rpg.duel.any_msg='') then
@@ -2942,15 +3059,14 @@ var
 begin
  F:=UTF8Encode(UnicodeLowerCase(UTF8Decode(Trim(param))));
 
- Case UTF8Encode(UnicodeLowerCase(UTF8Decode(cmd))) of
-  '!viptime',
-  '!vipinfo':if (PC.PS*[pm_broadcaster,pm_moderator]=[]) then
-              vip_time(user);
-
+ v:=UTF8Encode(UnicodeLowerCase(UTF8Decode(cmd)));
+ Case v of
   '!вип',
   '!vip':
   begin
    v:=Trim(FetchAny(F));
+
+   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
    Case v of
     '',
@@ -2971,6 +3087,8 @@ begin
     'забрать':if vor_rpg.xchg.Enable then
                catch_vip(user);
    end;
+
+   vor_rpg.TickKd:=GetTickCount64;
 
   end;
 

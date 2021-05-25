@@ -61,6 +61,7 @@
 <vor_rpg>
 
  <xchg>
+  <kd_time>86400</kd_time>
   <max_count>10</max_count>
   <max_time>5</max_time>
   <exist1_msg>@%s ваш запрос на обмен уже существует, для отмены обмена введите [!vip моя]</exist1_msg>
@@ -69,6 +70,8 @@
   <ready_msg> @%s введите [!vip забрать] в течение %sмин            </ready_msg>
   <cancel_msg>@%s запрос на обмен випки отменён                     </cancel_msg>
   <sucs_msg>  @%s новый вип заполнил акт приёма-передачи TwitchVotes</sucs_msg>
+  <time_msg1> @%s ожидайте следующего обмена karmikFeels (%s)       </time_msg1>
+  <time_msg2> @%s ожидайте следующего обмена для %s karmikFeels (%s)</time_msg2>
  </xchg>
 
  <duel>

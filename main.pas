@@ -3326,6 +3326,10 @@ end;
 class procedure TVorRpg_xchg_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
 begin
  Case Name of
+  'kd_time':
+   begin
+    Node.Push(TLoadInt64_Func,@vor_rpg.xchg.kd_time);
+   end;
   'max_count':
    begin
     Node.Push(TLoadDWORD_Func,@vor_rpg.xchg.max_count);
@@ -3357,6 +3361,14 @@ begin
   'sucs_msg':
    begin
     Node.Push(TLoadStr_Func,@vor_rpg.xchg.sucs_msg);
+   end;
+  'time_msg1':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.time_msg1);
+   end;
+  'time_msg2':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.time_msg2);
    end;
  end;
 end;
