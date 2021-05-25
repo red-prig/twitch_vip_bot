@@ -2940,9 +2940,9 @@ var
  F,v:RawByteString;
 
 begin
- F:=LowerCase(Trim(param));
+ F:=UTF8Encode(UnicodeLowerCase(UTF8Decode(Trim(param))));
 
- Case LowerCase(cmd) of
+ Case UTF8Encode(UnicodeLowerCase(UTF8Decode(cmd))) of
   '!viptime',
   '!vipinfo':if (PC.PS*[pm_broadcaster,pm_moderator]=[]) then
               vip_time(user);
@@ -2960,7 +2960,7 @@ begin
     'give',
     'дать',
     'отдать':if vor_rpg.xchg.Enable then
-              add2xchgVip(user,LowerCase(Extract_nick(FetchAny(F))));
+              add2xchgVip(user,Extract_nick(FetchAny(F)));
 
     'me',
     'take',
@@ -2993,7 +2993,7 @@ begin
    if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and
       (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
 
-   add2duel(user,LowerCase(Extract_nick(FetchAny(F))),PC.PS*[pm_broadcaster,pm_moderator]<>[]);
+   add2duel(user,Extract_nick(FetchAny(F)),PC.PS*[pm_broadcaster,pm_moderator]<>[]);
   end;
 
   {$IFOPT D+}
@@ -3019,16 +3019,16 @@ begin
    end else
    begin
 
-    v:=LowerCase(FetchAny(F));
+    v:=FetchAny(F);
 
     case v of
      'mod':
       if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
       begin
-       v:=LowerCase(FetchAny(F));
+       v:=FetchAny(F);
        Case v of
         'base':begin
-                v:=LowerCase(FetchAny(F));
+                v:=FetchAny(F);
                 try
                  case v of
                   'pmvip':begin
@@ -3063,7 +3063,7 @@ begin
                end;
 
         'kick':begin
-                v:=LowerCase(FetchAny(F));
+                v:=FetchAny(F);
                 try
                  case v of
                      'on':if not vor_rpg.kick.Enable then
@@ -3110,7 +3110,7 @@ begin
                end;
 
         'xchg':begin
-                v:=LowerCase(FetchAny(F));
+                v:=FetchAny(F);
                 try
                  case v of
                      'on':if not vor_rpg.xchg.Enable then
@@ -3149,7 +3149,7 @@ begin
                end;
 
         'duel':begin
-                v:=LowerCase(FetchAny(F));
+                v:=FetchAny(F);
                 try
                  case v of
                      'on':if not vor_rpg.duel.Enable then
@@ -3165,7 +3165,7 @@ begin
                            push_irc_msg(Format('@%s duel off',[user]));
                           end;
                    'chzr':begin
-                           v:=LowerCase(FetchAny(F));
+                           v:=FetchAny(F);
                            case v of
                              'on':if not vor_rpg.duel.check_zero then
                                   begin
@@ -3222,21 +3222,21 @@ begin
 
         'debuf',
         'dbf':begin
-               v:=LowerCase(FetchAny(F));
+               v:=FetchAny(F);
                try
                 case v of
                   'add':begin
-                         F:=LowerCase(Extract_nick(FetchAny(F)));
+                         F:=Extract_nick(FetchAny(F));
                          if F<>'' then
                           add_pts(user,F,'dbf.add',true);
                         end;
                   'clr':begin
-                         F:=LowerCase(Extract_nick(FetchAny(F)));
+                         F:=Extract_nick(FetchAny(F));
                           if F<>'' then
                          add_pts(user,F,'dbf.clr',true);
                         end;
                  'info':begin
-                         F:=LowerCase(Extract_nick(FetchAny(F)));
+                         F:=Extract_nick(FetchAny(F));
                          if F<>'' then
                           GetDBRpgUserInfo(user,F,'dbf');
                         end;
@@ -3276,13 +3276,13 @@ begin
         'stats',
         'stat':
         begin
-         F:=LowerCase(Extract_nick(FetchAny(F)));
+         F:=Extract_nick(FetchAny(F));
          if (F<>'') then
           GetDBRpgUserInfo(user,F,v);
         end;
         'add':
          begin
-          v:=LowerCase(FetchAny(F));
+          v:=FetchAny(F);
           Case v of
            'pts',
            'lvl',
@@ -3293,7 +3293,7 @@ begin
            'agl',
            'str':
            begin
-            F:=LowerCase(Extract_nick(FetchAny(F)));
+            F:=Extract_nick(FetchAny(F));
             if F<>'' then
              add_pts(user,F,v,true);
            end;
@@ -3303,14 +3303,14 @@ begin
          end;
         'reset',
         'rst':begin
-               F:=LowerCase(Extract_nick(FetchAny(F)));
+               F:=Extract_nick(FetchAny(F));
                if (F<>'') then
                 add_pts(user,F,'rst',true);
               end;
 
         'sub':
          begin
-          v:=LowerCase(FetchAny(F));
+          v:=FetchAny(F);
           Case v of
            'pts',
            'lvl',
@@ -3321,7 +3321,7 @@ begin
            'agl',
            'str':
            begin
-            F:=LowerCase(Extract_nick(FetchAny(F)));
+            F:=Extract_nick(FetchAny(F));
             if F<>'' then
              sub_pts(user,F,v);
            end;
@@ -3346,7 +3346,7 @@ begin
      'stats',
      'stat':
      begin
-      F:=LowerCase(Extract_nick(FetchAny(F)));
+      F:=Extract_nick(FetchAny(F));
       if (F<>'') then
       begin
        GetDBRpgUserInfo(user,F,v);
@@ -3356,7 +3356,7 @@ begin
       end;
      end;
      'add':begin
-            v:=LowerCase(FetchAny(F));
+            v:=FetchAny(F);
             Case v of
              'luk',
              'def',
