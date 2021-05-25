@@ -740,9 +740,9 @@ begin
   Result:=Copy(Result,1,i-1);
  end;
 
- if (s<>'') and (s[Length(s)]=':') then
+ if (Result<>'') and (Result[Length(Result)]=':') then
  begin
-  Result:=Copy(Result,1,High(s));
+  Result:=Copy(Result,1,High(Result));
  end;
 end;
 
