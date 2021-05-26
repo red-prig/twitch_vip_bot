@@ -3048,7 +3048,15 @@ begin
  FDbcScript:=TDbcScriptLock.Create;
  FDbcScript.Prepare(FDuelScript);
  FDbcScript.AsyncFunc(@FDbcScript.try_start);
+end;
 
+function in_TickKd:Boolean; inline;
+begin
+ Result:=(GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000);
+end;
+
+procedure up_TickKd; inline;
+begin
  vor_rpg.TickKd:=GetTickCount64;
 end;
 
@@ -3066,18 +3074,24 @@ begin
   begin
    v:=Trim(FetchAny(F));
 
-   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
-
    Case v of
     '',
     'time',
     'info':if (PC.PS*[pm_broadcaster,pm_moderator]=[]) then
-            vip_time(user);
+          begin
+           if in_TickKd then Exit;
+           vip_time(user);
+           up_TickKd;
+          end;
 
     'give',
     'дать',
     'отдать':if vor_rpg.xchg.Enable then
+             begin
+              if in_TickKd then Exit;
               add2xchgVip(user,Extract_nick(FetchAny(F)));
+              up_TickKd;
+             end;
 
     'me',
     'take',
@@ -3085,10 +3099,12 @@ begin
     'мне',
     'сюда',
     'забрать':if vor_rpg.xchg.Enable then
+              begin
+               if in_TickKd then Exit;
                catch_vip(user);
+               up_TickKd;
+              end;
    end;
-
-   vor_rpg.TickKd:=GetTickCount64;
 
   end;
 
@@ -3096,12 +3112,9 @@ begin
   '!пнуть':
   if vor_rpg.kick.Enable then
   begin
-   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and
-      (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
-
+   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and in_TickKd then Exit;
    kick(user,F,PC.PS*[pm_broadcaster,pm_moderator]<>[]);
-
-   vor_rpg.TickKd:=GetTickCount64;
+   up_TickKd;
   end;
 
   '!duel',
@@ -3109,28 +3122,24 @@ begin
   '!дуель':
   if vor_rpg.duel.Enable then
   begin
-   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and
-      (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
-
+   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and in_TickKd then Exit;
    add2duel(user,Extract_nick(FetchAny(F)),PC.PS*[pm_broadcaster,pm_moderator]<>[]);
+   up_TickKd;
   end;
 
   {$IFOPT D+}
   '!ban_test':
   begin
-   if (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
-
+   if in_TickKd then Exit;
    F:=FetchAny(F);
    rpg_theif_vip('',user,F);
-
-   vor_rpg.TickKd:=GetTickCount64;
+   up_TickKd;
   end;
   {$ENDIF}
 
   '!vor':
   begin
-   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and
-      (GetTickCount64<vor_rpg.TickKd+vor_rpg.time_kd*1000) then Exit;
+   if (PC.PS*[pm_broadcaster,pm_moderator]=[]) and in_TickKd then Exit;
 
    if (F='') then
    begin
@@ -3506,7 +3515,7 @@ begin
 
    end;
 
-   vor_rpg.TickKd:=GetTickCount64;
+   up_TickKd;
   end;
  end;
 
