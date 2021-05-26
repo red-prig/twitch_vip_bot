@@ -40,7 +40,7 @@ uses
 
   SysUtils, ExtCtrls, Classes, UAsyncQueue, ULog, Forms, printer4lazarus, main,
   Uloginf, UFrmParam, UFrmAbout, UFrmVipParam, UFrmSubParam, ufrmvol,
-  UFrmVorRpg, ufrmexportstory, UFrmYtts;
+  UFrmVorRpg, ufrmexportstory, UFrmYtts, UFrmUnSubParam;
 
 {$R *.res}
 
@@ -177,6 +177,7 @@ begin
   Application.CreateForm(TFrmVorRpg, FrmVorRpg);
   Application.CreateForm(TFrmExportStory, FrmExportStory);
   Application.CreateForm(TFrmYtts, FrmYtts);
+  Application.CreateForm(TFrmUnSubParam, FrmUnSubParam);
   Application.Run;
 end.
 

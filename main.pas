@@ -124,6 +124,7 @@ type
     procedure OnPopupClickYttsParam(Sender:TObject);
     procedure OnPopupClickVolParam(Sender:TObject);
     procedure OnPopupClickSubParam(Sender:TObject);
+    procedure OnPopupClickUnSubParam(Sender:TObject);
     procedure OnPopupClickVorRpgParam(Sender:TObject);
     procedure OnPopupClickVipParam(Sender:TObject);
     procedure OnPopupClickParam(Sender:TObject);
@@ -314,6 +315,7 @@ uses
  //DbcScriptUtils,
  //ZTokenizer,
 
+ UFrmUnSubParam,
  UFrmYtts,
  WinAudioSession,
  ufrmexportstory,
@@ -899,6 +901,12 @@ begin
    end;
   end;
 
+  if unsub_mod.Enable and (reward_title=unsub_mod.inc_title) then
+  begin
+   //unsub mode
+   FrmUnSubParam._inc_msg(cmd,user);
+  end;
+
   add_to_story(DT,display_name,reward_title,msg,cmd);
 
   FDbcScript:=TDbcStatementScript.Create;
@@ -1450,23 +1458,28 @@ var
  cmd,param:RawByteString;
 begin
 
+ if (PC.PS=[]) and (PC.subscriber_s<>0) then //subs only, no moder, no vip
+ begin
+  if FrmUnSubParam.subs_msg(Trim(msg),PC.uid) then Exit;
+ end;
+
  param:=Trim(msg);
  cmd:=Trim(FetchAny(param));
 
  if (cmd<>'') and (cmd[1]='!') then //this is cmd
  begin
-  if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-   if LowerCase(cmd)='!reconnect' then
-    reply_irc_reconnect;
 
   if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
+  begin
+   if LowerCase(cmd)='!reconnect' then
+    reply_irc_reconnect;
+   if vol_cmd.Enable then
+    add_vol_cmd(user,cmd,param);
    FrmVipParam.vip_time_cmd(user,cmd,param);
+  end;
 
   if (sub_mod.Enable) then
    FrmSubParam.add_sub_mod_cmd(cmd);
-
-  if vol_cmd.Enable and (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
-   add_vol_cmd(user,cmd,param);
 
   {$IFDEF VOR_RPG}
   if vor_rpg.Enable then
@@ -2029,6 +2042,11 @@ begin
  FrmSubParam.Open;
 end;
 
+procedure TFrmMain.OnPopupClickUnSubParam(Sender:TObject);
+begin
+ FrmUnSubParam.Open;
+end;
+
 procedure TFrmMain.OnPopupClickVorRpgParam(Sender:TObject);
 begin
  {$IFDEF VOR_RPG}
@@ -2231,6 +2249,8 @@ begin
 
    FrmSubParam.LoadCfg;
 
+   FrmUnSubParam.LoadCfg;
+
    FrmVolParam.LoadCfg;
 
    FrmYtts.LoadCfg;
@@ -2264,6 +2284,8 @@ begin
    {$ENDIF}
 
    FrmSubParam.InitCfg;
+
+   FrmUnSubParam.InitCfg;
 
    FrmVolParam.InitCfg;
 
@@ -2348,6 +2370,12 @@ begin
  Item:=TMenuItem.Create(PopupCfg);
  Item.Caption:='Саб мод';
  Item.OnClick:=@OnPopupClickSubParam;
+ PopupCfg.Items.Add(Item);
+
+ //unsub param
+ Item:=TMenuItem.Create(PopupCfg);
+ Item.Caption:='Анcаб мод';
+ Item.OnClick:=@OnPopupClickUnSubParam;
  PopupCfg.Items.Add(Item);
 
  //------

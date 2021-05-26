@@ -1,82 +1,28 @@
-object FrmSubParam: TFrmSubParam
-  Left = 418
-  Height = 309
-  Top = 118
+object FrmUnSubParam: TFrmUnSubParam
+  Left = 469
+  Height = 168
+  Top = 84
   Width = 353
   BorderIcons = [biSystemMenu]
-  Caption = 'Параметры саб мода'
-  ClientHeight = 309
+  Caption = 'Параметры Ансаб Мода'
+  ClientHeight = 168
   ClientWidth = 353
   OnCreate = FormCreate
-  OnKeyDown = FormKeyDown
   Position = poMainFormCenter
   LCLVersion = '2.0.12.0'
-  object EdtTitleSubInc: TLabeledEdit
-    Left = 8
-    Height = 25
-    Hint = 'Заголовок награды для добавлении времени и'#13#10' включении сабмода если время>0'
-    Top = 32
-    Width = 334
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 334
-    EditLabel.Caption = 'Заголовок награды [+]:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 1
-    OnKeyDown = FormKeyDown
-  end
-  object EdtTitleSubDec: TLabeledEdit
-    Left = 8
-    Height = 25
-    Hint = 'Заголовок награды для уменьшения времени и'#13#10' выключении сабмода если время<=0'
-    Top = 80
-    Width = 334
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 334
-    EditLabel.Caption = 'Заголовок награды [-]:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 2
-    OnKeyDown = FormKeyDown
-  end
-  object EdtSubInc: TLabeledEdit
-    Left = 8
-    Height = 25
-    Hint = 'Время которое добавляеться/отнимаеться у таймера'
-    Top = 128
-    Width = 334
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 334
-    EditLabel.Caption = 'Время в минутах:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 3
-    OnExit = EdtSubExit
-    OnKeyDown = FormKeyDown
-    OnKeyPress = EdtSubKeyPress
+  object CBEnable: TCheckBox
+    Left = 265
+    Height = 19
+    Top = 8
+    Width = 77
+    Anchors = [akTop, akRight]
+    Caption = 'Включено'
+    TabOrder = 0
   end
   object BtnOk: TBitBtn
     Left = 8
     Height = 30
-    Top = 269
+    Top = 129
     Width = 75
     Anchors = [akLeft, akBottom]
     Caption = 'OK'
@@ -147,12 +93,12 @@ object FrmSubParam: TFrmSubParam
     }
     OnClick = BtnOkClick
     OnKeyDown = FormKeyDown
-    TabOrder = 8
+    TabOrder = 1
   end
   object BtnCancel: TBitBtn
     Left = 251
     Height = 30
-    Top = 269
+    Top = 129
     Width = 91
     Anchors = [akRight, akBottom]
     Caption = 'Отмена'
@@ -223,18 +169,38 @@ object FrmSubParam: TFrmSubParam
     }
     OnClick = BtnCancelClick
     OnKeyDown = BtnCancelKeyDown
-    TabOrder = 9
+    TabOrder = 2
   end
-  object EdtSub_max_inc: TLabeledEdit
+  object EdtTitleInc: TLabeledEdit
     Left = 8
     Height = 25
-    Hint = 'Максимальное положительное время таймера в часах.'#13#10' 0 - без ограничения.'
-    Top = 176
+    Hint = 'Заголовок награды для добавления количества сообщений на удаление.'
+    Top = 32
     Width = 334
     Anchors = [akTop, akLeft, akRight]
     EditLabel.Height = 21
     EditLabel.Width = 334
-    EditLabel.Caption = 'Максимум положительного таймера в часах:'
+    EditLabel.Caption = 'Заголовок награды [+]:'
+    EditLabel.ParentColor = False
+    EditLabel.ParentFont = False
+    EditLabel.Font.Height = -16
+    Font.Height = -13
+    ParentFont = False
+    ParentShowHint = False
+    ShowHint = True
+    TabOrder = 3
+    OnKeyDown = FormKeyDown
+  end
+  object EdtSubInc: TLabeledEdit
+    Left = 8
+    Height = 25
+    Hint = 'Количество сообщений которое добавляеться к счётчику'
+    Top = 88
+    Width = 334
+    Anchors = [akTop, akLeft, akRight]
+    EditLabel.Height = 21
+    EditLabel.Width = 334
+    EditLabel.Caption = 'Количество сообщений:'
     EditLabel.ParentColor = False
     EditLabel.ParentFont = False
     EditLabel.Font.Height = -16
@@ -246,55 +212,5 @@ object FrmSubParam: TFrmSubParam
     OnExit = EdtSubExit
     OnKeyDown = FormKeyDown
     OnKeyPress = EdtSubKeyPress
-  end
-  object EdtSub_max_dec: TLabeledEdit
-    Left = 8
-    Height = 25
-    Hint = 'Максимальное отрицательное время таймера в часах.'#13#10' 0 - без отрицательного таймера.'
-    Top = 232
-    Width = 334
-    Anchors = [akTop, akLeft, akRight]
-    EditLabel.Height = 21
-    EditLabel.Width = 334
-    EditLabel.Caption = 'Максимум отрицательного таймера в часах:'
-    EditLabel.ParentColor = False
-    EditLabel.ParentFont = False
-    EditLabel.Font.Height = -16
-    Font.Height = -13
-    ParentFont = False
-    ParentShowHint = False
-    ShowHint = True
-    TabOrder = 5
-    OnExit = EdtSubExit
-    OnKeyDown = FormKeyDown
-    OnKeyPress = EdtSubKeyPress
-  end
-  object CBSubEnable: TCheckBox
-    Left = 265
-    Height = 19
-    Top = 8
-    Width = 77
-    Anchors = [akTop, akRight]
-    Caption = 'Включено'
-    TabOrder = 0
-  end
-  object CBRevTick: TCheckBox
-    Left = 216
-    Height = 19
-    Top = 58
-    Width = 128
-    Anchors = [akTop, akRight]
-    Caption = 'Тик отриц. таймера'
-    TabOrder = 6
-  end
-  object CBSubDontLog: TCheckBox
-    Left = 190
-    Height = 19
-    Hint = 'Не логировать в историю сабмода'
-    Top = 108
-    Width = 151
-    Anchors = [akTop, akRight]
-    Caption = 'Не сохранять в истории'
-    TabOrder = 7
   end
 end

@@ -146,19 +146,15 @@ end;
 Procedure TFrmSubParam.OnGetSubTime(Sender:TBaseTask);
 Var
  ResultSet:TZResultSet;
-
 begin
  ResultSet:=TDbcStatementScript(Sender).ResultSet;
-
  if ResultSet=nil then Exit;
-
  if ResultSet.First then
  begin
   sub_mod.T.TimeRv:=ResultSet.GetInt(FirstDbcIndex);
   sub_mod.T.TimeDB:=sub_mod.T.TimeRv;
   UpdateTextSubTime(2);
  end;
-
 end;
 
 function TFrmSubParam._Timer:Boolean;

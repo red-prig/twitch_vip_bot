@@ -27,7 +27,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 0
+    TabOrder = 1
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
@@ -50,7 +50,7 @@ object FrmParam: TFrmParam
     ParentShowHint = False
     PasswordChar = '*'
     ShowHint = True
-    TabOrder = 1
+    TabOrder = 2
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
@@ -128,7 +128,7 @@ object FrmParam: TFrmParam
     }
     OnClick = BtnOkClick
     OnKeyDown = FormKeyDown
-    TabOrder = 8
+    TabOrder = 9
   end
   object BtnCancel: TBitBtn
     Left = 323
@@ -204,7 +204,7 @@ object FrmParam: TFrmParam
     }
     OnClick = BtnCancelClick
     OnKeyDown = BtnCancelKeyDown
-    TabOrder = 9
+    TabOrder = 10
   end
   object TBView: TToggleBox
     Left = 395
@@ -219,7 +219,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 2
+    TabOrder = 3
     TabStop = False
   end
   object EdtChat: TLabeledEdit
@@ -239,7 +239,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 3
+    TabOrder = 4
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
@@ -249,7 +249,7 @@ object FrmParam: TFrmParam
     Top = 168
     Width = 194
     Caption = 'Учётная запись для сообщений'
-    TabOrder = 4
+    TabOrder = 5
   end
   object EdtLogin2: TLabeledEdit
     Left = 6
@@ -268,7 +268,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 5
+    TabOrder = 6
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
@@ -291,7 +291,7 @@ object FrmParam: TFrmParam
     ParentShowHint = False
     PasswordChar = '*'
     ShowHint = True
-    TabOrder = 6
+    TabOrder = 7
     OnKeyDown = EdtKeyDown
     OnUTF8KeyPress = EdtUTF8KeyPress
   end
@@ -308,7 +308,7 @@ object FrmParam: TFrmParam
     ParentFont = False
     ParentShowHint = False
     ShowHint = True
-    TabOrder = 7
+    TabOrder = 8
     TabStop = False
   end
   object CBDontWelcomeMsg: TCheckBox
@@ -317,6 +317,6 @@ object FrmParam: TFrmParam
     Top = 8
     Width = 225
     Caption = 'Не показывать сообщение при входе'
-    TabOrder = 10
+    TabOrder = 0
   end
 end
