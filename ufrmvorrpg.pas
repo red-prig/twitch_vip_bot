@@ -2591,6 +2591,8 @@ begin
  begin
   link:=PxchgNode(Node^.Data)^.link;
   if (link^.src.user=user[0]) and (link^.dst.user=user[1]) then
+  if (FrmVipParam.FindVipUser(user[0])<>-1) then
+  if (FrmVipParam.FindVipUser(user[1])=-1) then
   begin
    if (vor_rpg.xchg.sucs_msg='') then
    begin
@@ -2638,7 +2640,7 @@ begin
    link:=PxchgNode(Node^.Data)^.link;
    if (link^.src.user=user) then
    begin
-    if vor_rpg.xchg.cancel_msg='' then
+    if (vor_rpg.xchg.cancel_msg='') then
     begin
      vor_rpg.xchg.cancel_msg:='@%s request canceled';
     end;
