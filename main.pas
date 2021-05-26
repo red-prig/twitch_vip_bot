@@ -91,6 +91,7 @@ type
     procedure FormCloseQuery(Sender: TObject; var CanClose: boolean);
     procedure FormWindowStateChange(Sender: TObject);
     procedure MIAboutClick(Sender: TObject);
+    procedure ErrorLogn;
     procedure SetLognBtn(Login:Boolean);
     function  getRandomTmpVip(const msg:RawByteString):SizeInt;
     function  try_theif_vip(const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
@@ -191,7 +192,7 @@ var
 
 procedure push_notice(const id,msg:RawByteString);
 procedure push_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
-procedure push_login;
+procedure push_login(succes:Boolean);
 procedure push_room_states(RS:TRoomStates);
 procedure push_reward(const S:RawByteString);
 
@@ -434,21 +435,29 @@ end;
 type
  PQNode_login=^TQNode_login;
  TQNode_login=object(UAsyncQueue.TQNode)
+  Fsucces:Boolean;
   Procedure OnParent;
  end;
 
 Procedure TQNode_login.OnParent;
 begin
- FrmMain.SetLognBtn(True);
+ if Fsucces then
+ begin
+  FrmMain.SetLognBtn(True);
+ end else
+ begin
+  FrmMain.ErrorLogn;
+ end;
  FreeMem(@Self);
 end;
 
-procedure push_login;
+procedure push_login(succes:Boolean);
 var
  P:PQNode_login;
 begin
  P:=AllocMem(SizeOf(TQNode_login));
  P^.Parent:=@P^.OnParent;
+ P^.Fsucces:=succes;
  SendMainQueue(P);
 end;
 
@@ -534,6 +543,11 @@ begin
  end;
 end;
 
+procedure TFrmMain.ErrorLogn;
+begin
+ SetLognBtn(False);
+ ShowMessage('Ошибка подключения к серверу!');
+end;
 
 procedure TFrmMain.SetLognBtn(Login:Boolean);
 begin

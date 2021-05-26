@@ -96,7 +96,7 @@ type
 
   function  stream_get_state(stream_id:PtrUInt):Tnghttp2_stream_proto_state;
 
-  Procedure ALPN;
+  function  ALPN:Boolean;
   procedure NewSession1;
   procedure NewSession2;
   function  session_connect:integer; virtual;
@@ -106,6 +106,7 @@ type
   procedure submit_request(stream_data:THttpStream;nva:Pnghttp2_nv;nvlen:size_t);
   procedure submit(stream_data:THttpStream);
   procedure terminate;
+  procedure print_err;
  end;
 
 function  replyConnect(var ClientData:THttpClient;AClass:THttpClientClass;Const Path:RawByteString):Boolean;
@@ -230,6 +231,67 @@ begin
  Exit(SSL_TLSEXT_ERR_OK);
 end;
 
+Const
+ Crypt32='Crypt32.dll';
+
+type
+ HCERTSTORE=THandle;
+
+ PCERT_INFO=Pointer;
+ TCERT_CONTEXT=packed record
+  dwCertEncodingType:PTRUINT;
+  pbCertEncoded:PByte;
+  cbCertEncoded:PTRUINT;
+  pCertInfo:PCERT_INFO;
+  hCertStore:HCERTSTORE;
+ end;
+ PCCERT_CONTEXT=^TCERT_CONTEXT;
+
+function CertOpenSystemStoreW(hProv:THandle;szSubsystemProtocol:PWideChar):HCERTSTORE; stdcall; external Crypt32;
+function CertEnumCertificatesInStore(_hCertStore:HCERTSTORE;pPrevCertContext:PCCERT_CONTEXT):PCCERT_CONTEXT; stdcall; external Crypt32;
+function CertCloseStore(_hCertStore:HCERTSTORE;dwFlags:DWORD):LongBool; stdcall; external Crypt32;
+
+function SSL_CTX_load_store(ctx:PSSL_CTX):Boolean;
+var
+ store:PX509_STORE;
+ count:Integer=0;
+
+ procedure _load_StoreW(szSubsystemProtocol:PWideChar);
+ var
+  hStore:HCERTSTORE;
+  pContext:PCCERT_CONTEXT=nil;
+  x509:Px509;
+ begin
+  hStore:=CertOpenSystemStoreW(0,szSubsystemProtocol);
+  if (hStore=0) then Exit;
+  while true do
+  begin
+   pContext:=CertEnumCertificatesInStore(hStore,pContext);
+   if (pContext=nil) then Break;
+   x509:=d2i_X509(nil,@pContext^.pbCertEncoded,pContext^.cbCertEncoded);
+   if (x509<>nil) then
+   begin
+    if X509_STORE_add_cert(store,x509)=1 then Inc(count);
+    X509_free(x509);
+   end;
+  end;
+  CertCloseStore(hStore,0);
+ end;
+
+begin
+ store:=X509_STORE_new();
+ _load_StoreW('ROOT');
+ _load_StoreW('CA');
+ Result:=(count<>0);
+ if Result then
+ begin
+  SSL_CTX_set_cert_store(ctx,store);
+ end else
+ begin
+  X509_STORE_free(store);
+ end;
+end;
+
 Function create_ssl_ctx(support_http2:Boolean):PSSL_CTX;
 Var
  M:PSSL_METHOD;
@@ -262,6 +324,12 @@ begin
                      SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION or
                      SSL_MODE_RELEASE_BUFFERS);
 
+ if SSL_CTX_load_store(Result) then
+ begin
+  //SSL_CTX_set_verify(Result,SSL_VERIFY_PEER,nil);
+  SSL_CTX_set_verify_depth(Result,5);
+ end;
+
 end;
 
 Procedure Websocket_eventcb(bev:Pbufferevent;events:SizeUInt;ctx:pointer); forward;
@@ -273,17 +341,18 @@ type
    ws_session:PfpWebsocket_session;
    time_kd:QWORD;
    url:RawByteString;
-   procedure   Init(ssl_ctx:Pssl_ctx);
+   procedure   Init(ssl_ctx:Pssl_ctx;hostname:PChar);
    procedure   Clear; virtual;
    function    connect_hostname(family:Integer;hostname:PAnsiChar;port:Word):Boolean;
    Destructor  Destroy; override;
    function    session_recv:integer;
    function    session_send:integer;
-   Procedure   ALPN;
+   function    ALPN:Boolean;
    procedure   NewSession;
    function    session_connect:integer;        virtual;
    function    session_reply:integer;          virtual;
    function    session_reconnect(sec:SizeUInt):Boolean;virtual;
+   procedure   print_err;
  end;
 
  Pws_irc=^Tws_irc;
@@ -341,7 +410,10 @@ begin
  end;
 end;
 
-procedure TWebsocketData.Init(ssl_ctx:Pssl_ctx);
+Const
+ X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS=$4;
+
+procedure TWebsocketData.Init(ssl_ctx:Pssl_ctx;hostname:PChar);
 Var
  FSSL:PSSL;
 begin
@@ -350,6 +422,8 @@ begin
  if Assigned(ssl_ctx) then
  begin
   FSSL:=create_ssl(ssl_ctx);
+  SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+  SSL_set1_host(FSSL,PByte(hostname));
   Log(irc_log,0,'Init SSL');
  end else
  begin
@@ -546,30 +620,46 @@ begin
 
 end;
 
-Procedure TWebsocketData.ALPN;
+function TWebsocketData.ALPN:Boolean;
 Var
  FSSL:PSSL;
  _alpn:Pointer;
  _alpnlen:size_t;
+ i:Integer;
 begin
+ Result:=True;
  FSSL:=bufferevent_openssl_get_ssl(bev);
  if Assigned(FSSL) then
  begin
   _alpn:=nil;
   _alpnlen:=0;
   SSL_get0_next_proto_negotiated(FSSL,@_alpn,@_alpnlen);
-  if _alpn=nil then
+  if (_alpn=nil) then
   begin
    SSL_get0_alpn_selected(FSSL,@_alpn,@_alpnlen);
   end;
-  if _alpn<>nil then
+  if (_alpn<>nil) then
   begin
    Log(irc_log,0,['ALPN Select:',GetStr(_alpn,_alpnlen)]);
+  end else
+  begin
+   Log(irc_log,1,'ALPN not Select');
+   Exit(False);
   end;
   Log(irc_log,0,['SSL_version:',PChar(SSL_get_version(FSSL)),' SSL_cipher:',PChar(SSL_get_cipher_name(FSSL))]);
+  i:=SSL_get_verify_result(FSSL);
+  if (i<>0) then
+  begin
+   Log(irc_log,i,'Error [SSL_get_verify_result]');
+   Exit(False);
+  end;
+  if (SSL_get0_peername(FSSL)=nil) then
+  begin
+   Log(irc_log,i,'Error [SSL_get0_peername]');
+   Exit(False);
+  end;
  end;
 end;
-
 
 procedure TWebsocketData.NewSession;
 const
@@ -594,7 +684,7 @@ begin
  val:=1;//on
  fpsetsockopt(Fs,IPPROTO_TCP,TCP_NODELAY,@val,sizeof(val));
  SetKeepAlive(Fs,true,30,1,1);
- ALPN;
+ if not ALPN then Exit(-1);
  NewSession;
  session_send;
 end;
@@ -609,6 +699,17 @@ function TWebsocketData.session_reconnect(sec:SizeUInt):Boolean;
 begin
 end;
 
+procedure TWebsocketData.print_err;
+Var
+ FSSL:PSSL;
+begin
+ FSSL:=bufferevent_openssl_get_ssl(bev);
+ if Assigned(FSSL) then
+ begin
+  Log(irc_log,SSL_get_error(FSSL,0),'[SSL_get_error]');
+ end;
+end;
+
 Procedure Websocket_eventcb(bev:Pbufferevent;events:SizeUInt;ctx:pointer);
 Var
  SessionData:TWebsocketData;
@@ -621,6 +722,7 @@ begin
   begin
    if SessionData.session_recv<0 then
    begin
+    SessionData.print_err;
     if not SessionData.session_reconnect(2) then
     begin
      SessionData.Free;
@@ -634,6 +736,7 @@ begin
   begin
    if SessionData.session_send<0 then
    begin
+    SessionData.print_err;
     if not SessionData.session_reconnect(2) then
     begin
      SessionData.Free;
@@ -647,6 +750,7 @@ begin
    Log(irc_log,0,['BEV_EVENT_CONNECTED:',bufferevent_get_fd(bev),':',GetThreadID]);
    if SessionData.session_connect<0 then
    begin
+    SessionData.print_err;
     if not SessionData.session_reconnect(10) then
     begin
      SessionData.Free;
@@ -662,6 +766,7 @@ begin
   Log(irc_log,0,['BEV_EVENT_ERROR_WS:',events and BEV_EVENT_EOF<>0]);
   if Assigned(SessionData) then
   begin
+   SessionData.print_err;
    if not SessionData.session_reconnect(2) then
    begin
     SessionData.Free;
@@ -703,7 +808,7 @@ begin
   ws_irc.recv_msg_chat:=True;
   ws_irc.reply_pub:=True;
  end;
- ws_irc.Init(ctx);
+ ws_irc.Init(ctx,PAnsiChar(URI.GetHost));
 
  ws_irc.url  :=Path;
  ws_irc.login:=login;
@@ -752,7 +857,7 @@ begin
   ws_irc2.recv_msg_chat:=False;
   ws_irc2.reply_pub:=False;
  end;
- ws_irc2.Init(ctx);
+ ws_irc2.Init(ctx,PAnsiChar(URI.GetHost));
 
  ws_irc2.url  :=Path;
  ws_irc2.login:=login;
@@ -817,6 +922,9 @@ begin
   evtimer_reuse(ws_irc_rt,@pool,@_ws_irc_rt_cb,Pointer(Self));
   evtimer_add  (ws_irc_rt,sec*1000000);
   Result:=True;
+ end else
+ begin
+  Main.push_login(False);
  end;
 end;
 
@@ -1532,7 +1640,7 @@ begin
      '001':if ws_irc.recv_msg_chat then
            begin
             main.push_notice('001','Добро пожаловать в чат!');
-            main.push_login;
+            main.push_login(True);
            end;
      'NOTICE':begin
                main.push_notice(msg_parse.msg_id,msg_parse.msg);
@@ -1634,7 +1742,7 @@ begin
  begin
   ws_pub:=Tws_pub.Create;
  end;
- ws_pub.Init(ctx);
+ ws_pub.Init(ctx,PAnsiChar(URI.GetHost));
 
  ws_pub.url    :=Path;
  ws_pub.oAuth  :=oAuth;
@@ -2066,6 +2174,8 @@ end;
   begin
    FSSL:=create_ssl(ssl_ctx);
    Log(irc_log,1,'Create SSL');
+   SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+   SSL_set1_host(FSSL,PByte(hostname));
   end else
   begin
    FSSL:=nil;
@@ -2156,31 +2266,49 @@ end;
   end;
  end;
 
- Procedure THttpClient.ALPN;
+ function THttpClient.ALPN:Boolean;
  Var
   FSSL:PSSL;
   _alpn:Pointer;
   _alpnlen:size_t;
+  i:Integer;
  begin
+  Result:=True;
   FSSL:=bufferevent_openssl_get_ssl(bev);
   if Assigned(FSSL) then
   begin
    _alpn:=nil;
    _alpnlen:=0;
    SSL_get0_next_proto_negotiated(FSSL,@_alpn,@_alpnlen);
-   if _alpn=nil then
+   if (_alpn=nil) then
    begin
     SSL_get0_alpn_selected(FSSL,@_alpn,@_alpnlen);
    end;
-   if _alpn<>nil then
+   if (_alpn<>nil) then
    begin
     Log(irc_log,0,['ALPN Select:',GetStr(_alpn,_alpnlen)]);
     Case LowerCase(GetStr(_alpn,_alpnlen)) of
      'http/1.1':http2:=false;
            'h2':http2:=true;
+     else Exit(false);
     end;
+   end else
+   begin
+    Log(irc_log,1,'ALPN not Select');
+    Exit(False);
    end;
    Log(irc_log,0,['SSL_version:',PChar(SSL_get_version(FSSL)),' SSL_cipher:',PChar(SSL_get_cipher_name(FSSL))]);
+   i:=SSL_get_verify_result(FSSL);
+   if (i<>0) then
+   begin
+    Log(irc_log,i,'Error [SSL_get_verify_result]');
+    Exit(False);
+   end;
+   if (SSL_get0_peername(FSSL)=nil) then
+   begin
+    Log(irc_log,i,'Error [SSL_get0_peername]');
+    Exit(False);
+   end;
   end;
  end;
 
@@ -2195,7 +2323,8 @@ end;
   val:=1;//on
   fpsetsockopt(Fs,IPPROTO_TCP,TCP_NODELAY,@val,sizeof(val));
   SetKeepAlive(Fs,true,30,1,1);
-  ALPN;
+  if not ALPN then Exit(-1);
+
   Case http2 of
    true :NewSession2;
    false:NewSession1;
@@ -2350,6 +2479,17 @@ end;
   end else
   begin
    fphttp1_session_terminate_session(session,0);
+  end;
+ end;
+
+ procedure THttpClient.print_err;
+ Var
+  FSSL:PSSL;
+ begin
+  FSSL:=bufferevent_openssl_get_ssl(bev);
+  if Assigned(FSSL) then
+  begin
+   Log(irc_log,SSL_get_error(FSSL,0),'[SSL_get_error]');
   end;
  end;
 
@@ -2510,6 +2650,7 @@ end;
   if (events and (BEV_EVENT_EOF or BEV_EVENT_ERROR or BEV_EVENT_TIMEOUT))<>0 then
   begin
    Log(irc_log,1,'BEV_EVENT_ERROR');
+   ClientData.print_err;
    FreeAndNil(ClientData);
    Exit;
   end;
@@ -2518,6 +2659,7 @@ end;
   begin
    if ClientData.session_recv<0 then
    begin
+    ClientData.print_err;
     ClientData.Free;
    end;
   end;
@@ -2526,6 +2668,7 @@ end;
   begin
    if ClientData.session_send<0 then
    begin
+    ClientData.print_err;
     ClientData.session_shutdown(1);
    end;
   end;
@@ -2535,6 +2678,7 @@ end;
    Log(irc_log,1,['BEV_EVENT_CONNECTED:',bufferevent_get_fd(bev),':',GetThreadID]);
    if ClientData.session_connect<0 then
    begin
+    ClientData.print_err;
     //bufferevent_close(ClientData.bev);
     //ClientData.session_shutdown(2);
     ClientData.Free;
