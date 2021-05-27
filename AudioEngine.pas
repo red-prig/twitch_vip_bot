@@ -314,8 +314,8 @@ end;
 
 Procedure LazyAudioInit;
 var
- k,err:Integer;
- format_info:TSF_FORMAT_INFO;
+ {k,}err:Integer;
+ //format_info:TSF_FORMAT_INFO;
 begin
  spin_lock_AudioInit;
 
@@ -325,7 +325,7 @@ begin
  err:=Pa_Initialize();
  Log(audio_event,err,'Pa_Initialize');
 
- err:=0;
+ {err:=0;
  sf_command(nil,SFC_GET_FORMAT_MAJOR_COUNT,@err,sizeof(err));
 
  For k:=0 to err-1 do
@@ -334,7 +334,7 @@ begin
   format_info.format:=k;
   sf_command(nil,SFC_GET_FORMAT_MAJOR,@format_info,sizeof(format_info));
   Log(audio_event,0,[pchar(format_info.name),':',pchar(format_info.extension)]);
- end;
+ end;}
 
  mpg123_init;
 
