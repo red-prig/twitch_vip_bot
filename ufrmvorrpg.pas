@@ -234,7 +234,8 @@ uses
  UAsyncResultSet,
  Ulog,UFrmVipParam,
  math,
- mtRandom,ujson,gset;
+ mtRandom,ujson,gset,
+ xml_parse,data_xml;
 
 {$R *.lfm}
 
@@ -3806,6 +3807,568 @@ begin
  end;
 end;
 
+type
+ TVorRpg_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ Tstat_msg_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_calc_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_chr_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_debuf_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+  class procedure CLS(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_kick_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_xchg_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_duel_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpg_rst_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TVorRpgSQL_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+class procedure TVorRpg_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'sql':
+   begin
+    Node.Push(TVorRpgSQL_Func,nil);
+   end;
+  'timeout_cmd':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.timeout_cmd);
+   end;
+  'vor_sucs':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.vor_sucs);
+   end;
+  'jail_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.jail_vip);
+   end;
+  'esc_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.esc_vip);
+   end;
+  'str_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.str_vip);
+   end;
+  'norm_vor':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.norm_vor);
+   end;
+  'minus_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.minus_vip);
+   end;
+  'time4_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.time4_vip);
+   end;
+  'neudc_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.neudc_vip);
+   end;
+  'chist_vip':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.chist_vip);
+   end;
+  'stat_msg':
+   begin
+    Node.Push(Tstat_msg_Func,nil);
+   end;
+  'calc':
+   begin
+    Node.Push(TVorRpg_calc_Func,nil);
+   end;
+  'DEBUF_PERCENT':
+   begin
+    Node.Push(TLoadPerc_Func,@vor_rpg.debuf.PERC);
+   end;
+  'DEBUF_MIN_TIME':
+   begin
+    Node.Push(TLoadInt64_Func,@vor_rpg.debuf.MIN_TIME);
+   end;
+  'DEBUF_MAX_TIME':
+   begin
+    Node.Push(TLoadInt64_Func,@vor_rpg.debuf.MAX_TIME);
+   end;
+  'debuf':
+   begin
+    Node.Push(TVorRpg_debuf_Func,AllocMem(SizeOf(Tdebuf)));
+   end;
+  'kick':
+   begin
+    Node.Push(TVorRpg_kick_Func,nil);
+   end;
+  'xchg':
+   begin
+    Node.Push(TVorRpg_xchg_Func,nil);
+   end;
+  'duel':
+   begin
+    Node.Push(TVorRpg_duel_Func,nil);
+   end;
+  'rst':
+   begin
+    Node.Push(TVorRpg_rst_Func,nil);
+   end;
+ end;
+end;
+
+class procedure Tstat_msg_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'lvl_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.lvl_msg);
+   end;
+  'pts_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.pts_msg);
+   end;
+  'stat_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.stat_msg);
+   end;
+  'add_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.add_msg);
+   end;
+  'not_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.not_msg);
+   end;
+  'max_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.max_msg);
+   end;
+  'help_msg1':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg1);
+   end;
+  'help_msg2':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg2);
+   end;
+  'help_msg3':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.help_msg3);
+   end;
+  'top_msg1':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.top_msg1);
+   end;
+  'top_msg2':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.top_msg2);
+   end;
+  'rate_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.rate_msg);
+   end;
+  'rank_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.rank_msg);
+   end;
+  'on_debuf':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.on_debuf);
+   end;
+  'debuf_pr':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.stat_msg.debuf_pr);
+   end;
+ end;
+end;
+
+class procedure TVorRpg_calc_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'BASE_TIME':
+  begin
+   Node.Push(TLoadInt64_Func,@vor_rpg.calc.BASE_TIME);
+  end;
+  'MUL_TIME':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_TIME);
+  end;
+  'DEC_TIME':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_TIME);
+  end;
+
+  'MAX_LVL':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_LVL);
+  end;
+  'MAX_LUK':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_LUK);
+  end;
+  'MAX_DEF':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_DEF);
+  end;
+  'MAX_CHR':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_CHR);
+  end;
+  'MAX_STR':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_STR);
+  end;
+  'MAX_AGL':
+  begin
+   Node.Push(TLoadDWORD_Func,@vor_rpg.calc.MAX_AGL);
+  end;
+
+  'MUL_EXP':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_EXP);
+  end;
+  'MUL_LUK':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_LUK);
+  end;
+  'MUL_DEF':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_DEF);
+  end;
+  'MUL_STR':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_STR);
+  end;
+  'MUL_AGL':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_AGL);
+  end;
+  'MUL_ESC':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.MUL_ESC);
+  end;
+
+  'DEC_LUK':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_LUK);
+  end;
+  'DEC_DEF':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_DEF);
+  end;
+  'DEC_STR':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_STR);
+  end;
+  'DEC_AGL':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_AGL);
+  end;
+  'DEC_ESC':
+  begin
+   Node.Push(TLoadDouble_Func,@vor_rpg.calc.DEC_ESC);
+  end;
+
+  'PERC_MINUS_VIP':
+  begin
+   Node.Push(TLoadPerc_Func,@vor_rpg.calc.PERC_MINUS_VIP);
+  end;
+ end;
+end;
+
+class procedure TVorRpg_chr_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'STR':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.STR);
+  end;
+  'LUK':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.LUK);
+  end;
+  'DEF':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.DEF);
+  end;
+  'CHR':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.CHR);
+  end;
+  'AGL':
+  begin
+   Node.Push(TLoadInt64_Func,@Pcharacteristic(Node.CData)^.AGL);
+  end;
+ end;
+end;
+
+class procedure TVorRpg_debuf_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'chr':
+  begin
+   Node.Push(TVorRpg_chr_Func,@Pdebuf(Node.CData)^.chr);
+  end;
+  'text':
+  begin
+   Node.Push(TLoadStr_Func,@Pdebuf(Node.CData)^.text);
+  end;
+ end;
+end;
+
+class procedure TVorRpg_debuf_Func.CLS(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'debuf':
+  begin
+   add_debuf(Pdebuf(Node.CData)^);
+   FreeMem(Node.CData);
+  end;
+ end;
+ inherited;
+end;
+
+class procedure TVorRpg_kick_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'PERC':
+  begin
+   Node.Push(TLoadPerc_Func,@vor_rpg.kick.PERC);
+  end;
+  'in_time':
+  begin
+   Node.Push(TLoadInt64_Func,@vor_rpg.kick.in_time);
+  end;
+  'out_time':
+  begin
+   Node.Push(TLoadInt64_Func,@vor_rpg.kick.out_time);
+  end;
+  'in_msg':
+  begin
+   Node.Push(TLoadStr_Func,@vor_rpg.kick.in_msg);
+  end;
+  'out_msg':
+  begin
+   Node.Push(TLoadStr_Func,@vor_rpg.kick.out_msg);
+  end;
+  'not_vor':
+  begin
+   Node.Push(TLoadList_Func,@vor_rpg.kick.not_vor);
+  end;
+  'go_kick':
+  begin
+   Node.Push(TLoadList_Func,@vor_rpg.kick.go_kick);
+  end;
+  'go_def':
+  begin
+   Node.Push(TLoadList_Func,@vor_rpg.kick.go_def);
+  end;
+  'go_esc':
+  begin
+   Node.Push(TLoadList_Func,@vor_rpg.kick.go_esc);
+  end;
+ end;
+end;
+
+class procedure TVorRpg_xchg_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'kd_time':
+   begin
+    Node.Push(TLoadInt64_Func,@vor_rpg.xchg.kd_time);
+   end;
+  'max_count':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.xchg.max_count);
+   end;
+  'max_time':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.xchg.max_time);
+   end;
+  'exist1_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.exist1_msg);
+   end;
+  'exist2_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.exist2_msg);
+   end;
+  'max_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.max_msg);
+   end;
+  'ready_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.ready_msg);
+   end;
+  'cancel_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.cancel_msg);
+   end;
+  'sucs_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.sucs_msg);
+   end;
+  'time_msg1':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.time_msg1);
+   end;
+  'time_msg2':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.xchg.time_msg2);
+   end;
+ end;
+end;
+
+class procedure TVorRpg_duel_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'max_count':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.duel.max_count);
+   end;
+  'max_time':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.duel.max_time);
+   end;
+  'kd_time':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.duel.kd_time);
+   end;
+  'PERC_MINUS_VIP':
+   begin
+    Node.Push(TLoadPerc_Func,@vor_rpg.duel.PERC_MINUS_VIP);
+   end;
+  'any_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.any_msg);
+   end;
+  'exist1_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.exist1_msg);
+   end;
+  'exist2_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.exist2_msg);
+   end;
+  'max_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.max_msg);
+   end;
+  'ready_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.ready_msg);
+   end;
+  'cancel_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.cancel_msg);
+   end;
+  'time_msg':
+   begin
+    Node.Push(TLoadStr_Func,@vor_rpg.duel.time_msg);
+   end;
+  'stand_msg':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.duel.stand_msg);
+   end;
+  'vip_msg':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.duel.vip_msg);
+   end;
+  'win_msg':
+   begin
+    Node.Push(TLoadList_Func,@vor_rpg.duel.win_msg);
+   end;
+ end;
+end;
+
+class procedure TVorRpg_rst_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'tax':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.rst.tax);
+   end;
+  'kd':
+   begin
+    Node.Push(TLoadDWORD_Func,@vor_rpg.rst.kd);
+   end;
+  'rst_msg':
+   begin
+    Node.Push(TLoadStr_Func  ,@vor_rpg.rst.rst_msg);
+   end;
+  'tax_msg':
+   begin
+    Node.Push(TLoadStr_Func  ,@vor_rpg.rst.tax_msg);
+   end;
+  'not_msg':
+   begin
+    Node.Push(TLoadStr_Func  ,@vor_rpg.rst.not_msg);
+   end;
+  'info_msg':
+   begin
+    Node.Push(TLoadStr_Func  ,@vor_rpg.rst.info_msg);
+   end;
+ end;
+end;
+
+class procedure TVorRpgSQL_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'get_rpg_top':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRpgTop);
+   end;
+  'get_rpg_rank':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRpgRank);
+   end;
+  'get_rpg_user1':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRpgUser1);
+   end;
+  'get_rpg_user2':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRpgUser2);
+   end;
+  'get_rnd_user1':
+   begin
+    Node.Push(TLoadSQL_Func,@FGetRndUser1);
+   end;
+  'set_rpg_user1':
+   begin
+    Node.Push(TLoadSQL_Func,@FSetRpgUser1);
+   end;
+  'set_rpg_user2':
+   begin
+    Node.Push(TLoadSQL_Func,@FSetRpgUser2);
+   end;
+ end;
+end;
+
 initialization
  LockStr:=TRawByteStringSet.Create;
  xchgSet:=TxchgNodeSet.Create;
@@ -3813,6 +4376,7 @@ initialization
  duelSeta[1]:=TxchgNodeSet.Create;
  vor_rpg.time_kd:=8;
  vor_rpg.rst.kd:=1800;
+ if not RegisterXMLNode('vor_rpg',TVorRpg_Func,nil) then Assert(False);
 
 end.
 

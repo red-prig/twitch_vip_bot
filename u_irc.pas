@@ -1528,7 +1528,7 @@ begin
   //Writeln(n,'*',v,'*');
 
   Case n of
-   'id':TryStringToUID(v,PC.uid);
+   'id'            :TryStringToUID(v,PC.uid);
    'msg-id'        :begin
                      msg_id:=v;
                      case msg_id of
@@ -1556,7 +1556,7 @@ begin
 
   end;
 
-  if sub_mod.room_tag=n then
+  if get_spec_room_tag=n then
   begin
    if v<>'0' then RS:=RS+[Rs_room_tag];
   end;

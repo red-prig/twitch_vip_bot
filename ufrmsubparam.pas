@@ -57,16 +57,48 @@ type
   end;
 
 var
-  FrmSubParam: TFrmSubParam;
+ FrmSubParam: TFrmSubParam;
 
-  PanelSub:TPanel;
-  LabelSubMode:TLabel;
-  TextSubTime:TEdit;
+ PanelSub:TPanel;
+ LabelSubMode:TLabel;
+ TextSubTime:TEdit;
+
+ sub_mod:record
+  Enable:Boolean;
+  Rev_tick:Boolean;
+  DontLog:Boolean;
+  _label:record
+   name,_on,off:RawByteString;
+  end;
+
+  subtime_get_cmd:RawByteString;
+  subtime_kd:DWORD;
+  subtime_get_info:TStringList;
+
+  room_tag:RawByteString;
+  inc_title:RawByteString;
+  dec_title:RawByteString;
+  cmd_on :TStringList;
+  cmd_off:TStringList;
+  cmd_inc:TStringList;
+  cmd_dec:TStringList;
+  inc_min:DWORD;
+  max_inc:DWORD;
+  max_dec:DWORD;
+  T:record
+   Timer:TTimer;
+   TickRv:Int64;
+   TickKd:Int64;
+   TimeRv:Int64;
+   TimeDb:Int64;
+  end;
+ end;
 
 implementation
 
 Uses
-  ULog,Main,StrUtils,DbcScript;
+  ULog,Main,StrUtils,DbcScript,
+  xml_parse,data_xml;
 
 {$R *.lfm}
 
@@ -616,6 +648,98 @@ begin
    Key:=#0;
  end;
 end;
+
+type
+ TOpenSub_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+ TOpenSubLabel_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+class procedure TOpenSub_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'inc_title':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod.inc_title);
+   end;
+  'dec_title':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod.dec_title);
+   end;
+  'label':
+   begin
+    Node.Push(TOpenSubLabel_Func,Node.CData);
+   end;
+  'subtime_get_cmd':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod.subtime_get_cmd);
+   end;
+  'subtime_kd':
+   begin
+    Node.Push(TLoadDWORD_Func,@sub_mod.subtime_kd);
+   end;
+  'subtime_get_info':
+   begin
+    Node.Push(TLoadList_Func ,@sub_mod.subtime_get_info);
+   end;
+  'room_tag':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod.room_tag);
+   end;
+  'cmd_on':
+   begin
+    Node.Push(TLoadList_Func ,@sub_mod.cmd_on);
+   end;
+  'cmd_off':
+   begin
+    Node.Push(TLoadList_Func ,@sub_mod.cmd_off);
+   end;
+  'cmd_inc':
+   begin
+    Node.Push(TLoadList_Func ,@sub_mod.cmd_inc);
+   end;
+  'cmd_dec':
+   begin
+    Node.Push(TLoadList_Func ,@sub_mod.cmd_dec);
+   end;
+  'inc_min':
+   begin
+    Node.Push(TLoadDWORD_Func,@sub_mod.inc_min);
+   end;
+  'max_inc':
+   begin
+    Node.Push(TLoadDWORD_Func,@sub_mod.max_inc);
+   end;
+  'max_dec':
+   begin
+    Node.Push(TLoadDWORD_Func,@sub_mod.max_dec);
+   end;
+ end;
+end;
+
+class procedure TOpenSubLabel_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'name':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod._label.name);
+   end;
+  'on':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod._label._on);
+   end;
+  'off':
+   begin
+    Node.Push(TLoadStr_Func  ,@sub_mod._label.off);
+   end;
+ end;
+end;
+
+initialization
+ if not RegisterXMLNode('sub_mod',TOpenSub_Func,nil) then Assert(False);
 
 end.
 

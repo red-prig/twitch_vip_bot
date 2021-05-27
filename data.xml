@@ -60,6 +60,43 @@
 
 <vor_rpg>
 
+ <sql>
+  <get_rpg_top>
+   SELECT * FROM rpg ORDER BY LVL DESC,EXP DESC LIMIT @count;
+  </get_rpg_top>
+ 
+  <get_rpg_rank>
+   SELECT rank FROM(
+    SELECT
+     ROW_NUMBER() OVER
+      (ORDER BY LVL DESC,EXP DESC) rank,user
+    FROM rpg) WHERE user=@user;
+  </get_rpg_rank>
+ 
+  <get_rpg_user1>
+   SELECT * FROM rpg WHERE user=@user1;
+  </get_rpg_user1>
+ 
+  <get_rpg_user2>
+   SELECT * FROM rpg WHERE user in (@user1,@user2);
+  </get_rpg_user2>
+ 
+  <get_rnd_user1>
+   SELECT user FROM rpg ORDER BY RANDOM() LIMIT 1;
+  </get_rnd_user1>
+ 
+  <set_rpg_user1>
+   INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user1,@data1,@lvl1,@exp1);
+  </set_rpg_user1>
+ 
+  <set_rpg_user2>
+   BEGIN TRANSACTION;
+    INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user1,@data1,@lvl1,@exp1);
+    INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user2,@data2,@lvl2,@exp2);
+   COMMIT TRANSACTION;
+  </set_rpg_user2>
+ </sql>
+
  <xchg>
   <kd_time>86400</kd_time>
   <max_count>10</max_count>
@@ -600,42 +637,6 @@ dsfsdfsdf
  <delete_vips>
   DELETE FROM vips WHERE user=@user;
  </delete_vips>
-
- <get_rpg_top>
-  SELECT * FROM rpg ORDER BY LVL DESC,EXP DESC LIMIT @count;
- </get_rpg_top>
-
- <get_rpg_rank>
-  SELECT rank FROM(
-   SELECT
-    ROW_NUMBER() OVER
-     (ORDER BY LVL DESC,EXP DESC) rank,user
-   FROM rpg) WHERE user=@user;
- </get_rpg_rank>
-
- <get_rpg_user1>
-  SELECT * FROM rpg WHERE user=@user1;
- </get_rpg_user1>
-
- <get_rpg_user2>
-  SELECT * FROM rpg WHERE user in (@user1,@user2);
- </get_rpg_user2>
-
- <get_rnd_user1>
-  SELECT user FROM rpg ORDER BY RANDOM() LIMIT 1;
- </get_rnd_user1>
-
- <set_rpg_user1>
-  INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user1,@data1,@lvl1,@exp1);
- </set_rpg_user1>
-
- <set_rpg_user2>
-  BEGIN TRANSACTION;
-   INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user1,@data1,@lvl1,@exp1);
-   INSERT OR REPLACE INTO rpg ( user,data,lvl,exp  ) VALUES(@user2,@data2,@lvl2,@exp2);
-  COMMIT TRANSACTION;
- </set_rpg_user2>
-
 </sql>
 
 

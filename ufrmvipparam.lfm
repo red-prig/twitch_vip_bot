@@ -10,7 +10,7 @@ object FrmVipParam: TFrmVipParam
   OnCreate = FormCreate
   OnKeyDown = FormKeyDown
   Position = poMainFormCenter
-  LCLVersion = '2.0.10.0'
+  LCLVersion = '2.0.12.0'
   object BtnCancel: TBitBtn
     Left = 319
     Height = 30

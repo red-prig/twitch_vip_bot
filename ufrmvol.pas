@@ -47,7 +47,15 @@ type
   end;
 
 var
-  FrmVolParam: TFrmVolParam;
+ FrmVolParam: TFrmVolParam;
+
+ Vol_cmd:record
+  Enable:Boolean;
+  System:Boolean;
+  prefix:RawByteString;
+  Device:RawByteString;
+  Exclude:TStringList;
+ end;
 
 Function GetVolumeInfo(Const name:RawByteString;Volume:ISimpleAudioVolume):RawByteString;
 Function GetSessionsStr:RawByteString;
@@ -58,7 +66,8 @@ implementation
 {$R *.lfm}
 
 uses
- ULog,Main;
+ ULog,Main,
+ xml_parse,data_xml;
 
 type
  TSessionList=object
@@ -455,6 +464,29 @@ begin
             EnumSessionsVolume(FDeviceID,CBSystemSound.Checked,@OnSessions);
  end;
 end;
+
+type
+ TOpenVol_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+class procedure TOpenVol_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'prefix':
+   begin
+    Node.Push(TLoadStr_Func  ,@Vol_cmd.prefix);
+   end;
+  'device':
+   begin
+    Node.Push(TLoadStr_Func  ,@Vol_cmd.Device);
+    Vol_cmd.Device:=LowerCase(Vol_cmd.Device);
+   end;
+ end;
+end;
+
+initialization
+ if not RegisterXMLNode('vol_cmd',TOpenVol_Func,nil) then Assert(False);
 
 end.
 

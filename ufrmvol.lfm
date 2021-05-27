@@ -1,7 +1,7 @@
 object FrmVolParam: TFrmVolParam
-  Left = 855
+  Left = 550
   Height = 287
-  Top = 86
+  Top = 202
   Width = 430
   BorderIcons = [biSystemMenu]
   Caption = 'Параметры регулятора звука'
@@ -10,7 +10,7 @@ object FrmVolParam: TFrmVolParam
   OnKeyDown = FormKeyDown
   OnShow = FormShow
   Position = poMainFormCenter
-  LCLVersion = '2.0.10.0'
+  LCLVersion = '2.0.12.0'
   object BtnOk: TBitBtn
     Left = 8
     Height = 30

@@ -78,17 +78,42 @@ type
   end;
 
 var
-  FrmVipParam: TFrmVipParam;
+ FrmVipParam: TFrmVipParam;
 
-  PanelVips:TPanel;
-  GridVips:TDBStringGrid;
-  StatusBarVips:TStatusBar;
+ PanelVips:TPanel;
+ GridVips:TDBStringGrid;
+ StatusBarVips:TStatusBar;
 
-  FListVipsScript  :TSQLScript;
-  FAddVipsScript   :TSQLScript;
-  FInsertVipsScript:TSQLScript;
-  FUpdateVipsScript:TSQLScript;
-  FDeleteVipsScript:TSQLScript;
+ FListVipsScript  :TSQLScript;
+ FAddVipsScript   :TSQLScript;
+ FInsertVipsScript:TSQLScript;
+ FUpdateVipsScript:TSQLScript;
+ FDeleteVipsScript:TSQLScript;
+
+ vip_rnd:record
+  Enable:Boolean;
+  Auto_expired:Boolean;
+  Enable_vor:Boolean;
+  login_msg:RawByteString;
+  vipinfo_get_info:RawByteString;
+  viptime_get_info:RawByteString;
+  title:RawByteString;
+  title_vor:RawByteString;
+  unvip_cmd:RawByteString;
+  vip_list_cmd:RawByteString;
+  cmd:TStringList;
+  cmd2:TStringList;
+  already_vip:TStringList;
+  is_max_vip:TStringList;
+  is_empty:TStringList;
+  vor_sucs:TStringList;
+  vor_jail:TStringList;
+  days:DWORD;
+  max_vips:DWORD;
+  Timer:TTimer;
+  perc:Byte;
+  perc_vor:Byte;
+ end;
 
 function TryGetDateTime_US(const S:RawByteString;out Value:TDateTime):Boolean;
 function TryGetDateTime_RU(const S:RawByteString;out Value:TDateTime):Boolean;
@@ -97,7 +122,8 @@ function DateTimeToStr_RU(DateTime:TDateTime):RawByteString;
 implementation
 
 Uses
-  ULog,Main,ujson,DateUtils,Math;
+  ULog,Main,ujson,DateUtils,Math,
+  xml_parse,data_xml;
 
 {$R *.lfm}
 
@@ -1248,6 +1274,92 @@ begin
   13:BtnOkClick(Sender);
  end;
 end;
+
+type
+ TOpenVip_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+class procedure TOpenVip_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'login_msg':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.login_msg);
+   end;
+  'viptime_get_info':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.viptime_get_info);
+   end;
+  'vipinfo_get_info':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.vipinfo_get_info);
+   end;
+  'title':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.title);
+   end;
+  'title_vor':
+   begin
+    Node.Push(TLoadStr_Func ,@vip_rnd.title_vor);
+   end;
+  'msg_cmd':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.cmd);
+   end;
+  'msg_cmd2':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.cmd2);
+   end;
+  'already_vip':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.already_vip);
+   end;
+  'is_max_vip':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.is_max_vip);
+   end;
+  'vip_is_empty':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.is_empty);
+   end;
+  'vor_sucs':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.vor_sucs);
+   end;
+  'vor_jail':
+   begin
+    Node.Push(TLoadList_Func,@vip_rnd.vor_jail);
+   end;
+  'max_vips':
+   begin
+    Node.Push(TLoadDWORD_Func,@vip_rnd.max_vips);
+   end;
+  'unvip_cmd':
+   begin
+    Node.Push(TLoadStr_Func,@vip_rnd.unvip_cmd);
+   end;
+  'vip_list_cmd':
+   begin
+    Node.Push(TLoadStr_Func,@vip_rnd.vip_list_cmd);
+   end;
+  'perc':
+   begin
+    Node.Push(TLoadPerc_Func,@vip_rnd.perc);
+   end;
+  'perc_vor':
+   begin
+    Node.Push(TLoadPerc_Func,@vip_rnd.perc_vor);
+   end;
+  'days':
+   begin
+    Node.Push(TLoadDWORD_Func,@vip_rnd.days);
+   end;
+ end;
+end;
+
+initialization
+ if not RegisterXMLNode('vip_rnd',TOpenVip_Func,nil) then Assert(False);
 
 end.
 
