@@ -42,28 +42,99 @@ var
   unsub_mod:record
    Enable:Boolean;
    inc_title:RawByteString;
+   end_msg:RawByteString;
+   add_msg:RawByteString;
    inc_msg:DWORD;
    MsgRv:DWORD;
+
+   trg_msg:RawByteString;
+   bnd_msg:RawByteString;
+   bnd_kd:DWORD;
+   bnd_TickKd:Int64;
   end;
 
 implementation
 
 Uses
-  ULog,u_irc,Main,DbcScript;
+  ULog,u_irc,Main,DbcScript,
+  xml_parse,data_xml;
 
 {$R *.lfm}
+
+function IsPunct(Ch:AnsiChar):Boolean; inline;
+begin
+ Case Ch of
+   #0..' ',
+  '!'..'/',
+  ':'..'@',
+  '['..'`',
+  '{'..'~':Result:=True;
+  else     Result:=False;
+ end;
+end;
+
+function TrimPunct(const S:RawByteString):RawByteString;
+var
+ Ofs, Len: sizeint;
+begin
+ len := Length(S);
+ while (Len>0) and IsPunct(S[Len]) do dec(Len);
+ Ofs := 1;
+ while (Ofs<=Len) and IsPunct(S[Ofs]) do Inc(Ofs);
+ result := Copy(S, Ofs, 1 + Len - Ofs);
+end;
+
+Function msg_filtered(msg:RawByteString):Boolean;
+var
+ q:QWord;
+ i:int64;
+ d:Double;
+begin
+ Result:=False;
+ msg:=TrimPunct(msg);
+ if (msg='') then Exit;
+ if TryStrToQWord(msg,q) then Exit;
+ if TryStrToQWord('$'+msg,q) then Exit;
+ if TryStrToInt64(msg,i) then Exit;
+ if TryStrToFloat(msg,d) then Exit;
+ Result:=True;
+end;
+
+function in_bnd_TickKd:Boolean; inline;
+begin
+ Result:=(GetTickCount64<unsub_mod.bnd_TickKd+unsub_mod.bnd_kd*1000);
+end;
+
+procedure up_bnd_TickKd; inline;
+begin
+ unsub_mod.bnd_TickKd:=GetTickCount64;
+end;
 
 function TFrmUnSubParam.subs_msg(const msg:RawByteString;uid:TGUID):Boolean;
 begin
  Result:=unsub_mod.Enable and (unsub_mod.MsgRv<>0);
  if Result then
  begin
-  push_irc_msg('/delete '+UIDToString(uid));
-  Dec(unsub_mod.MsgRv);
-  SetDBParam('UnSubMsg',IntToStr(unsub_mod.MsgRv));
+  if (unsub_mod.trg_msg<>'') and (msg=unsub_mod.trg_msg) then
+  begin
+   if in_bnd_TickKd then Exit;
+   push_irc_msg(unsub_mod.bnd_msg);
+   up_bnd_TickKd;
+   Exit;
+  end;
+  if msg_filtered(msg) then
+  begin
+   Dec(unsub_mod.MsgRv);
+   SetDBParam('UnSubMsg',IntToStr(unsub_mod.MsgRv));
+   push_irc_msg('/delete '+UIDToString(uid));
+  end;
   if (unsub_mod.MsgRv=0) then
   begin
-   push_irc_msg('Ансабмод закончен на раз, два, три MrDestructoid');
+   if (unsub_mod.end_msg='') then
+   begin
+    unsub_mod.end_msg:='Unsub mod is end MrDestructoid';
+   end;
+   push_irc_msg(unsub_mod.end_msg);
   end;
  end;
 end;
@@ -72,7 +143,11 @@ procedure TFrmUnSubParam._inc_msg(var cmd:RawByteString;Const user:RawByteString
 begin
  unsub_mod.MsgRv:=unsub_mod.MsgRv+unsub_mod.inc_msg;
  SetDBParam('UnSubMsg',IntToStr(unsub_mod.MsgRv));
- cmd:=Format('Чел %s добавляет к ансабмоду %s сообщений, всего: %s',[user,IntToStr(unsub_mod.inc_msg),IntToStr(unsub_mod.MsgRv)]);
+ if (unsub_mod.add_msg='') then
+ begin
+  unsub_mod.add_msg:='%s is added to Unsub mod %s msg, all: %s';
+ end;
+ cmd:=Format(unsub_mod.add_msg,[user,IntToStr(unsub_mod.inc_msg),IntToStr(unsub_mod.MsgRv)]);
  push_irc_msg(cmd);
 end;
 
@@ -189,9 +264,47 @@ begin
  end;
 end;
 
+type
+ TUnsubMod_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+class procedure TUnsubMod_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'inc_title':
+   begin
+    Node.Push(TLoadStr_Func,  @unsub_mod.inc_title);
+   end;
+  'end_msg':
+   begin
+    Node.Push(TLoadStr_Func,  @unsub_mod.end_msg);
+   end;
+  'add_msg':
+   begin
+    Node.Push(TLoadStr_Func,  @unsub_mod.add_msg);
+   end;
+  'inc_msg':
+   begin
+    Node.Push(TLoadDWORD_Func,@unsub_mod.inc_msg);
+   end;
+  'trg_msg':
+   begin
+    Node.Push(TLoadStr_Func,  @unsub_mod.trg_msg);
+   end;
+  'bnd_msg':
+   begin
+    Node.Push(TLoadStr_Func,  @unsub_mod.bnd_msg);
+   end;
+  'bnd_kd':
+   begin
+    Node.Push(TLoadDWORD_Func,@unsub_mod.bnd_kd);
+   end;
+ end;
+end;
+
 initialization
- unsub_mod.inc_title:='Unsub Mode';
- unsub_mod.inc_msg:=20;
+ if not RegisterXMLNode('unsub_mod',TUnsubMod_Func,nil) then Assert(False);
 
 end.
 

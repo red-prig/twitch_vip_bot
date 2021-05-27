@@ -455,6 +455,16 @@ dsfsdfsdf
 
 </sub_mod>
 
+<unsub_mod>
+ <inc_title>Unsub Mode</inc_title>
+ <end_msg>Ансабмод закончен на раз, два, три MrDestructoid    </end_msg>
+ <add_msg>Чел %s добавляет к ансабмоду %s сообщений, всего: %s</add_msg>
+ <inc_msg>20</inc_msg>
+ <trg_msg>&lt;message deleted&gt;</trg_msg>
+ <bnd_msg>/me Сабы бунтуют милорд!</bnd_msg>
+ <bnd_kd>1800</bnd_kd>
+</unsub_mod>
+
 <vol_cmd>
  <prefix>!vol</prefix>
  <device>all</device>
