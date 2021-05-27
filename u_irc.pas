@@ -86,7 +86,7 @@ type
    http2:Boolean;
    FQueue:TFPList;
   //public
-  Constructor Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname:PAnsiChar;port:Word);
+  Constructor Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname,hostcheck:PAnsiChar;port:Word);
 
   Destructor Destroy; override;
 
@@ -109,7 +109,7 @@ type
   procedure print_err;
  end;
 
-function  replyConnect(var ClientData:THttpClient;AClass:THttpClientClass;Const Path:RawByteString):Boolean;
+function  replyConnect(var ClientData:THttpClient;AClass:THttpClientClass;Const Path:RawByteString;hostcheck:PAnsiChar):Boolean;
 
 procedure reply_irc_Connect(const login,oAuth,chat:RawByteString);
 procedure reply_irc_Disconnect;
@@ -651,11 +651,6 @@ begin
   if (i<>0) then
   begin
    Log(irc_log,i,'Error [SSL_get_verify_result]');
-   Exit(False);
-  end;
-  if (SSL_get0_peername(FSSL)=nil) then
-  begin
-   Log(irc_log,i,'Error [SSL_get0_peername]');
    Exit(False);
   end;
  end;
@@ -2164,9 +2159,10 @@ end;
 
  Procedure client_eventcb(bev:Pbufferevent;events:SizeUInt;ctx:pointer); forward;
 
- Constructor THttpClient.Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname:PAnsiChar;port:Word);
+ Constructor THttpClient.Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname,hostcheck:PAnsiChar;port:Word);
  Var
   FSSL:PSSL;
+  i:Integer;
  begin
   Log(irc_log,0,['Create:',hostname,':',port]);
 
@@ -2175,7 +2171,13 @@ end;
    FSSL:=create_ssl(ssl_ctx);
    Log(irc_log,1,'Create SSL');
    SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
-   SSL_set1_host(FSSL,PByte(hostname));
+   if (hostcheck<>nil) then
+   begin
+    SSL_set1_host(FSSL,PByte(hostcheck));
+   end else
+   begin
+    SSL_set1_host(FSSL,PByte(hostname));
+   end;
   end else
   begin
    FSSL:=nil;
@@ -2302,11 +2304,6 @@ end;
    if (i<>0) then
    begin
     Log(irc_log,i,'Error [SSL_get_verify_result]');
-    Exit(False);
-   end;
-   if (SSL_get0_peername(FSSL)=nil) then
-   begin
-    Log(irc_log,i,'Error [SSL_get0_peername]');
     Exit(False);
    end;
   end;
@@ -3011,7 +3008,7 @@ begin
  inherited;
 end;
 
- function replyConnect(var ClientData:THttpClient;AClass:THttpClientClass;Const Path:RawByteString):Boolean;
+ function replyConnect(var ClientData:THttpClient;AClass:THttpClientClass;Const Path:RawByteString;hostcheck:PAnsiChar):Boolean;
  Var
   URI:TURI;
   ctx:PSSL_CTX;
@@ -3037,7 +3034,7 @@ end;
             end;
    end;
    Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
-   ClientData:=AClass.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),port);
+   ClientData:=AClass.Create_hostname(ctx,AF_INET,PAnsiChar(URI.GetHost),hostcheck,port);
    Result:=(ClientData.bev<>nil);
    if not Result then
    begin

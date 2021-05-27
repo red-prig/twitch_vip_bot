@@ -450,7 +450,7 @@ begin
  Result:=True;
  if client=nil then
  begin
-  Result:=replyConnect(THttpClient(client),Tytts_client,'https://cloud.yandex.ru/');
+  Result:=replyConnect(THttpClient(client),Tytts_client,'https://cloud.yandex.ru/',nil);
   if not Result then Exit;
   client.parent:=Self;
 

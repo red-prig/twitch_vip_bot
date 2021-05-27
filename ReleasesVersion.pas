@@ -288,7 +288,7 @@ begin
    HttpStream.FOnEndStream:=@Form.OnEndDownload1_node;
    HttpStream.AddStdHdr;
    HttpStream.SetUrl(download_url);
-   if not replyConnect(ClientData,THttpClient,download_url) then
+   if not replyConnect(ClientData,THttpClient,download_url,nil) then
    begin
     ShowMessage('Ошибка: хост не найден!');
     FreeAndNil(HttpStream);
@@ -387,7 +387,7 @@ begin
   HttpStream.FOnEndStream:=@OnEndDownload2_node;
   HttpStream.AddStdHdr;
   HttpStream.SetUrl(StatusInfo.url);
-  if not replyConnect(ClientData,THttpClient,StatusInfo.url) then
+  if not replyConnect(ClientData,THttpClient,StatusInfo.url,PAnsiChar('')) then
   begin
    ShowMessage('Ошибка: хост не найден!');
    Release;
@@ -474,7 +474,7 @@ begin
  HttpStream.FOnEndStream:=@HttpStream.OnEndStream;
  HttpStream.AddStdHdr;
  HttpStream.SetUrl(releases_url);
- if not replyConnect(ClientData,THttpClient,releases_url) then
+ if not replyConnect(ClientData,THttpClient,releases_url,nil) then
  begin
   FreeAndNil(HttpStream);
   Exit;
