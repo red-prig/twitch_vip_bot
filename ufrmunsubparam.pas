@@ -115,6 +115,7 @@ begin
  Result:=unsub_mod.Enable and (unsub_mod.MsgRv<>0);
  if Result then
  begin
+  push_irc_msg('/delete '+UIDToString(uid));
   if (unsub_mod.trg_msg<>'') and (msg=unsub_mod.trg_msg) then
   begin
    if in_bnd_TickKd then Exit;
@@ -126,7 +127,6 @@ begin
   begin
    Dec(unsub_mod.MsgRv);
    SetDBParam('UnSubMsg',IntToStr(unsub_mod.MsgRv));
-   push_irc_msg('/delete '+UIDToString(uid));
   end;
   if (unsub_mod.MsgRv=0) then
   begin
