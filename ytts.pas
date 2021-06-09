@@ -452,6 +452,7 @@ begin
  begin
   Result:=replyConnect(THttpClient(client),Tytts_client,'https://cloud.yandex.ru/',nil);
   if not Result then Exit;
+  client.FSSL_verify:=False;
   client.parent:=Self;
 
   Stream:=THttpStream2MemCookie.Create;

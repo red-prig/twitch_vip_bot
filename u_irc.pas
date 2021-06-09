@@ -82,6 +82,7 @@ type
  THttpClient=class
   //private
    bev:Pbufferevent;
+   FSSL_verify:Boolean;
    session:pnghttp2_session;
    http2:Boolean;
    FQueue:TFPList;
@@ -2162,7 +2163,6 @@ end;
  Constructor THttpClient.Create_hostname(ssl_ctx:Pssl_ctx;family:Integer;hostname,hostcheck:PAnsiChar;port:Word);
  Var
   FSSL:PSSL;
-  i:Integer;
  begin
   Log(irc_log,0,['Create:',hostname,':',port]);
 
@@ -2201,6 +2201,8 @@ end;
    bev:=nil;
    Log(irc_log,1,'error:bufferevent_socket_connect_hostname');
   end;
+
+  FSSL_verify:=True;
  end;
 
  Destructor THttpClient.Destroy;
@@ -2304,7 +2306,7 @@ end;
    if (i<>0) then
    begin
     Log(irc_log,i,'Error [SSL_get_verify_result]');
-    Exit(False);
+    if FSSL_verify then Exit(False);
    end;
   end;
  end;
