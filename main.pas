@@ -1399,7 +1399,7 @@ var
  cmd,param:RawByteString;
 begin
 
- if (PC.PS=[]) and (PC.subscriber_s<>0) then //subs only, no moder, no vip
+ if (PC.PS=[]) and ((PC.subscriber_s<>0) or (PC.subscriber_m<>0)) then //subs only, no moder, no vip
  begin
   if FrmUnSubParam.subs_msg(Trim(msg),PC.uid) then Exit;
  end;
