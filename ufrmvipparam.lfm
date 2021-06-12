@@ -178,10 +178,10 @@ object FrmVipParam: TFrmVipParam
       Height = 25
       Hint = 'Обозначаяеться вероятность первой команды,'#13#10' вероятность иного варианта %100-X соответственно.'
       Top = 72
-      Width = 393
+      Width = 201
       Anchors = [akTop, akLeft, akRight]
       EditLabel.Height = 21
-      EditLabel.Width = 393
+      EditLabel.Width = 201
       EditLabel.Caption = 'Вероятность VIP %0-%100:'
       EditLabel.ParentColor = False
       EditLabel.ParentFont = False
@@ -223,6 +223,28 @@ object FrmVipParam: TFrmVipParam
       ShowHint = True
       TabOrder = 1
       OnKeyDown = FormKeyDown
+    end
+    object EdtVipBanTime: TLabeledEdit
+      Left = 216
+      Height = 25
+      Hint = 'Время таймача при невезении в часах'
+      Top = 72
+      Width = 184
+      Anchors = [akTop, akLeft, akRight]
+      EditLabel.Height = 21
+      EditLabel.Width = 184
+      EditLabel.Caption = 'Время таймача (ч):'
+      EditLabel.ParentColor = False
+      EditLabel.ParentFont = False
+      EditLabel.Font.Height = -16
+      Font.Height = -13
+      ParentFont = False
+      ParentShowHint = False
+      ShowHint = True
+      TabOrder = 3
+      OnExit = EdtVipDaysExit
+      OnKeyDown = FormKeyDown
+      OnKeyPress = EdtVipDaysKeyPress
     end
   end
   object GBVor: TGroupBox

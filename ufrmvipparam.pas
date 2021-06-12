@@ -22,6 +22,7 @@ type
     CBVorEnable: TCheckBox;
     CBVipExpired: TCheckBox;
     EdtMaxVips: TLabeledEdit;
+    EdtVipBanTime: TLabeledEdit;
     EdtPercent: TLabeledEdit;
     EdtTitle: TLabeledEdit;
     EdtVipDays: TLabeledEdit;
@@ -108,6 +109,7 @@ var
   is_empty:TStringList;
   vor_sucs:TStringList;
   vor_jail:TStringList;
+  ban_time:DWORD;
   days:DWORD;
   max_vips:DWORD;
   Timer:TTimer;
@@ -1100,6 +1102,7 @@ begin
  Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
  Config.WriteString('vip' ,'days'    ,IntToStr(vip_rnd.days));
  Config.WriteString('vip' ,'max_vips',IntToStr(vip_rnd.max_vips));
+ Config.WriteString('vip' ,'ban_time',IntToStr(vip_rnd.ban_time));
 
  Config.WriteString('vip' ,'auto_expired','0');
 
@@ -1121,6 +1124,7 @@ begin
 
  vip_rnd.days:=StrToDWORDDef(Config.ReadString('vip','days',IntToStr(vip_rnd.days)),vip_rnd.days);
  vip_rnd.max_vips:=StrToDWORDDef(Config.ReadString('vip','max_vips',IntToStr(vip_rnd.max_vips)),vip_rnd.max_vips);
+ vip_rnd.ban_time:=StrToDWORDDef(Config.ReadString('vip','ban_time',IntToStr(vip_rnd.ban_time)),vip_rnd.ban_time);
 
  vip_rnd.Auto_expired:=Config.ReadString('vip','auto_expired','1')='1';
 
@@ -1136,6 +1140,7 @@ begin
  EdtTitle.Text       :=vip_rnd.title;
  EdtPercent.Text     :=IntToStr(vip_rnd.perc);
  CBVipExpired.Checked:=vip_rnd.Auto_expired;
+ EdtVipBanTime.Text  :=IntToStr(vip_rnd.ban_time);
  EdtVipDays.Text     :=IntToStr(vip_rnd.days);
  EdtMaxVips.Text     :=IntToStr(vip_rnd.max_vips);
 
@@ -1151,6 +1156,8 @@ begin
   if vip_rnd.perc>100 then vip_rnd.perc:=100;
   vip_rnd.days  :=StrToDWORDDef(EdtVipDays.Text,30);
   vip_rnd.max_vips:=StrToDWORDDef(EdtMaxVips.Text,0);
+
+  vip_rnd.ban_time:=StrToDWORDDef(EdtVipBanTime.Text,24);
 
   vip_rnd.Auto_expired:=CBVipExpired.Checked;
   SetTimerVipExpired(vip_rnd.Auto_expired);
@@ -1171,6 +1178,7 @@ begin
    Config.WriteString('vip' ,'msg_perc',IntToStr(vip_rnd.perc));
    Config.WriteString('vip' ,'days'    ,IntToStr(vip_rnd.days));
    Config.WriteString('vip' ,'max_vips',IntToStr(vip_rnd.max_vips));
+   Config.WriteString('vip' ,'ban_time',IntToStr(vip_rnd.ban_time));
 
    case vip_rnd.Auto_expired of
     True :Config.WriteString('vip' ,'auto_expired','1');
@@ -1302,6 +1310,10 @@ begin
   'title_vor':
    begin
     Node.Push(TLoadStr_Func ,@vip_rnd.title_vor);
+   end;
+  'ban_time':
+   begin
+    Node.Push(TLoadDWORD_Func,@vip_rnd.ban_time);
    end;
   'msg_cmd':
    begin

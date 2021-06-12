@@ -792,8 +792,8 @@ begin
     end;
    end else
    begin
-    push_irc_list(vip_rnd.cmd2,[user]);
-    cmd:=Format(_get_first_cmd(vip_rnd.cmd2),[user]);
+    push_irc_list(vip_rnd.cmd2,[user,vip_rnd.ban_time]);
+    cmd:=Format(_get_first_cmd(vip_rnd.cmd2),[user,vip_rnd.ban_time]);
    end;
   end else
 

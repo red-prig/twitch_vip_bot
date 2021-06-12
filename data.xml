@@ -18,9 +18,10 @@
   /me Лев %s получает випку! karmik3
  </msg_cmd>
 
+ <ban_time>24</ban_time>
  <msg_cmd2>
-  /timeout %s 86400
-  Лев %s идёт отдыхать в баню на 24ч! karmikSl
+  /timeout %s %sh
+  Лев %s идёт отдыхать в баню на %sч! karmikSl
  </msg_cmd2>
 
  <title_vor>ВОР</title_vor>
