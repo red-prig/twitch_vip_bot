@@ -422,7 +422,7 @@ begin
  if Assigned(ssl_ctx) then
  begin
   FSSL:=create_ssl(ssl_ctx);
-  SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+  //SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
   SSL_set1_host(FSSL,PByte(hostname));
   Log(irc_log,0,'Init SSL');
  end else
@@ -2168,7 +2168,7 @@ end;
   begin
    FSSL:=create_ssl(ssl_ctx);
    Log(irc_log,1,'Create SSL');
-   SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
+   //SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
    if (hostcheck<>nil) then
    begin
     SSL_set1_host(FSSL,PByte(hostcheck));
