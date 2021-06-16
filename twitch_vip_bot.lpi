@@ -141,6 +141,7 @@
         <Filename Value="ufrmunsubparam.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="FrmUnSubParam"/>
+        <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="UFrmUnSubParam"/>
       </Unit16>

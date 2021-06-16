@@ -33,7 +33,7 @@ uses
   DbcScript;
 
 Const
- current_version='1.4.9';
+ current_version='1.4.10';
 
 type
   TRoomState=(
