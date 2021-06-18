@@ -327,7 +327,7 @@ begin
  if SSL_CTX_load_store(Result) then
  begin
   //SSL_CTX_set_verify(Result,SSL_VERIFY_PEER,nil);
-  SSL_CTX_set_verify_depth(Result,5);
+  //SSL_CTX_set_verify_depth(Result,5);
  end;
 
 end;
@@ -423,7 +423,7 @@ begin
  begin
   FSSL:=create_ssl(ssl_ctx);
   //SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
-  SSL_set1_host(FSSL,PByte(hostname));
+  //SSL_set1_host(FSSL,PByte(hostname));
   Log(irc_log,0,'Init SSL');
  end else
  begin
@@ -815,6 +815,9 @@ begin
   begin
    ws_irc.reconnect:=true;
    if not ws_irc.session_reconnect(10) then FreeAndNil(ws_irc);
+  end else
+  begin
+   Main.push_login(1);
   end;
  end;
 
@@ -864,6 +867,9 @@ begin
   begin
    ws_irc2.reconnect:=true;
    if not ws_irc2.session_reconnect(10) then FreeAndNil(ws_irc2);
+  end else
+  begin
+   Main.push_login(3);
   end;
  end;
 
@@ -918,7 +924,7 @@ begin
   Result:=True;
  end else
  begin
-  Main.push_login(False);
+  Main.push_login(1);
  end;
 end;
 
@@ -958,6 +964,9 @@ begin
   evtimer_reuse(ws_irc2_rt,@pool,@_ws_irc2_rt_cb,Pointer(Self));
   evtimer_add  (ws_irc2_rt,sec*1000000);
   Result:=True;
+ end else
+ begin
+  Main.push_login(3);
  end;
 end;
 
@@ -1634,7 +1643,7 @@ begin
      '001':if ws_irc.recv_msg_chat then
            begin
             main.push_notice('001','Добро пожаловать в чат!');
-            main.push_login(True);
+            main.push_login(0);
            end;
      'NOTICE':begin
                main.push_notice(msg_parse.msg_id,msg_parse.msg);
@@ -1748,6 +1757,9 @@ begin
   begin
    ws_pub.reconnect:=true;
    if not ws_pub.session_reconnect(10) then FreeAndNil(ws_pub);
+  end else
+  begin
+   Main.push_login(2);
   end;
  end;
 end;
@@ -1770,7 +1782,11 @@ begin
   Result:=True;
   evtimer_reuse(ws_pub_rt,@pool,@_ws_pub_rt_cb,nil);
   evtimer_add  (ws_pub_rt,sec*1000000);
+ end else
+ begin
+  Main.push_login(2);
  end;
+
 end;
 
 Procedure _irc_Connect_post(param1:SizeUInt;param2:Pointer);
@@ -2169,13 +2185,13 @@ end;
    FSSL:=create_ssl(ssl_ctx);
    Log(irc_log,1,'Create SSL');
    //SSL_set_hostflags(FSSL, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
-   if (hostcheck<>nil) then
-   begin
-    SSL_set1_host(FSSL,PByte(hostcheck));
-   end else
-   begin
-    SSL_set1_host(FSSL,PByte(hostname));
-   end;
+   //if (hostcheck<>nil) then
+   //begin
+   // SSL_set1_host(FSSL,PByte(hostcheck));
+   //end else
+   //begin
+   // SSL_set1_host(FSSL,PByte(hostname));
+   //end;
   end else
   begin
    FSSL:=nil;

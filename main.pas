@@ -89,7 +89,7 @@ type
     procedure FormCloseQuery(Sender: TObject; var CanClose: boolean);
     procedure FormWindowStateChange(Sender: TObject);
     procedure MIAboutClick(Sender: TObject);
-    procedure ErrorLogn;
+    procedure ErrorLogn(Code:Byte);
     procedure SetLognBtn(Login:Boolean);
     function  getRandomTmpVip(const msg:RawByteString):SizeInt;
     function  try_theif_vip(const dst_user,msg:RawByteString;var cmd:RawByteString):Boolean;
@@ -192,7 +192,7 @@ var
 function  get_spec_room_tag:RawByteString; inline;
 procedure push_notice(const id,msg:RawByteString);
 procedure push_chat(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
-procedure push_login(succes:Boolean);
+procedure push_login(code:Byte);
 procedure push_room_states(RS:TRoomStates);
 procedure push_reward(const S:RawByteString);
 
@@ -373,29 +373,27 @@ end;
 type
  PQNode_login=^TQNode_login;
  TQNode_login=object(UAsyncQueue.TQNode)
-  Fsucces:Boolean;
+  Fcode:Byte;
   Procedure OnParent;
  end;
 
 Procedure TQNode_login.OnParent;
 begin
- if Fsucces then
- begin
-  FrmMain.SetLognBtn(True);
- end else
- begin
-  FrmMain.ErrorLogn;
+ Case FCode of
+  0:FrmMain.SetLognBtn(True);
+  else
+    FrmMain.ErrorLogn(FCode);
  end;
  FreeMem(@Self);
 end;
 
-procedure push_login(succes:Boolean);
+procedure push_login(code:Byte);
 var
  P:PQNode_login;
 begin
  P:=AllocMem(SizeOf(TQNode_login));
  P^.Parent:=@P^.OnParent;
- P^.Fsucces:=succes;
+ P^.Fcode:=code;
  SendMainQueue(P);
 end;
 
@@ -486,10 +484,14 @@ begin
  end;
 end;
 
-procedure TFrmMain.ErrorLogn;
+procedure TFrmMain.ErrorLogn(Code:Byte);
 begin
  SetLognBtn(False);
- ShowMessage('Ошибка подключения к серверу!');
+ Case Code of
+  1:ShowMessage('Ошибка подключения к серверу чата!');
+  2:ShowMessage('Ошибка подключения к серверу уведомлений!');
+  3:ShowMessage('Ошибка подключения к серверу чата, второй учётной записи!');
+ end;
 end;
 
 procedure TFrmMain.SetLognBtn(Login:Boolean);
