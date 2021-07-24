@@ -833,10 +833,6 @@ begin
       begin
        nick:='???';
       end;
-      if vip_rnd.viptime_get_info='' then
-      begin
-       vip_rnd.viptime_get_info:='@%s vip time %s: [%s - %s]';
-      end;
       push_irc_msg(Format(vip_rnd.viptime_get_info,[user,nick,datebeg,dateend]));
      end;
   'settime':
@@ -879,10 +875,6 @@ begin
       begin
        nick:='???';
       end;
-      if vip_rnd.viptime_get_info='' then
-      begin
-       vip_rnd.viptime_get_info:='@%s vip time %s: [%s - %s]';
-      end;
       push_irc_msg(Format(vip_rnd.viptime_get_info,[user,nick,datebeg,dateend]));
      end;
   'info':
@@ -890,10 +882,6 @@ begin
       datebeg:='';
       dateend:='';
       getVipStat(datebeg,dateend);
-      if vip_rnd.vipinfo_get_info='' then
-      begin
-       vip_rnd.vipinfo_get_info:='@%s vip count: %s permanent: %s';
-      end;
       push_irc_msg(Format(vip_rnd.vipinfo_get_info,[user,datebeg,dateend]));
      end;
   'perm':
@@ -1371,6 +1359,8 @@ begin
 end;
 
 initialization
+ vip_rnd.viptime_get_info:='@%s vip time %s: [%s - %s]';
+ vip_rnd.vipinfo_get_info:='@%s vip count: %s permanent: %s';
  if not RegisterXMLNode('vip_rnd',TOpenVip_Func,nil) then Assert(False);
 
 end.
