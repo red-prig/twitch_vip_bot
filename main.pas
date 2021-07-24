@@ -220,6 +220,13 @@ var
   useLogin2:Boolean;
   dontWelcome:Boolean;
   useLoginState:Byte;
+
+  err_msg1,
+  err_msg2,
+  err_msg3,
+  err_msg4,
+  err_msg5,
+  err_msg6:RawByteString;
  end;
 
  view_mask:Byte;
@@ -488,12 +495,12 @@ procedure TFrmMain.ErrorLogn(Code:Byte);
 begin
  SetLognBtn(False);
  Case Code of
-  1:ShowMessage('Ошибка подключения к серверу чата!');
-  2:ShowMessage('Ошибка подключения к серверу уведомлений!');
-  3:ShowMessage('Ошибка подключения к серверу чата, второй учётной записи!');
-  4:push_irc_msg('Обрыв соединения к серверу уведомлений, переподключение...'); //reconnect
-  5:push_irc_msg('Ошибка соединения с сервером уведомлений, переподключение...'); //reconnect error
-  6:push_irc_msg('Соединение с сервером наград восстановлено!'); //reconnect succes
+  1:ShowMessage (base.err_msg1);
+  2:ShowMessage (base.err_msg2);
+  3:ShowMessage (base.err_msg3);
+  4:push_irc_msg(base.err_msg4); //reconnect
+  5:push_irc_msg(base.err_msg5); //reconnect error
+  6:push_irc_msg(base.err_msg6); //reconnect succes
  end;
 end;
 
@@ -2768,6 +2775,23 @@ begin
  end;
 end;
 
+type
+ TLoadErrMsg_Func=class(TNodeFunc)
+  class procedure OPN(Node:TNodeReader;Const Name:RawByteString); override;
+ end;
+
+class procedure TLoadErrMsg_Func.OPN(Node:TNodeReader;Const Name:RawByteString);
+begin
+ Case Name of
+  'err_msg1':Node.Push(TLoadStr_Func,@base.err_msg1);
+  'err_msg2':Node.Push(TLoadStr_Func,@base.err_msg2);
+  'err_msg3':Node.Push(TLoadStr_Func,@base.err_msg3);
+  'err_msg4':Node.Push(TLoadStr_Func,@base.err_msg4);
+  'err_msg5':Node.Push(TLoadStr_Func,@base.err_msg5);
+  'err_msg6':Node.Push(TLoadStr_Func,@base.err_msg6);
+ end;
+end;
+
 procedure TFrmMain.LoadXML;
 begin
  if not data_xml.LoadXML(GetLocalXml) then
@@ -2778,8 +2802,16 @@ begin
 end;
 
 initialization
+ base.err_msg1:='Error connecting to chat server!';
+ base.err_msg2:='Error connecting to pub server!';
+ base.err_msg3:='Error connecting to chat server, in second nick name';
+ base.err_msg4:='Break connecting to pub server, reconnect...';
+ base.err_msg5:='Error connecting to pub server, reconnect...';
+ base.err_msg6:='Connecting to pub server restored!';
+
  if not RegisterXMLNode('sql'    ,TOpenSQL_Func,nil) then Assert(False);
  if not RegisterXMLNode('chat'   ,TLoadStr_Func,@base.chat) then Assert(False);
+ if not RegisterXMLNode('err_msg',TLoadErrMsg_Func,nil) then Assert(False);
 
 end.
 
