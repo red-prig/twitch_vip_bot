@@ -794,8 +794,8 @@ begin
     end;
    end else
    begin
-    push_irc_list(vip_rnd.cmd2,[user,vip_rnd.ban_time]);
-    cmd:=Format(_get_first_cmd(vip_rnd.cmd2),[user,vip_rnd.ban_time]);
+    push_irc_list(vip_rnd.cmd2,[user,IntToStr(vip_rnd.ban_time)]);
+    cmd:=Format(_get_first_cmd(vip_rnd.cmd2),[user,IntToStr(vip_rnd.ban_time)]);
    end;
   end else
 
@@ -1399,6 +1399,9 @@ end;}
 procedure TFrmMain.add_to_chat_cmd(PC:TPrivMsgCfg;const user,display_name,msg:RawByteString);
 var
  cmd,param:RawByteString;
+ {$IFOPT D+}
+  tmpd:DWORD;
+ {$ENDIF}
 begin
 
  if (PC.PS=[]) and ((PC.subscriber_s<>0) or (PC.subscriber_m<>0)) then //subs only, no moder, no vip
@@ -1411,6 +1414,22 @@ begin
 
  if (cmd<>'') and (cmd[1]='!') then //this is cmd
  begin
+
+  {$IFOPT D+}
+  if LowerCase(cmd)='!vip_test' then
+  begin
+   tmpd:=vip_rnd.ban_time;
+   vip_rnd.ban_time:=0;
+   add_reward(
+     '{"type":"reward-redeemed","data":{"timestamp":"2020-07-08T18:38:23.'+
+     '141491302Z","redemption":{"id":"62d7f76e-7a16-432d-94ce-541897f02fa3",'+
+     '"user":{"id":"0","login":"'+user+'","display_name":"'+display_name+'"},'+
+     '"channel_id":"0","redeemed_at":"2020-07-08T18:38:23.018299023Z",'+
+     '"reward":{"id":"9c25cd82-30e4-4e23-8dae-e3ae630b9bab","channel_id":"0",'+
+     '"title":"'+vip_rnd.title+'","prompt":"","is_sub_only":false,"user_input":""}}}}');
+   vip_rnd.ban_time:=tmpd;
+  end;
+  {$ENDIF}
 
   if (PC.PS*[pm_broadcaster,pm_moderator]<>[]) then
   begin
