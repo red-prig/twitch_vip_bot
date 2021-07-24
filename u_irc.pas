@@ -336,11 +336,16 @@ Procedure Websocket_eventcb(bev:Pbufferevent;events:SizeUInt;ctx:pointer); forwa
 
 type
  TWebsocketData=class
+   free_lock_count:SizeInt;
+   is_connected:Boolean;
+   reconnect:Boolean;
    bev:Pbufferevent;
    ws_handshake:PfpWebsocket_handshake;
    ws_session:PfpWebsocket_session;
    time_kd:QWORD;
    url:RawByteString;
+   Procedure   inc_lock;
+   function    dec_lock:Boolean;
    procedure   Init(ssl_ctx:Pssl_ctx;hostname:PChar);
    procedure   Clear; virtual;
    function    connect_hostname(family:Integer;hostname:PAnsiChar;port:Word):Boolean;
@@ -362,7 +367,6 @@ type
   itself:Pws_irc;
   reply_pub:Boolean;
   recv_msg_chat:Boolean;
-  reconnect:Boolean;
   msg_timer:Ptimer;
   not_slow:Boolean;
   login,oAuth,chat,
@@ -380,7 +384,7 @@ type
  end;
 
  Tws_pub=class(TWebsocketData)
-  reconnect:Boolean;
+  is_reconnect_error_push:Boolean;
   ping_timer:Ptimer;
   pong_timer:Ptimer;
   oAuth,chat_id:RawByteString;
@@ -470,6 +474,25 @@ begin
  Clear;
  bufferevent_free(bev);
  inherited;
+end;
+
+Procedure TWebsocketData.inc_lock;
+begin
+ Inc(free_lock_count);
+end;
+
+function TWebsocketData.dec_lock:Boolean;
+begin
+ Result:=False;
+ if (Self=nil) then Exit(True);
+ if (free_lock_count=0) then
+ begin
+  Result:=True;
+  Free;
+ end else
+ begin
+  Dec(free_lock_count);
+ end;
 end;
 
 function TWebsocketData.session_recv:integer;
@@ -687,6 +710,7 @@ function TWebsocketData.session_reply:integer;
 begin
  Result:=0;
  Log(irc_log,0,'session_reply');
+ is_connected:=True;
 end;
 
 function TWebsocketData.session_reconnect(sec:SizeUInt):Boolean;
@@ -717,9 +741,10 @@ begin
    if SessionData.session_recv<0 then
    begin
     SessionData.print_err;
+    SessionData.is_connected:=False;
     if not SessionData.session_reconnect(2) then
     begin
-     SessionData.Free;
+     SessionData.dec_lock;
      Exit;
     end;
    end else
@@ -731,9 +756,10 @@ begin
    if SessionData.session_send<0 then
    begin
     SessionData.print_err;
+    SessionData.is_connected:=False;
     if not SessionData.session_reconnect(2) then
     begin
-     SessionData.Free;
+     SessionData.dec_lock;
      Exit;
     end;
    end;
@@ -745,9 +771,10 @@ begin
    if SessionData.session_connect<0 then
    begin
     SessionData.print_err;
+    SessionData.is_connected:=False;
     if not SessionData.session_reconnect(10) then
     begin
-     SessionData.Free;
+     SessionData.dec_lock;
      Exit;
     end;
    end;
@@ -761,9 +788,10 @@ begin
   if Assigned(SessionData) then
   begin
    SessionData.print_err;
+   SessionData.is_connected:=False;
    if not SessionData.session_reconnect(2) then
    begin
-    SessionData.Free;
+    SessionData.dec_lock;
     Exit;
    end;
   end;
@@ -795,7 +823,7 @@ begin
  end;
  Log(irc_log,0,['CONNECT TO:',URI.GetHost+':'+URI.GetPath,':',port]);
 
- if ws_irc=nil then
+ if (ws_irc=nil) then
  begin
   ws_irc:=Tws_irc.Create;
   ws_irc.itself:=@ws_irc;
@@ -814,10 +842,10 @@ begin
   if rep then
   begin
    ws_irc.reconnect:=true;
-   if not ws_irc.session_reconnect(10) then FreeAndNil(ws_irc);
+   ws_irc.session_reconnect(10);
   end else
   begin
-   Main.push_login(1);
+   Main.push_login(1); //connect error showmsg
   end;
  end;
 
@@ -866,10 +894,10 @@ begin
   if rep then
   begin
    ws_irc2.reconnect:=true;
-   if not ws_irc2.session_reconnect(10) then FreeAndNil(ws_irc2);
+   ws_irc2.session_reconnect(10);
   end else
   begin
-   Main.push_login(3);
+   Main.push_login(3); //connect error showmsg
   end;
  end;
 
@@ -885,9 +913,8 @@ function CopyPchar(Src:PAnsiChar;Len:size_t):PAnsiChar;
 begin
  Result:=nil;
  if (Src=nil) or (Len=0) then Exit;
- Result:=GetMem(Len+1);
+ Result:=AllocMem(Len+1);
  Move(Src^,Result^,Len);
- Result[Len]:=#0;
 end;
 
 procedure Free_pirc_Connect(P:Pirc_Connect);
@@ -910,8 +937,6 @@ begin
  begin
   replyConnect_irc(ws_irc.login,ws_irc.oAuth,ws_irc.chat,true);
  end;
- evtimer_del(ws_irc_rt);
- ws_irc_rt:=nil;
 end;
 
 function Tws_irc.session_reconnect(sec:SizeUInt):Boolean;
@@ -924,16 +949,13 @@ begin
   Result:=True;
  end else
  begin
-  Main.push_login(1);
+  Main.push_login(1); //connect error showmsg
  end;
 end;
 
 procedure Tws_irc.Clear;
 begin
  inherited;
- login:='';
- oAuth:='';
- chat:='';
  msg_buf:='';
  evtimer_del(msg_timer);
  msg_timer:=nil;
@@ -952,8 +974,6 @@ begin
  begin
   replyConnect_irc2(ws_irc.login,ws_irc.oAuth,ws_irc.chat,true);
  end;
- evtimer_del(ws_irc2_rt);
- ws_irc2_rt:=nil;
 end;
 
 function Tws_irc2.session_reconnect(sec:SizeUInt):Boolean;
@@ -966,7 +986,7 @@ begin
   Result:=True;
  end else
  begin
-  Main.push_login(3);
+  Main.push_login(3); //connect error showmsg
  end;
 end;
 
@@ -1084,9 +1104,27 @@ begin
  Result:=Len;
 end;
 
+Procedure _submit_tm(ev:Ptimer;arg:pointer); forward;
+
+procedure _submit_lock(ws_irc:Tws_irc);
+begin
+ if (ws_irc.msg_timer=nil) then
+ begin
+  ws_irc.inc_lock;
+  _submit_tm(ws_irc.msg_timer,ws_irc);
+ end else
+ begin
+  ws_irc.inc_lock;
+  if not evtimer_add(ws_irc.msg_timer,ws_irc.time_kd) then
+  begin
+   ws_irc.dec_lock;
+  end;
+ end;
+end;
+
 Procedure _submit_tm(ev:Ptimer;arg:pointer);
 Const
- max_msg_size=500;
+ max_msg_size=400;
 var
  ws_irc:Tws_irc;
  msg_send_buf:Pevbuffer;
@@ -1097,11 +1135,15 @@ var
  PC:TPrivMsgCfg;
 begin
  ws_irc:=Tws_irc(arg);
+
+ if ws_irc.dec_lock then Exit;
+ if not ws_irc.is_connected then Exit;
+
  msg_send_buf:=ws_irc.msg_send_buf;
  v:=evbuffer_peek(msg_send_buf);
  if (v<>nil) then
  begin
-  if iovec_getlen(v)>max_msg_size then
+  if (iovec_getlen(v)>max_msg_size) then
   begin
    Len:=Utf8FixCut(iovec_getdata(v),max_msg_size);
    v:=GetMem(Len+SizeOf(Tiovec));
@@ -1132,14 +1174,14 @@ begin
   //Writeln(GetStr(iovec_getdata(v),iovec_getlen(v)));
   fpWebsocket_session_submit_msg_vec(ws_irc.ws_session,v,Length(ws_irc.chat));
 
-  if ws_irc.msg_timer=nil then
+  ws_irc.session_send;
+
+  if (ws_irc.msg_timer=nil) then
   begin
    ws_irc.msg_timer:=evtimer_new(@pool,@_submit_tm,arg);
   end;
 
-  ws_irc.session_send;
-
-  evtimer_add(ws_irc.msg_timer,ws_irc.time_kd);
+  _submit_lock(ws_irc);
  end else
  begin
 
@@ -1149,32 +1191,24 @@ begin
 
 end;
 
-function _gen_nonce:RawByteString; forward;
-
-procedure _submit_msg(const msg:RawByteString;var msg_send_buf:Pevbuffer;var ws_irc:Tws_irc);
+procedure _submit_msg(const msg:RawByteString;var _msg_send_buf:Pevbuffer;ws_irc:Tws_irc);
 //var
 // S:RawByteString;
 begin
- if msg_send_buf=nil then
+ if (_msg_send_buf=nil) then
  begin
-  msg_send_buf:=evbuffer_new;
+  _msg_send_buf:=evbuffer_new;
  end;
 
  if (msg='') or (ws_irc=nil) then Exit;
 
- ws_irc.msg_send_buf:=msg_send_buf;
+ ws_irc.msg_send_buf:=_msg_send_buf;
 
  //S:={'@client-nonce='+_gen_nonce+' '+}'PRIVMSG #'+ws_irc.chat+' :'+msg;
 
- evbuffer_add(msg_send_buf,PAnsiChar(msg),Length(msg));
+ evbuffer_add(_msg_send_buf,PAnsiChar(msg),Length(msg));
 
- if ws_irc.msg_timer=nil then
- begin
-  _submit_tm(ws_irc.msg_timer,ws_irc);
- end else
- begin
-  evtimer_add(ws_irc.msg_timer,ws_irc.time_kd);
- end;
+ _submit_lock(ws_irc);
 end;
 
 Type
@@ -1642,8 +1676,9 @@ begin
 
      '001':if ws_irc.recv_msg_chat then
            begin
-            main.push_notice('001','Добро пожаловать в чат!');
             main.push_login(0);
+            main.push_notice('001','Добро пожаловать в чат!');
+            _submit_lock(ws_irc);
            end;
      'NOTICE':begin
                main.push_notice(msg_parse.msg_id,msg_parse.msg);
@@ -1751,15 +1786,27 @@ begin
  ws_pub.oAuth  :=oAuth;
  ws_pub.chat_id:=chat_id;
 
- if not ws_pub.connect_hostname(AF_INET,PAnsiChar(URI.GetHost),port) then
+ if ws_pub.connect_hostname(AF_INET,PAnsiChar(URI.GetHost),port) then
+ begin
+  ws_pub.is_reconnect_error_push:=False;
+  if rep then
+  begin
+   Main.push_login(6); //reconnect succes
+  end;
+ end else
  begin
   if rep then
   begin
+   if not ws_pub.is_reconnect_error_push then
+   begin
+    ws_pub.is_reconnect_error_push:=True;
+    Main.push_login(5); //reconnect error
+   end;
    ws_pub.reconnect:=true;
-   if not ws_pub.session_reconnect(10) then FreeAndNil(ws_pub);
+   ws_pub.session_reconnect(10);
   end else
   begin
-   Main.push_login(2);
+   Main.push_login(2); //connect error showmsg
   end;
  end;
 end;
@@ -1770,8 +1817,6 @@ begin
  begin
   replyConnect_pub(ws_pub.oAuth,ws_pub.chat_id,true);
  end;
- evtimer_del(ws_pub_rt);
- ws_pub_rt:=nil;
 end;
 
 function Tws_pub.session_reconnect(sec:SizeUInt):Boolean;
@@ -1784,17 +1829,18 @@ begin
   evtimer_add  (ws_pub_rt,sec*1000000);
  end else
  begin
-  Main.push_login(2);
+  Main.push_login(2); //connect error showmsg
  end;
-
 end;
 
 Procedure _irc_Connect_post(param1:SizeUInt;param2:Pointer);
 begin
  case param1 of
   0:begin
-     FreeAndNil(ws_irc);
-     FreeAndNil(ws_pub);
+     ws_irc.dec_lock;
+     ws_pub.dec_lock;
+     ws_irc:=nil;
+     ws_pub:=nil;
      With Pirc_Connect(param2)^ do
      begin
       replyConnect_irc(GetStr(login,StrLen(login)),GetStr(oAuth,StrLen(oAuth)),GetStr(chat,StrLen(chat)),false);
@@ -1804,12 +1850,15 @@ begin
   1:begin
      evbuffer_clear(msg_send_buf);
      evbuffer_clear(msg_send_buf2);
-     FreeAndNil(ws_irc);
-     FreeAndNil(ws_pub);
-     FreeAndNil(ws_irc2);
+     ws_irc.dec_lock;
+     ws_pub.dec_lock;
+     ws_irc2.dec_lock;
+     ws_irc:=nil;
+     ws_pub:=nil;
+     ws_irc2:=nil;
     end;
   2:begin
-     if ws_irc<>nil then
+     if (ws_irc<>nil) then
      begin
       _submit_msg(GetStr(param2,StrLen(param2)),msg_send_buf,ws_irc);
      end;
@@ -1823,7 +1872,8 @@ begin
      end;
     end;
   4:begin
-     FreeAndNil(ws_irc2);
+     ws_irc2.dec_lock;
+     ws_irc2:=nil;
      With Pirc_Connect(param2)^ do
      begin
       replyConnect_irc2(GetStr(login,StrLen(login)),GetStr(oAuth,StrLen(oAuth)),GetStr(chat,StrLen(chat)),false);
@@ -1831,7 +1881,7 @@ begin
      Free_pirc_Connect(Pirc_Connect(param2));
     end;
   5:begin
-     if ws_irc2<>nil then
+     if (ws_irc2<>nil) then
      begin
       _submit_msg(GetStr(param2,StrLen(param2)),msg_send_buf2,ws_irc2);
      end;
@@ -2155,9 +2205,6 @@ balance\":{\"user_id\":\"436730045\",\"channel_id\":\"54742538\",\"balance\":872
 procedure Tws_pub.Clear;
 begin
  inherited;
- oAuth  :='';
- chat_id:='';
- nonce  :='';
  evtimer_del(ping_timer);
  evtimer_del(pong_timer);
  ping_timer:=nil;
